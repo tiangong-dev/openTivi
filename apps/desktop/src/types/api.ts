@@ -10,7 +10,6 @@ export interface Source {
   channelCount: number;
   groupCount: number;
   channelsWithTvgId: number;
-  matchedEpgChannels: number;
   epgProgramCount: number;
   lastImportedAt?: string;
   createdAt: string;

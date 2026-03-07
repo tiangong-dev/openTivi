@@ -15,24 +15,6 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
             FROM channels
             GROUP BY source_id
         ),
-        alias_match AS (
-            SELECT
-                c.source_id,
-                COUNT(DISTINCT c.id) AS matched_epg_channels
-            FROM channels c
-            WHERE EXISTS (
-                SELECT 1
-                FROM epg_channel_aliases a
-                WHERE a.alias_normalized IN (
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(c.tvg_id, ''), ' ', ''), '-', ''), '_', ''), '.', ''), '+', '')),
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(c.tvg_name, ''), ' ', ''), '-', ''), '_', ''), '.', ''), '+', '')),
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.name, ' ', ''), '-', ''), '_', ''), '.', ''), '+', '')),
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(CASE WHEN INSTR(c.name, '-') > 0 THEN SUBSTR(c.name, 1, INSTR(c.name, '-') - 1) ELSE c.name END, ' ', ''), '-', ''), '_', ''), '.', ''), '+', '')),
-                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(CASE WHEN INSTR(c.name, '－') > 0 THEN SUBSTR(c.name, 1, INSTR(c.name, '－') - 1) ELSE c.name END, ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
-                )
-            )
-            GROUP BY c.source_id
-        ),
         epg_stats AS (
             SELECT source_id, COUNT(*) AS epg_program_count
             FROM epg_programs
@@ -49,14 +31,12 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
             COALESCE(cs.channel_count, 0) AS channel_count,
             COALESCE(cs.group_count, 0) AS group_count,
             COALESCE(cs.channels_with_tvg_id, 0) AS channels_with_tvg_id,
-            COALESCE(am.matched_epg_channels, 0) AS matched_epg_channels,
             COALESCE(es.epg_program_count, 0) AS epg_program_count,
             s.last_imported_at,
             s.created_at,
             s.updated_at
         FROM sources s
         LEFT JOIN channel_stats cs ON cs.source_id = s.id
-        LEFT JOIN alias_match am ON am.source_id = s.id
         LEFT JOIN epg_stats es ON es.source_id = s.id
         ORDER BY s.name",
     )?;
@@ -73,11 +53,10 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
             channel_count: row.get(7)?,
             group_count: row.get(8)?,
             channels_with_tvg_id: row.get(9)?,
-            matched_epg_channels: row.get(10)?,
-            epg_program_count: row.get(11)?,
-            last_imported_at: row.get(12)?,
-            created_at: row.get(13)?,
-            updated_at: row.get(14)?,
+            epg_program_count: row.get(10)?,
+            last_imported_at: row.get(11)?,
+            created_at: row.get(12)?,
+            updated_at: row.get(13)?,
         })
     })?;
 

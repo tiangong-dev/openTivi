@@ -25,6 +25,7 @@ pub fn run() {
             commands::channels::list_channels,
             commands::channels::list_groups,
             commands::channels::get_channel_epg,
+            commands::channels::get_channels_epg_snapshots,
             commands::favorites::list_favorites,
             commands::favorites::set_favorite,
             commands::recents::list_recents,

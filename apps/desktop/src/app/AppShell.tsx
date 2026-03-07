@@ -55,7 +55,7 @@ export function AppShell() {
       case "channels":
         return <ChannelsView locale={locale} onPlay={handlePlay} />;
       case "favorites":
-        return <FavoritesView onPlay={(ch) => handlePlay(ch)} />;
+        return <FavoritesView locale={locale} onPlay={handlePlay} />;
       case "recents":
         return <RecentsView locale={locale} onPlay={handlePlay} />;
       case "settings":

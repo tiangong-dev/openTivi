@@ -181,6 +181,7 @@ export function SourcesView({ locale }: Props) {
                 <th style={thStyle}>{tr(locale, "Name", "名称")}</th>
                 <th style={thStyle}>{tr(locale, "Type", "类型")}</th>
                 <th style={thStyle}>{tr(locale, "Location", "地址")}</th>
+                <th style={thStyle}>{tr(locale, "Imported Overview", "导入概况")}</th>
                 <th style={thStyle}>{tr(locale, "Auto Refresh", "自动刷新")}</th>
                 <th style={thStyle}>{tr(locale, "Last Import", "上次导入")}</th>
                 <th style={thStyle}>{tr(locale, "Actions", "操作")}</th>
@@ -193,6 +194,11 @@ export function SourcesView({ locale }: Props) {
                   <td style={tdStyle}>{s.kind.toUpperCase()}</td>
                   <td style={{ ...tdStyle, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {s.location}
+                  </td>
+                  <td style={{ ...tdStyle, maxWidth: 320 }}>
+                    <div style={{ color: "var(--text-secondary)", fontSize: 12, lineHeight: 1.4 }}>
+                      {formatSourceOverview(s, locale)}
+                    </div>
                   </td>
                   <td style={tdStyle}>
                     {s.kind === "m3u" && s.autoRefreshMinutes
@@ -376,6 +382,21 @@ function parseSqliteDate(value?: string): number | null {
   const normalized = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
   const ts = Date.parse(normalized);
   return Number.isNaN(ts) ? null : ts;
+}
+
+function formatSourceOverview(source: Source, locale: Locale): string {
+  if (source.kind === "xmltv") {
+    return tr(
+      locale,
+      `EPG programs: ${source.epgProgramCount}, matched channels: ${source.matchedEpgChannels}.`,
+      `EPG 条目：${source.epgProgramCount}，匹配频道：${source.matchedEpgChannels}。`,
+    );
+  }
+  return tr(
+    locale,
+    `Channels: ${source.channelCount}, groups: ${source.groupCount}, TVG-ID channels: ${source.channelsWithTvgId}, EPG matched: ${source.matchedEpgChannels}.`,
+    `频道：${source.channelCount}，分组：${source.groupCount}，含 TVG-ID：${source.channelsWithTvgId}，已匹配 EPG：${source.matchedEpgChannels}。`,
+  );
 }
 
 const formStyle: React.CSSProperties = {

@@ -7,6 +7,11 @@ export interface Source {
   password?: string;
   enabled: boolean;
   autoRefreshMinutes?: number;
+  channelCount: number;
+  groupCount: number;
+  channelsWithTvgId: number;
+  matchedEpgChannels: number;
+  epgProgramCount: number;
   lastImportedAt?: string;
   createdAt: string;
   updatedAt: string;

@@ -26,6 +26,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [proxyPort, setProxyPort] = useState<number | null>(null);
   const [overlayVisible, setOverlayVisible] = useState(true);
   const [osdChannel, setOsdChannel] = useState<Channel | null>(null);
+  const [epgPrograms, setEpgPrograms] = useState<EpgProgram[]>([]);
+  const [epgLoading, setEpgLoading] = useState(false);
+  const [epgError, setEpgError] = useState<string | null>(null);
+  const [showGuidePanel, setShowGuidePanel] = useState(true);
+  const [showChannelListPanel, setShowChannelListPanel] = useState(false);
+  const [focusedChannelIndex, setFocusedChannelIndex] = useState(0);
   const [epgNow, setEpgNow] = useState<EpgProgram | null>(null);
   const [epgNext, setEpgNext] = useState<EpgProgram | null>(null);
   const [epgProgress, setEpgProgress] = useState(0);
@@ -121,6 +127,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   };
 
   useEffect(() => {
+    setEpgLoading(true);
+    setEpgError(null);
+    setEpgPrograms([]);
     setEpgNow(null);
     setEpgNext(null);
     setEpgProgress(0);
@@ -129,13 +138,23 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       query: { channelId: channel.id },
     })
       .then((programs) => {
+        setEpgPrograms(programs);
         const now = Date.now();
         const current = programs.find((p) => {
           const start = parseXmltvDate(p.startAt);
           const end = parseXmltvDate(p.endAt);
           return start !== null && end !== null && start <= now && now <= end;
         });
-        if (!current) return;
+        if (!current) {
+          const nextUpcoming = programs.find((p) => {
+            const start = parseXmltvDate(p.startAt);
+            return start !== null && start > now;
+          });
+          if (nextUpcoming) {
+            setEpgNext(nextUpcoming);
+          }
+          return;
+        }
 
         setEpgNow(current);
         const start = parseXmltvDate(current.startAt);
@@ -149,8 +168,20 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           setEpgNext(programs[currentIdx + 1]);
         }
       })
-      .catch(() => undefined);
-  }, [channel.id]);
+      .catch(() => {
+        setEpgError(tr(locale, "Failed to load EPG data.", "加载节目单失败。"));
+      })
+      .finally(() => {
+        setEpgLoading(false);
+      });
+  }, [channel.id, locale]);
+
+  useEffect(() => {
+    const idx = channels.findIndex((c) => c.id === channel.id);
+    if (idx >= 0) {
+      setFocusedChannelIndex(idx);
+    }
+  }, [channel.id, channels]);
 
   useEffect(() => {
     if (!epgNow) return;
@@ -210,15 +241,42 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       switch (e.key) {
         case "Escape":
           e.preventDefault();
-          onClose();
+          if (showChannelListPanel) {
+            setShowChannelListPanel(false);
+          } else {
+            onClose();
+          }
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          setShowChannelListPanel(true);
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          setShowGuidePanel((v) => !v);
           break;
         case "ArrowUp":
           e.preventDefault();
-          switchChannel(-1);
+          if (showChannelListPanel) {
+            setFocusedChannelIndex((i) => Math.max(0, i - 1));
+          } else {
+            switchChannel(-1);
+          }
           break;
         case "ArrowDown":
           e.preventDefault();
-          switchChannel(1);
+          if (showChannelListPanel) {
+            setFocusedChannelIndex((i) => Math.min(channels.length - 1, i + 1));
+          } else {
+            switchChannel(1);
+          }
+          break;
+        case "Enter":
+          if (showChannelListPanel && channels[focusedChannelIndex]) {
+            e.preventDefault();
+            onChannelChange(channels[focusedChannelIndex]);
+            setShowChannelListPanel(false);
+          }
           break;
         case " ":
           e.preventDefault();
@@ -245,7 +303,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, switchChannel]);
+  }, [channels, focusedChannelIndex, onChannelChange, onClose, showChannelListPanel, switchChannel]);
 
   return (
     <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>
@@ -280,6 +338,20 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={() => setShowChannelListPanel((v) => !v)}
+            style={overlayBtnStyle}
+            title={tr(locale, "Channel list (←)", "频道列表 (←)")}
+          >
+            ☰
+          </button>
+          <button
+            onClick={() => setShowGuidePanel((v) => !v)}
+            style={overlayBtnStyle}
+            title={tr(locale, "Toggle guide (→)", "切换节目单 (→)")}
+          >
+            ≡
+          </button>
           <button onClick={() => switchChannel(-1)} style={overlayBtnStyle} title="Previous channel (↑)">
             ▲
           </button>
@@ -329,6 +401,87 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         </div>
       )}
 
+      {showGuidePanel && (
+        <div style={guidePanelStyle}>
+          <div style={guideHeaderStyle}>
+            <span>{tr(locale, "Program Guide", "节目单")}</span>
+            <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
+              {tr(locale, "Right key to hide", "按右键隐藏")}
+            </span>
+          </div>
+          {epgLoading && (
+            <div style={guideHintStyle}>{tr(locale, "Loading EPG...", "正在加载节目单...")}</div>
+          )}
+          {!epgLoading && epgError && <div style={guideHintStyle}>{epgError}</div>}
+          {!epgLoading && !epgError && epgPrograms.length === 0 && (
+            <div style={guideHintStyle}>
+              {tr(locale, "No guide data for this channel.", "当前频道暂无节目单数据。")}
+            </div>
+          )}
+          {!epgLoading && !epgError && epgPrograms.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
+              {getGuidePrograms(epgPrograms).map((program) => {
+                const isCurrent = epgNow?.id === program.id;
+                return (
+                  <div
+                    key={program.id}
+                    style={{
+                      ...guideItemStyle,
+                      borderColor: isCurrent ? "var(--accent)" : "var(--border)",
+                      backgroundColor: isCurrent ? "#2563eb22" : "transparent",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                      {formatTime(program.startAt)} - {formatTime(program.endAt)}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: isCurrent ? 600 : 400 }}>{program.title}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showChannelListPanel && (
+        <div style={channelListPanelStyle}>
+          <div style={guideHeaderStyle}>
+            <span>{tr(locale, "Channels", "频道列表")}</span>
+            <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
+              {tr(locale, "Enter to play", "回车播放")}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto" }}>
+            {channels.map((item, idx) => {
+              const isCurrent = item.id === channel.id;
+              const isFocused = idx === focusedChannelIndex;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setFocusedChannelIndex(idx);
+                    onChannelChange(item);
+                    setShowChannelListPanel(false);
+                  }}
+                  style={{
+                    ...channelListItemStyle,
+                    borderColor: isFocused ? "var(--accent)" : "var(--border)",
+                    backgroundColor: isCurrent ? "#2563eb33" : "rgba(255,255,255,0.02)",
+                  }}
+                >
+                  <span style={{ opacity: 0.8, marginRight: 8, minWidth: 36, textAlign: "right" }}>
+                    {item.channelNumber ?? idx + 1}
+                  </span>
+                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "left" }}>
+                    {item.name}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {error && (
         <div style={errorOverlayStyle}>
           <div style={{ fontSize: 14, color: "#ef4444" }}>{error}</div>
@@ -366,6 +519,15 @@ function formatTime(value: string): string {
   const ts = parseXmltvDate(value);
   if (ts === null) return value;
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function getGuidePrograms(programs: EpgProgram[]): EpgProgram[] {
+  const now = Date.now();
+  const upcoming = programs.filter((p) => {
+    const end = parseXmltvDate(p.endAt);
+    return end !== null && end >= now - 15 * 60 * 1000;
+  });
+  return (upcoming.length > 0 ? upcoming : programs).slice(0, 12);
 }
 
 function toProxyUrl(originalUrl: string, port: number): string {
@@ -425,6 +587,76 @@ const bottomBarStyle: React.CSSProperties = {
   color: "#fff",
   transition: "opacity 0.3s ease",
   zIndex: 10,
+};
+
+const guidePanelStyle: React.CSSProperties = {
+  position: "absolute",
+  top: 72,
+  right: 12,
+  bottom: 92,
+  width: 340,
+  maxWidth: "40vw",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  backgroundColor: "rgba(20,20,20,0.78)",
+  backdropFilter: "blur(8px)",
+  color: "var(--text-primary)",
+  display: "flex",
+  flexDirection: "column",
+  padding: 10,
+  gap: 8,
+  zIndex: 12,
+};
+
+const channelListPanelStyle: React.CSSProperties = {
+  position: "absolute",
+  top: 72,
+  left: 12,
+  bottom: 92,
+  width: 320,
+  maxWidth: "38vw",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  backgroundColor: "rgba(20,20,20,0.78)",
+  backdropFilter: "blur(8px)",
+  color: "var(--text-primary)",
+  display: "flex",
+  flexDirection: "column",
+  padding: 10,
+  gap: 8,
+  zIndex: 12,
+};
+
+const guideHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  fontSize: 13,
+  fontWeight: 600,
+};
+
+const guideHintStyle: React.CSSProperties = {
+  color: "var(--text-secondary)",
+  fontSize: 12,
+};
+
+const guideItemStyle: React.CSSProperties = {
+  border: "1px solid var(--border)",
+  borderRadius: 6,
+  padding: "6px 8px",
+};
+
+const channelListItemStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  width: "100%",
+  border: "1px solid var(--border)",
+  borderRadius: 6,
+  background: "transparent",
+  color: "var(--text-primary)",
+  padding: "6px 8px",
+  fontSize: 13,
+  cursor: "pointer",
 };
 
 const overlayBtnStyle: React.CSSProperties = {

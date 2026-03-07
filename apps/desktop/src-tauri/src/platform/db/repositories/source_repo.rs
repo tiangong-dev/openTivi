@@ -6,7 +6,56 @@ use crate::error::AppResult;
 
 pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
     let mut stmt = conn.prepare(
-        "SELECT id, kind, name, location, username, enabled, auto_refresh_minutes, last_imported_at, created_at, updated_at FROM sources ORDER BY name",
+        "SELECT
+            s.id,
+            s.kind,
+            s.name,
+            s.location,
+            s.username,
+            s.enabled,
+            s.auto_refresh_minutes,
+            (
+                SELECT COUNT(*)
+                FROM channels c
+                WHERE c.source_id = s.id
+            ) AS channel_count,
+            (
+                SELECT COUNT(DISTINCT c.group_name)
+                FROM channels c
+                WHERE c.source_id = s.id
+                  AND c.group_name IS NOT NULL
+                  AND TRIM(c.group_name) <> ''
+            ) AS group_count,
+            (
+                SELECT COUNT(*)
+                FROM channels c
+                WHERE c.source_id = s.id
+                  AND c.tvg_id IS NOT NULL
+                  AND TRIM(c.tvg_id) <> ''
+            ) AS channels_with_tvg_id,
+            (
+                SELECT COUNT(DISTINCT c.id)
+                FROM channels c
+                WHERE c.source_id = s.id
+                  AND c.tvg_id IS NOT NULL
+                  AND TRIM(c.tvg_id) <> ''
+                  AND EXISTS (
+                      SELECT 1
+                      FROM epg_programs e
+                      WHERE LOWER(TRIM(e.channel_tvg_id)) = LOWER(TRIM(c.tvg_id))
+                         OR LOWER(REPLACE(TRIM(e.channel_tvg_id), ' ', '')) = LOWER(REPLACE(TRIM(c.tvg_id), ' ', ''))
+                  )
+            ) AS matched_epg_channels,
+            (
+                SELECT COUNT(*)
+                FROM epg_programs e
+                WHERE e.source_id = s.id
+            ) AS epg_program_count,
+            s.last_imported_at,
+            s.created_at,
+            s.updated_at
+        FROM sources s
+        ORDER BY s.name",
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -18,9 +67,14 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
             username: row.get(4)?,
             enabled: row.get::<_, i64>(5)? != 0,
             auto_refresh_minutes: row.get(6)?,
-            last_imported_at: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
+            channel_count: row.get(7)?,
+            group_count: row.get(8)?,
+            channels_with_tvg_id: row.get(9)?,
+            matched_epg_channels: row.get(10)?,
+            epg_program_count: row.get(11)?,
+            last_imported_at: row.get(12)?,
+            created_at: row.get(13)?,
+            updated_at: row.get(14)?,
         })
     })?;
 

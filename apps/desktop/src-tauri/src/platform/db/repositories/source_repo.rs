@@ -6,7 +6,39 @@ use crate::error::AppResult;
 
 pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
     let mut stmt = conn.prepare(
-        "SELECT
+        "WITH channel_stats AS (
+            SELECT
+                source_id,
+                COUNT(*) AS channel_count,
+                COUNT(DISTINCT CASE WHEN group_name IS NOT NULL AND TRIM(group_name) <> '' THEN group_name END) AS group_count,
+                SUM(CASE WHEN tvg_id IS NOT NULL AND TRIM(tvg_id) <> '' THEN 1 ELSE 0 END) AS channels_with_tvg_id
+            FROM channels
+            GROUP BY source_id
+        ),
+        alias_match AS (
+            SELECT
+                c.source_id,
+                COUNT(DISTINCT c.id) AS matched_epg_channels
+            FROM channels c
+            WHERE EXISTS (
+                SELECT 1
+                FROM epg_channel_aliases a
+                WHERE a.alias_normalized IN (
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(c.tvg_id, ''), ' ', ''), '-', ''), '_', ''), '.', ''), '+', '')),
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(c.tvg_name, ''), ' ', ''), '-', ''), '_', ''), '.', ''), '+', '')),
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.name, ' ', ''), '-', ''), '_', ''), '.', ''), '+', '')),
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(CASE WHEN INSTR(c.name, '-') > 0 THEN SUBSTR(c.name, 1, INSTR(c.name, '-') - 1) ELSE c.name END, ' ', ''), '-', ''), '_', ''), '.', ''), '+', '')),
+                    LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(CASE WHEN INSTR(c.name, '－') > 0 THEN SUBSTR(c.name, 1, INSTR(c.name, '－') - 1) ELSE c.name END, ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
+                )
+            )
+            GROUP BY c.source_id
+        ),
+        epg_stats AS (
+            SELECT source_id, COUNT(*) AS epg_program_count
+            FROM epg_programs
+            GROUP BY source_id
+        )
+        SELECT
             s.id,
             s.kind,
             s.name,
@@ -14,57 +46,18 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
             s.username,
             s.enabled,
             s.auto_refresh_minutes,
-            (
-                SELECT COUNT(*)
-                FROM channels c
-                WHERE c.source_id = s.id
-            ) AS channel_count,
-            (
-                SELECT COUNT(DISTINCT c.group_name)
-                FROM channels c
-                WHERE c.source_id = s.id
-                  AND c.group_name IS NOT NULL
-                  AND TRIM(c.group_name) <> ''
-            ) AS group_count,
-            (
-                SELECT COUNT(*)
-                FROM channels c
-                WHERE c.source_id = s.id
-                  AND c.tvg_id IS NOT NULL
-                  AND TRIM(c.tvg_id) <> ''
-            ) AS channels_with_tvg_id,
-            (
-                SELECT COUNT(DISTINCT c.id)
-                FROM channels c
-                WHERE c.source_id = s.id
-                  AND EXISTS (
-                      SELECT 1
-                      FROM epg_programs e
-                      WHERE LOWER(TRIM(e.channel_tvg_id)) = LOWER(TRIM(IFNULL(c.tvg_id, '')))
-                         OR LOWER(REPLACE(TRIM(e.channel_tvg_id), ' ', '')) = LOWER(REPLACE(TRIM(IFNULL(c.tvg_id, '')), ' ', ''))
-                         OR EXISTS (
-                             SELECT 1
-                             FROM epg_channel_aliases a
-                             WHERE a.channel_tvg_id = e.channel_tvg_id
-                               AND (
-                                   a.alias_normalized = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(c.tvg_id, ''), ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
-                                OR a.alias_normalized = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(c.tvg_name, ''), ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
-                                OR a.alias_normalized = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.name, ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
-                                OR a.alias_normalized = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(CASE WHEN INSTR(c.name, '-') > 0 THEN SUBSTR(c.name, 1, INSTR(c.name, '-') - 1) ELSE c.name END, ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
-                                OR a.alias_normalized = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(CASE WHEN INSTR(c.name, '－') > 0 THEN SUBSTR(c.name, 1, INSTR(c.name, '－') - 1) ELSE c.name END, ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
-                               )
-                         )
-                  )
-            ) AS matched_epg_channels,
-            (
-                SELECT COUNT(*)
-                FROM epg_programs e
-                WHERE e.source_id = s.id
-            ) AS epg_program_count,
+            COALESCE(cs.channel_count, 0) AS channel_count,
+            COALESCE(cs.group_count, 0) AS group_count,
+            COALESCE(cs.channels_with_tvg_id, 0) AS channels_with_tvg_id,
+            COALESCE(am.matched_epg_channels, 0) AS matched_epg_channels,
+            COALESCE(es.epg_program_count, 0) AS epg_program_count,
             s.last_imported_at,
             s.created_at,
             s.updated_at
         FROM sources s
+        LEFT JOIN channel_stats cs ON cs.source_id = s.id
+        LEFT JOIN alias_match am ON am.source_id = s.id
+        LEFT JOIN epg_stats es ON es.source_id = s.id
         ORDER BY s.name",
     )?;
 

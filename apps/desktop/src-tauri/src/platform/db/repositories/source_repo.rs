@@ -37,13 +37,23 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
                 SELECT COUNT(DISTINCT c.id)
                 FROM channels c
                 WHERE c.source_id = s.id
-                  AND c.tvg_id IS NOT NULL
-                  AND TRIM(c.tvg_id) <> ''
                   AND EXISTS (
                       SELECT 1
                       FROM epg_programs e
-                      WHERE LOWER(TRIM(e.channel_tvg_id)) = LOWER(TRIM(c.tvg_id))
-                         OR LOWER(REPLACE(TRIM(e.channel_tvg_id), ' ', '')) = LOWER(REPLACE(TRIM(c.tvg_id), ' ', ''))
+                      WHERE LOWER(TRIM(e.channel_tvg_id)) = LOWER(TRIM(IFNULL(c.tvg_id, '')))
+                         OR LOWER(REPLACE(TRIM(e.channel_tvg_id), ' ', '')) = LOWER(REPLACE(TRIM(IFNULL(c.tvg_id, '')), ' ', ''))
+                         OR EXISTS (
+                             SELECT 1
+                             FROM epg_channel_aliases a
+                             WHERE a.channel_tvg_id = e.channel_tvg_id
+                               AND (
+                                   a.alias_normalized = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(c.tvg_id, ''), ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
+                                OR a.alias_normalized = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(c.tvg_name, ''), ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
+                                OR a.alias_normalized = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.name, ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
+                                OR a.alias_normalized = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(CASE WHEN INSTR(c.name, '-') > 0 THEN SUBSTR(c.name, 1, INSTR(c.name, '-') - 1) ELSE c.name END, ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
+                                OR a.alias_normalized = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(CASE WHEN INSTR(c.name, '－') > 0 THEN SUBSTR(c.name, 1, INSTR(c.name, '－') - 1) ELSE c.name END, ' ', ''), '-', ''), '_', ''), '.', ''), '+', ''))
+                               )
+                         )
                   )
             ) AS matched_epg_channels,
             (

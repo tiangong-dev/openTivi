@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { SourcesView } from "../features/sources/SourcesView";
 import { ChannelsView } from "../features/channels/ChannelsView";
+import { FavoritesView } from "../features/favorites/FavoritesView";
+import { RecentsView } from "../features/recents/RecentsView";
+import { SettingsView } from "../features/settings/SettingsView";
 import { VideoPlayer } from "../features/player/VideoPlayer";
 import type { Channel } from "../types/api";
 
@@ -17,9 +20,11 @@ const NAV_ITEMS: { key: View; label: string }[] = [
 export function AppShell() {
   const [activeView, setActiveView] = useState<View>("sources");
   const [playingChannel, setPlayingChannel] = useState<Channel | null>(null);
+  const [channelList, setChannelList] = useState<Channel[]>([]);
 
-  const handlePlay = (ch: Channel) => {
+  const handlePlay = (ch: Channel, allChannels?: Channel[]) => {
     setPlayingChannel(ch);
+    if (allChannels) setChannelList(allChannels);
   };
 
   const renderView = () => {
@@ -29,11 +34,11 @@ export function AppShell() {
       case "channels":
         return <ChannelsView onPlay={handlePlay} />;
       case "favorites":
-        return <ChannelsView onPlay={handlePlay} />;
+        return <FavoritesView onPlay={(ch) => handlePlay(ch)} />;
       case "recents":
-        return <Placeholder name="Recents" />;
+        return <RecentsView onPlay={(ch) => handlePlay(ch)} />;
       case "settings":
-        return <Placeholder name="Settings" />;
+        return <SettingsView />;
     }
   };
 
@@ -58,21 +63,15 @@ export function AppShell() {
         {playingChannel ? (
           <VideoPlayer
             channel={playingChannel}
+            channels={channelList}
             onClose={() => setPlayingChannel(null)}
+            onChannelChange={(ch) => setPlayingChannel(ch)}
           />
         ) : (
           renderView()
         )}
       </main>
     </>
-  );
-}
-
-function Placeholder({ name }: { name: string }) {
-  return (
-    <div style={{ padding: 24, color: "var(--text-secondary)" }}>
-      {name} — coming soon
-    </div>
   );
 }
 
@@ -103,5 +102,3 @@ const mainStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
 };
-
-

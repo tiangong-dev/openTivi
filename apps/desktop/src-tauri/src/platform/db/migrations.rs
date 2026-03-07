@@ -13,6 +13,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0003_sources_auto_refresh",
         include_str!("../../../migrations/0003_sources_auto_refresh.sql"),
     ),
+    (
+        "0004_epg_channel_aliases",
+        include_str!("../../../migrations/0004_epg_channel_aliases.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {

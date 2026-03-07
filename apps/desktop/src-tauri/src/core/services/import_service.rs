@@ -68,6 +68,7 @@ pub fn import_xtream(
 pub fn import_xmltv(conn: &Connection, name: &str, location: &str) -> AppResult<ImportSummaryDto> {
     let content = fetch_content(location)?;
     let programs = crate::core::parsers::xmltv::parse_xmltv(&content)?;
+    let aliases = crate::core::parsers::xmltv::parse_xmltv_channel_aliases(&content)?;
 
     let source_id = crate::platform::db::repositories::source_repo::upsert_source(
         conn,
@@ -81,6 +82,9 @@ pub fn import_xmltv(conn: &Connection, name: &str, location: &str) -> AppResult<
 
     let programs_imported =
         crate::platform::db::repositories::epg_repo::replace_programs(conn, source_id, &programs)?;
+    let _ = crate::platform::db::repositories::epg_repo::replace_channel_aliases(
+        conn, source_id, &aliases,
+    )?;
 
     Ok(ImportSummaryDto {
         source_id,

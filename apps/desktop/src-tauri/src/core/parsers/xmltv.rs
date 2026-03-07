@@ -78,6 +78,73 @@ pub fn parse_xmltv(content: &str) -> AppResult<Vec<ParsedProgram>> {
     Ok(programs)
 }
 
+pub fn parse_xmltv_channel_aliases(content: &str) -> AppResult<Vec<(String, String)>> {
+    let mut reader = Reader::from_str(content);
+    reader.config_mut().trim_text(true);
+    let mut aliases = Vec::new();
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) if e.name().as_ref() == b"channel" => {
+                let mut channel_id = String::new();
+                for attr in e.attributes().flatten() {
+                    if attr.key.as_ref() == b"id" {
+                        channel_id = String::from_utf8_lossy(&attr.value).to_string();
+                    }
+                }
+
+                loop {
+                    match reader.read_event_into(&mut buf) {
+                        Ok(Event::Start(ref inner)) if inner.name().as_ref() == b"display-name" => {
+                            let mut display_name = String::new();
+                            loop {
+                                match reader.read_event_into(&mut buf) {
+                                    Ok(Event::Text(t)) => {
+                                        display_name
+                                            .push_str(t.unescape().unwrap_or_default().as_ref());
+                                    }
+                                    Ok(Event::CData(c)) => {
+                                        display_name.push_str(
+                                            String::from_utf8_lossy(&c.into_inner()).as_ref(),
+                                        );
+                                    }
+                                    Ok(Event::End(ref end))
+                                        if end.name().as_ref() == b"display-name" =>
+                                    {
+                                        break;
+                                    }
+                                    Ok(Event::Eof) => break,
+                                    Err(_) => break,
+                                    _ => {}
+                                }
+                                buf.clear();
+                            }
+
+                            let id = channel_id.trim();
+                            let name = display_name.trim();
+                            if !id.is_empty() && !name.is_empty() {
+                                aliases.push((id.to_string(), name.to_string()));
+                            }
+                        }
+                        Ok(Event::End(ref end)) if end.name().as_ref() == b"channel" => break,
+                        Ok(Event::Eof) => break,
+                        Err(e) => return Err(e.into()),
+                        _ => {}
+                    }
+                    buf.clear();
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(e.into()),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(aliases)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,5 +202,25 @@ mod tests {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?><tv></tv>"#;
         let programs = parse_xmltv(xml).unwrap();
         assert_eq!(programs.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_xmltv_channel_aliases() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="101">
+    <display-name>CCTV1-综合</display-name>
+    <display-name>CCTV-1</display-name>
+  </channel>
+  <channel id="102">
+    <display-name>东方卫视</display-name>
+  </channel>
+</tv>"#;
+
+        let aliases = parse_xmltv_channel_aliases(xml).unwrap();
+        assert_eq!(aliases.len(), 3);
+        assert_eq!(aliases[0], ("101".to_string(), "CCTV1-综合".to_string()));
+        assert_eq!(aliases[1], ("101".to_string(), "CCTV-1".to_string()));
+        assert_eq!(aliases[2], ("102".to_string(), "东方卫视".to_string()));
     }
 }

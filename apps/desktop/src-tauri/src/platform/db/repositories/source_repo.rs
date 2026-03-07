@@ -26,6 +26,7 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
             s.name,
             s.location,
             s.username,
+            s.password,
             s.enabled,
             s.auto_refresh_minutes,
             COALESCE(cs.channel_count, 0) AS channel_count,
@@ -48,15 +49,16 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
             name: row.get(2)?,
             location: row.get(3)?,
             username: row.get(4)?,
-            enabled: row.get::<_, i64>(5)? != 0,
-            auto_refresh_minutes: row.get(6)?,
-            channel_count: row.get(7)?,
-            group_count: row.get(8)?,
-            channels_with_tvg_id: row.get(9)?,
-            epg_program_count: row.get(10)?,
-            last_imported_at: row.get(11)?,
-            created_at: row.get(12)?,
-            updated_at: row.get(13)?,
+            password: row.get(5)?,
+            enabled: row.get::<_, i64>(6)? != 0,
+            auto_refresh_minutes: row.get(7)?,
+            channel_count: row.get(8)?,
+            group_count: row.get(9)?,
+            channels_with_tvg_id: row.get(10)?,
+            epg_program_count: row.get(11)?,
+            last_imported_at: row.get(12)?,
+            created_at: row.get(13)?,
+            updated_at: row.get(14)?,
         })
     })?;
 
@@ -131,5 +133,38 @@ pub fn upsert_source(
 
 pub fn delete(conn: &Connection, id: i64) -> AppResult<()> {
     conn.execute("DELETE FROM sources WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+pub fn update_source(
+    conn: &Connection,
+    source_id: i64,
+    name: &str,
+    location: &str,
+    username: Option<&str>,
+    password: Option<&str>,
+    auto_refresh_minutes: Option<u32>,
+    enabled: bool,
+) -> AppResult<()> {
+    conn.execute(
+        "UPDATE sources
+         SET name = ?1,
+             location = ?2,
+             username = ?3,
+             password = ?4,
+             auto_refresh_minutes = ?5,
+             enabled = ?6,
+             updated_at = datetime('now')
+         WHERE id = ?7",
+        rusqlite::params![
+            name,
+            location,
+            username,
+            password,
+            auto_refresh_minutes,
+            enabled as i64,
+            source_id
+        ],
+    )?;
     Ok(())
 }

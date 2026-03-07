@@ -65,6 +65,21 @@ pub fn delete_source(state: State<AppState>, source_id: i64) -> AppResult<()> {
     crate::core::services::source_service::delete_source(&conn, source_id)
 }
 
+#[tauri::command]
+pub fn update_source(state: State<AppState>, input: UpdateSourceInput) -> AppResult<()> {
+    let conn = state.db.lock().unwrap();
+    crate::core::services::source_service::update_source(
+        &conn,
+        input.source_id,
+        &input.name,
+        &input.location,
+        input.username.as_deref(),
+        input.password.as_deref(),
+        input.auto_refresh_minutes,
+        input.enabled,
+    )
+}
+
 async fn run_import_job<F>(job: F) -> AppResult<ImportSummaryDto>
 where
     F: FnOnce(&rusqlite::Connection) -> AppResult<ImportSummaryDto> + Send + 'static,

@@ -20,6 +20,7 @@ pub fn run() {
             commands::sources::import_xtream,
             commands::sources::import_xmltv,
             commands::sources::refresh_source,
+            commands::sources::update_source,
             commands::sources::delete_source,
             commands::channels::list_channels,
             commands::channels::list_groups,

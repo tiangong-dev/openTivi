@@ -4,7 +4,12 @@ use crate::commands::dto::ImportSummaryDto;
 use crate::core::models::source::SourceKind;
 use crate::error::{AppError, AppResult};
 
-pub fn import_m3u(conn: &Connection, name: &str, location: &str) -> AppResult<ImportSummaryDto> {
+pub fn import_m3u(
+    conn: &Connection,
+    name: &str,
+    location: &str,
+    auto_refresh_minutes: Option<u32>,
+) -> AppResult<ImportSummaryDto> {
     let content = fetch_content(location)?;
     let channels = crate::core::parsers::m3u::parse_m3u(&content)?;
 
@@ -15,10 +20,12 @@ pub fn import_m3u(conn: &Connection, name: &str, location: &str) -> AppResult<Im
         location,
         None,
         None,
+        auto_refresh_minutes,
     )?;
 
-    let summary =
-        crate::platform::db::repositories::channel_repo::upsert_channels(conn, source_id, &channels)?;
+    let summary = crate::platform::db::repositories::channel_repo::upsert_channels(
+        conn, source_id, &channels,
+    )?;
 
     Ok(summary)
 }
@@ -37,8 +44,9 @@ pub fn import_xtream(
         password,
     );
     let content = fetch_content(&url)?;
-    let channels =
-        crate::core::parsers::xtream::parse_xtream_live_streams(&content, server_url, username, password)?;
+    let channels = crate::core::parsers::xtream::parse_xtream_live_streams(
+        &content, server_url, username, password,
+    )?;
 
     let source_id = crate::platform::db::repositories::source_repo::upsert_source(
         conn,
@@ -47,10 +55,12 @@ pub fn import_xtream(
         server_url,
         Some(username),
         Some(password),
+        None,
     )?;
 
-    let summary =
-        crate::platform::db::repositories::channel_repo::upsert_channels(conn, source_id, &channels)?;
+    let summary = crate::platform::db::repositories::channel_repo::upsert_channels(
+        conn, source_id, &channels,
+    )?;
 
     Ok(summary)
 }
@@ -64,6 +74,7 @@ pub fn import_xmltv(conn: &Connection, name: &str, location: &str) -> AppResult<
         SourceKind::Xmltv,
         name,
         location,
+        None,
         None,
         None,
     )?;
@@ -84,7 +95,12 @@ pub fn refresh_source(conn: &Connection, source_id: i64) -> AppResult<ImportSumm
         .ok_or_else(|| AppError::NotFound(format!("Source {} not found", source_id)))?;
 
     match source.kind {
-        SourceKind::M3u => import_m3u(conn, &source.name, &source.location),
+        SourceKind::M3u => import_m3u(
+            conn,
+            &source.name,
+            &source.location,
+            source.auto_refresh_minutes,
+        ),
         SourceKind::Xtream => {
             let username = source.username.unwrap_or_default();
             let password = source.password.unwrap_or_default();

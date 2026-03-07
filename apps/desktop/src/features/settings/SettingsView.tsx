@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
-import { tauriInvoke } from "../../lib/tauri";
+
 import { getErrorMessage } from "../../lib/errors";
+import { LOCALE_SETTING_KEY, tr, type Locale } from "../../lib/i18n";
+import { tauriInvoke } from "../../lib/tauri";
 import type { Setting } from "../../types/api";
+
+interface Props {
+  locale: Locale;
+  onLocaleChange: (next: Locale) => void;
+}
 
 interface SettingDef {
   key: string;
@@ -18,11 +25,14 @@ const settingCategories: { title: string; settings: SettingDef[] }[] = [
     title: "General",
     settings: [
       {
-        key: "app.language",
+        key: LOCALE_SETTING_KEY,
         label: "Language",
         type: "select",
-        defaultValue: "en",
-        options: [{ label: "English", value: "en" }],
+        defaultValue: "en-US",
+        options: [
+          { label: "English", value: "en-US" },
+          { label: "中文", value: "zh-CN" },
+        ],
       },
       {
         key: "app.startView",
@@ -53,7 +63,7 @@ const settingCategories: { title: string; settings: SettingDef[] }[] = [
   },
 ];
 
-export function SettingsView() {
+export function SettingsView({ locale, onLocaleChange }: Props) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
@@ -73,7 +83,7 @@ export function SettingsView() {
   };
 
   useEffect(() => {
-    loadSettings();
+    void loadSettings();
   }, []);
 
   const getValue = (def: SettingDef): unknown => {
@@ -82,11 +92,16 @@ export function SettingsView() {
 
   const saveSetting = async (key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }));
+    if (key === LOCALE_SETTING_KEY) {
+      onLocaleChange((value === "zh-CN" ? "zh-CN" : "en-US") as Locale);
+    }
     try {
       await tauriInvoke("set_setting", { input: { key, value } });
       setFlash(true);
       setTimeout(() => setFlash(false), 1500);
-    } catch (_) {}
+    } catch (e) {
+      setError(getErrorMessage(e));
+    }
   };
 
   const renderControl = (def: SettingDef) => {
@@ -97,8 +112,8 @@ export function SettingsView() {
         <label style={toggleLabelStyle}>
           <input
             type="checkbox"
-            checked={val as boolean}
-            onChange={(e) => saveSetting(def.key, e.target.checked)}
+            checked={Boolean(val)}
+            onChange={(e) => void saveSetting(def.key, e.target.checked)}
             style={{ accentColor: "var(--accent)" }}
           />
         </label>
@@ -108,12 +123,14 @@ export function SettingsView() {
     if (def.type === "select") {
       return (
         <select
-          value={val as string}
-          onChange={(e) => saveSetting(def.key, e.target.value)}
+          value={String(val)}
+          onChange={(e) => void saveSetting(def.key, e.target.value)}
           style={selectStyle}
         >
-          {def.options!.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+          {def.options?.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
           ))}
         </select>
       );
@@ -126,11 +143,11 @@ export function SettingsView() {
             type="range"
             min={def.min}
             max={def.max}
-            value={val as number}
-            onChange={(e) => saveSetting(def.key, Number(e.target.value))}
+            value={Number(val)}
+            onChange={(e) => void saveSetting(def.key, Number(e.target.value))}
             style={{ accentColor: "var(--accent)", width: 120 }}
           />
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", minWidth: 28 }}>{val as number}</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", minWidth: 28 }}>{Number(val)}</span>
         </div>
       );
     }
@@ -140,13 +157,21 @@ export function SettingsView() {
 
   return (
     <div style={{ padding: 24, maxWidth: 560, height: "100%", overflowY: "auto" }}>
-      {flash && <div style={flashStyle}>Settings saved</div>}
+      {flash && <div style={flashStyle}>{tr(locale, "Settings saved", "设置已保存")}</div>}
 
       {error && <div style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div>}
 
       {settingCategories.map((cat) => (
         <div key={cat.title} style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--text-secondary)",
+              marginBottom: 8,
+              textTransform: "uppercase",
+              letterSpacing: 1,
+            }}
+          >
             {cat.title}
           </div>
           {cat.settings.map((def) => (

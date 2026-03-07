@@ -6,6 +6,7 @@ export interface Source {
   username?: string;
   password?: string;
   enabled: boolean;
+  autoRefreshMinutes?: number;
   lastImportedAt?: string;
   createdAt: string;
   updatedAt: string;

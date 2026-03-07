@@ -19,8 +19,7 @@ pub fn parse_xmltv(content: &str) -> AppResult<Vec<ParsedProgram>> {
                 for attr in e.attributes().flatten() {
                     match attr.key.as_ref() {
                         b"channel" => {
-                            channel_id =
-                                String::from_utf8_lossy(&attr.value).to_string();
+                            channel_id = String::from_utf8_lossy(&attr.value).to_string();
                         }
                         b"start" => {
                             start = String::from_utf8_lossy(&attr.value).to_string();

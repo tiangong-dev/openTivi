@@ -33,26 +33,51 @@ pub fn get_channel_epg(
     from: Option<&str>,
     to: Option<&str>,
 ) -> AppResult<Vec<EpgProgramDto>> {
-    // First get the tvg_id for this channel
-    let tvg_id: Option<String> = conn
+    // Build matching candidates from channel metadata.
+    let (tvg_id, tvg_name, channel_name): (Option<String>, Option<String>, String) = conn
         .query_row(
-            "SELECT tvg_id FROM channels WHERE id = ?1",
+            "SELECT tvg_id, tvg_name, name FROM channels WHERE id = ?1",
             [channel_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
-        .ok()
-        .flatten();
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                crate::error::AppError::NotFound(format!("Channel {} not found", channel_id))
+            }
+            other => other.into(),
+        })?;
 
-    let tvg_id = match tvg_id {
-        Some(id) if !id.is_empty() => id,
-        _ => return Ok(vec![]),
-    };
+    let mut candidates: Vec<String> = Vec::new();
+    add_candidate(&mut candidates, tvg_id.as_deref());
+    add_candidate(&mut candidates, tvg_name.as_deref());
+    add_candidate(&mut candidates, Some(channel_name.as_str()));
+    if candidates.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut normalized_placeholders = Vec::new();
+    let mut compact_placeholders = Vec::new();
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    let mut idx = 1;
+
+    for candidate in &candidates {
+        normalized_placeholders.push(format!("?{}", idx));
+        params.push(Box::new(candidate.clone()));
+        idx += 1;
+    }
+    for candidate in &candidates {
+        compact_placeholders.push(format!("?{}", idx));
+        params.push(Box::new(candidate.replace(' ', "")));
+        idx += 1;
+    }
 
     let mut sql = String::from(
-        "SELECT id, channel_tvg_id, start_at, end_at, title, description, category FROM epg_programs WHERE channel_tvg_id = ?1",
+        "SELECT id, channel_tvg_id, start_at, end_at, title, description, category FROM epg_programs WHERE (LOWER(TRIM(channel_tvg_id)) IN (",
     );
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(tvg_id)];
-    let mut idx = 2;
+    sql.push_str(&normalized_placeholders.join(","));
+    sql.push_str(") OR LOWER(REPLACE(TRIM(channel_tvg_id), ' ', '')) IN (");
+    sql.push_str(&compact_placeholders.join(","));
+    sql.push_str("))");
 
     if let Some(f) = from {
         sql.push_str(&format!(" AND end_at >= ?{}", idx));
@@ -86,4 +111,28 @@ pub fn get_channel_epg(
         results.push(row?);
     }
     Ok(results)
+}
+
+fn add_candidate(candidates: &mut Vec<String>, value: Option<&str>) {
+    let Some(raw) = value else {
+        return;
+    };
+    let normalized = raw.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return;
+    }
+    push_unique(candidates, normalized.clone());
+    push_unique(candidates, normalized.replace(' ', ""));
+    if let Some((head, _)) = normalized.split_once('.') {
+        let short = head.trim().to_string();
+        if !short.is_empty() {
+            push_unique(candidates, short);
+        }
+    }
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !value.is_empty() && !values.iter().any(|v| v == &value) {
+        values.push(value);
+    }
 }

@@ -33,6 +33,7 @@ pub struct Source {
     pub username: Option<String>,
     pub password: Option<String>,
     pub enabled: bool,
+    pub auto_refresh_minutes: Option<u32>,
     pub last_imported_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,

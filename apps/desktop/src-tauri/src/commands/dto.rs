@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct ImportM3uInput {
     pub name: String,
     pub location: String,
+    pub auto_refresh_minutes: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,6 +66,7 @@ pub struct SourceDto {
     pub location: String,
     pub username: Option<String>,
     pub enabled: bool,
+    pub auto_refresh_minutes: Option<u32>,
     pub last_imported_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,

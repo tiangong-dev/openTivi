@@ -60,7 +60,9 @@ export function SourcesView({ locale }: Props) {
   const handleRefresh = async (id: number, auto = false) => {
     if (refreshingSourceIds.current.has(id)) return;
     refreshingSourceIds.current.add(id);
-    setLoading(true);
+    if (!auto) {
+      setLoading(true);
+    }
     if (!auto) {
       setMessage(null);
     }
@@ -71,7 +73,9 @@ export function SourcesView({ locale }: Props) {
       setMessage({ type: "err", text: getErrorMessage(e) });
     } finally {
       refreshingSourceIds.current.delete(id);
-      setLoading(false);
+      if (!auto) {
+        setLoading(false);
+      }
     }
   };
 
@@ -83,21 +87,26 @@ export function SourcesView({ locale }: Props) {
   useEffect(() => {
     if (m3uSources.length === 0) return;
     const checkAndRefresh = () => {
+      if (document.hidden) return;
       const now = Date.now();
-      for (const source of m3uSources) {
+      const overdue = m3uSources.find((source) => {
         const refreshMinutes = source.autoRefreshMinutes ?? 0;
-        if (refreshMinutes <= 0) continue;
+        if (refreshMinutes <= 0) return false;
         const lastImportedAt = parseSqliteDate(source.lastImportedAt);
-        if (!lastImportedAt) continue;
+        if (!lastImportedAt) return false;
         const elapsedMs = now - lastImportedAt;
-        if (elapsedMs >= refreshMinutes * 60 * 1000 && !refreshingSourceIds.current.has(source.id)) {
-          void handleRefresh(source.id, true);
-        }
+        return elapsedMs >= refreshMinutes * 60 * 1000 && !refreshingSourceIds.current.has(source.id);
+      });
+      if (overdue) {
+        void handleRefresh(overdue.id, true);
       }
     };
-    checkAndRefresh();
-    const timer = window.setInterval(checkAndRefresh, 60 * 1000);
-    return () => window.clearInterval(timer);
+    const initial = window.setTimeout(checkAndRefresh, 5_000);
+    const timer = window.setInterval(checkAndRefresh, 60_000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
   }, [m3uSources]);
 
   return (

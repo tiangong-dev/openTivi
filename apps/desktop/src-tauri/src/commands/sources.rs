@@ -6,9 +6,14 @@ use crate::state::AppState;
 use super::dto::*;
 
 #[tauri::command]
-pub fn list_sources(state: State<AppState>) -> AppResult<Vec<SourceDto>> {
-    let conn = state.db.lock().unwrap();
-    crate::core::services::source_service::list_sources(&conn)
+pub async fn list_sources() -> AppResult<Vec<SourceDto>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = crate::platform::db::connection::open_connection()
+            .map_err(|e| AppError::Internal(format!("failed to open database: {e}")))?;
+        crate::core::services::source_service::list_sources(&conn)
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("list sources task failed: {e}")))?
 }
 
 #[tauri::command]

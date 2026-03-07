@@ -26,6 +26,18 @@ pub struct ImportXmltvInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpdateSourceInput {
+    pub source_id: i64,
+    pub name: String,
+    pub location: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub auto_refresh_minutes: Option<u32>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListChannelsQuery {
     pub source_id: Option<i64>,
     pub group_name: Option<String>,
@@ -65,6 +77,7 @@ pub struct SourceDto {
     pub name: String,
     pub location: String,
     pub username: Option<String>,
+    pub password: Option<String>,
     pub enabled: bool,
     pub auto_refresh_minutes: Option<u32>,
     pub channel_count: u32,

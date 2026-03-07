@@ -14,7 +14,9 @@ export function SourcesView({ locale }: Props) {
   const [sources, setSources] = useState<Source[]>([]);
   const [activeTab, setActiveTab] = useState<ImportTab>("m3u");
   const [loading, setLoading] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [editing, setEditing] = useState<EditSourceDraft | null>(null);
   const refreshingSourceIds = useRef<Set<number>>(new Set());
 
   const loadSources = async () => {
@@ -54,6 +56,70 @@ export function SourcesView({ locale }: Props) {
       void loadSources();
     } catch (e) {
       setMessage({ type: "err", text: getErrorMessage(e) });
+    }
+  };
+
+  const openEdit = (source: Source) => {
+    setEditing({
+      sourceId: source.id,
+      kind: source.kind,
+      name: source.name,
+      location: source.location,
+      username: source.username ?? "",
+      password: source.password ?? "",
+      autoRefreshMinutes: source.autoRefreshMinutes ? String(source.autoRefreshMinutes) : "",
+      enabled: source.enabled,
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editing) return;
+    const name = editing.name.trim();
+    const location = editing.location.trim();
+    if (!name || !location) {
+      setMessage({
+        type: "err",
+        text: tr(locale, "Name and location are required.", "名称和地址不能为空。"),
+      });
+      return;
+    }
+    if (editing.kind === "xtream" && (!editing.username.trim() || !editing.password.trim())) {
+      setMessage({
+        type: "err",
+        text: tr(locale, "Xtream username and password are required.", "Xtream 用户名和密码不能为空。"),
+      });
+      return;
+    }
+
+    const parsedRefresh = Number.parseInt(editing.autoRefreshMinutes, 10);
+    const autoRefreshMinutes =
+      editing.kind === "m3u" && Number.isFinite(parsedRefresh) && parsedRefresh > 0
+        ? parsedRefresh
+        : null;
+
+    setSavingEdit(true);
+    try {
+      await tauriInvoke("update_source", {
+        input: {
+          sourceId: editing.sourceId,
+          name,
+          location,
+          username: editing.kind === "xtream" ? editing.username.trim() : null,
+          password: editing.kind === "xtream" ? editing.password.trim() : null,
+          autoRefreshMinutes,
+          enabled: editing.enabled,
+        },
+      });
+      setEditing(null);
+      setMessage({
+        type: "ok",
+        text: tr(locale, "Source updated.", "源已更新。"),
+      });
+      void loadSources();
+    } catch (e) {
+      setMessage({ type: "err", text: getErrorMessage(e) });
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -219,6 +285,9 @@ export function SourcesView({ locale }: Props) {
                     <button onClick={() => handleRefresh(s.id)} disabled={loading} style={actionBtnStyle}>
                       {tr(locale, "Refresh", "刷新")}
                     </button>
+                    <button onClick={() => openEdit(s)} style={actionBtnStyle}>
+                      {tr(locale, "Edit", "编辑")}
+                    </button>
                     <button onClick={() => handleDelete(s.id)} style={{ ...actionBtnStyle, color: "var(--danger)" }}>
                       {tr(locale, "Delete", "删除")}
                     </button>
@@ -229,8 +298,96 @@ export function SourcesView({ locale }: Props) {
           </table>
         </div>
       )}
+
+      {editing && (
+        <div style={modalOverlayStyle}>
+          <div style={modalCardStyle}>
+            <h3 style={{ marginTop: 0, marginBottom: 12 }}>{tr(locale, "Edit Source", "编辑源")}</h3>
+            <label style={labelStyle}>
+              {tr(locale, "Name", "名称")}
+              <input
+                style={inputStyle}
+                value={editing.name}
+                onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+              />
+            </label>
+            <label style={labelStyle}>
+              {tr(locale, "Location", "地址")}
+              <input
+                style={inputStyle}
+                value={editing.location}
+                onChange={(e) => setEditing({ ...editing, location: e.target.value })}
+              />
+            </label>
+            {editing.kind === "xtream" && (
+              <>
+                <label style={labelStyle}>
+                  {tr(locale, "Username", "用户名")}
+                  <input
+                    style={inputStyle}
+                    value={editing.username}
+                    onChange={(e) => setEditing({ ...editing, username: e.target.value })}
+                  />
+                </label>
+                <label style={labelStyle}>
+                  {tr(locale, "Password", "密码")}
+                  <input
+                    style={inputStyle}
+                    type="password"
+                    value={editing.password}
+                    onChange={(e) => setEditing({ ...editing, password: e.target.value })}
+                  />
+                </label>
+              </>
+            )}
+            {editing.kind === "m3u" && (
+              <label style={labelStyle}>
+                {tr(locale, "Auto refresh interval (minutes)", "自动刷新间隔（分钟）")}
+                <input
+                  style={inputStyle}
+                  type="number"
+                  min={1}
+                  value={editing.autoRefreshMinutes}
+                  onChange={(e) => setEditing({ ...editing, autoRefreshMinutes: e.target.value })}
+                />
+              </label>
+            )}
+            <label style={{ ...labelStyle, flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={editing.enabled}
+                onChange={(e) => setEditing({ ...editing, enabled: e.target.checked })}
+              />
+              {tr(locale, "Enabled", "启用")}
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+              <button
+                onClick={() => setEditing(null)}
+                style={{ ...submitBtnStyle, backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)" }}
+                disabled={savingEdit}
+              >
+                {tr(locale, "Cancel", "取消")}
+              </button>
+              <button onClick={handleSaveEdit} style={submitBtnStyle} disabled={savingEdit}>
+                {savingEdit ? tr(locale, "Saving...", "保存中...") : tr(locale, "Save", "保存")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+interface EditSourceDraft {
+  sourceId: number;
+  kind: Source["kind"];
+  name: string;
+  location: string;
+  username: string;
+  password: string;
+  autoRefreshMinutes: string;
+  enabled: boolean;
 }
 
 interface FormProps {
@@ -460,4 +617,28 @@ const actionBtnStyle: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 13,
   marginRight: 8,
+};
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  backgroundColor: "rgba(0,0,0,0.45)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1000,
+};
+
+const modalCardStyle: React.CSSProperties = {
+  width: 520,
+  maxWidth: "90vw",
+  maxHeight: "90vh",
+  overflowY: "auto",
+  backgroundColor: "var(--bg-secondary)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: 16,
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
 };

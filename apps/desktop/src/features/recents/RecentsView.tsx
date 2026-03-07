@@ -4,6 +4,7 @@ import { getErrorMessage } from "../../lib/errors";
 import { tr, type Locale } from "../../lib/i18n";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel, RecentChannel } from "../../types/api";
+import { ChannelRowsWithGuide } from "../channels/ChannelRowsWithGuide";
 
 interface Props {
   locale: Locale;
@@ -28,6 +29,13 @@ export function RecentsView({ locale, onPlay }: Props) {
     void loadRecents();
   }, []);
 
+  const toggleFavorite = async (ch: Channel) => {
+    try {
+      await tauriInvoke("set_favorite", { input: { channelId: ch.id, favorite: !ch.isFavorite } });
+      void loadRecents();
+    } catch (_) {}
+  };
+
   return (
     <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
       <h2 style={{ margin: 0 }}>{tr(locale, "Recents", "最近观看")}</h2>
@@ -38,47 +46,21 @@ export function RecentsView({ locale, onPlay }: Props) {
         </div>
       )}
       <div style={{ flex: 1, overflowY: "auto" }}>
-        {items.map((ch) => (
-          <div key={ch.id} style={rowStyle} onDoubleClick={() => onPlay?.(ch)}>
-            {ch.logoUrl && (
-              <img
-                src={ch.logoUrl}
-                alt=""
-                style={{ width: 28, height: 28, borderRadius: 4, objectFit: "contain", flexShrink: 0 }}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {ch.name}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-                {tr(locale, "Played", "播放次数")} {ch.playCount} · {tr(locale, "Last watched", "上次观看")}{" "}
-                {formatRelativeTime(ch.lastWatchedAt, locale)}
-              </div>
-            </div>
-            <button
-              onClick={() => onPlay?.(ch)}
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--accent)" }}
-            >
-              ▶
-            </button>
-          </div>
-        ))}
+        <ChannelRowsWithGuide
+          items={items}
+          locale={locale}
+          onPlay={onPlay}
+          onToggleFavorite={toggleFavorite}
+          renderMeta={(ch) => (
+            <>
+              {tr(locale, "Played", "播放次数")} {ch.playCount} · {tr(locale, "Last watched", "上次观看")} {formatRelativeTime(ch.lastWatchedAt, locale)}
+            </>
+          )}
+        />
       </div>
     </div>
   );
 }
-
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  padding: "6px 8px",
-  borderBottom: "1px solid var(--border)",
-};
 
 function formatRelativeTime(iso: string, locale: Locale): string {
   const now = Date.now();

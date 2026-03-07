@@ -38,6 +38,18 @@ export interface EpgProgram {
   category?: string;
 }
 
+export interface EpgProgramMini {
+  title: string;
+  startAt: string;
+  endAt: string;
+}
+
+export interface ChannelEpgSnapshot {
+  channelId: number;
+  now?: EpgProgramMini;
+  next?: EpgProgramMini;
+}
+
 export interface ImportSummary {
   sourceId: number;
   channelsImported: number;

@@ -2,6 +2,9 @@ use rusqlite::Connection;
 
 use crate::commands::dto::EpgProgramDto;
 use crate::core::models::epg::ParsedProgram;
+use crate::core::services::epg_matching::{
+    build_channel_candidates, merge_mapped_ids, normalize_epg_key,
+};
 use crate::error::AppResult;
 
 pub fn replace_programs(
@@ -73,19 +76,17 @@ pub fn get_channel_epg(
             other => other.into(),
         })?;
 
-    let mut candidates: Vec<String> = Vec::new();
-    add_candidate(&mut candidates, tvg_id.as_deref());
-    add_candidate(&mut candidates, tvg_name.as_deref());
-    add_candidate(&mut candidates, Some(channel_name.as_str()));
+    let mut candidates = build_channel_candidates(
+        tvg_id.as_deref(),
+        tvg_name.as_deref(),
+        channel_name.as_str(),
+    );
     if candidates.is_empty() {
         return Ok(vec![]);
     }
 
     let mapped_ids = lookup_channel_ids_by_aliases(conn, &candidates)?;
-    for id in mapped_ids {
-        push_unique(&mut candidates, id.to_ascii_lowercase());
-        push_unique(&mut candidates, normalize_epg_key(&id));
-    }
+    merge_mapped_ids(&mut candidates, mapped_ids);
 
     query_programs_by_candidates(conn, &candidates, from, to)
 }
@@ -202,66 +203,6 @@ fn query_programs_by_candidates(
         results.push(row?);
     }
     Ok(results)
-}
-
-fn add_candidate(candidates: &mut Vec<String>, value: Option<&str>) {
-    let Some(raw) = value else {
-        return;
-    };
-
-    let lower = raw.trim().to_ascii_lowercase();
-    if lower.is_empty() {
-        return;
-    }
-    push_unique(candidates, lower.clone());
-    push_unique(candidates, lower.replace(' ', ""));
-
-    let normalized = normalize_epg_key(raw);
-    push_unique(candidates, normalized.clone());
-
-    if let Some((head, _)) = lower.split_once('.') {
-        push_unique(candidates, head.trim().to_string());
-    }
-    if let Some(cctv_key) = extract_cctv_key(&normalized) {
-        push_unique(candidates, cctv_key);
-    }
-}
-
-fn normalize_epg_key(value: &str) -> String {
-    let mut lowered = value.trim().to_lowercase();
-    for token in ["高清", "超清", "标清", "频道", "hd", "uhd", "4k"] {
-        lowered = lowered.replace(token, "");
-    }
-
-    let mut out = String::new();
-    for ch in lowered.chars() {
-        let is_hanzi = ('\u{4e00}'..='\u{9fff}').contains(&ch);
-        if ch.is_ascii_alphanumeric() || is_hanzi {
-            out.push(ch);
-        }
-    }
-    out
-}
-
-fn extract_cctv_key(value: &str) -> Option<String> {
-    let pos = value.find("cctv")?;
-    let tail = &value[pos + 4..];
-    let mut key = String::from("cctv");
-    for ch in tail.chars() {
-        if ch.is_ascii_digit() {
-            key.push(ch);
-            continue;
-        }
-        if ch == 'k' && key.len() > 4 {
-            key.push('k');
-        }
-        break;
-    }
-    if key.len() > 4 {
-        Some(key)
-    } else {
-        None
-    }
 }
 
 fn push_unique(values: &mut Vec<String>, value: String) {

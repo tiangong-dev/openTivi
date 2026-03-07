@@ -1,0 +1,26 @@
+{
+  "productName": "OpenTivi",
+  "version": "0.1.0",
+  "identifier": "com.opentivi.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OpenTivi",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' https: http: data:; media-src 'self' https: http:; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "plugins": {}
+}

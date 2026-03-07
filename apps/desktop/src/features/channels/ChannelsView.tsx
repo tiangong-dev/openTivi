@@ -113,8 +113,6 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     } catch (_) {}
   };
 
-  const selectedChannel = channels.find((c) => c.id === selectedChannelId) ?? null;
-
   return (
     <div style={{ padding: 24, display: "flex", gap: 16, height: "100%" }}>
       {/* Group sidebar */}
@@ -165,102 +163,98 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
         )}
 
         <div style={{ flex: 1, overflowY: "auto", marginTop: 8 }}>
-          {channels.map((ch) => (
-            <div
-              key={ch.id}
-              style={{
-                ...channelRowStyle,
-                backgroundColor: selectedChannelId === ch.id ? "var(--bg-tertiary)" : "transparent",
-              }}
-              onClick={() => setSelectedChannelId(ch.id)}
-              onDoubleClick={() => onPlay?.(ch, channels)}
-            >
-              {ch.logoUrl && (
-                <img
-                  src={ch.logoUrl}
-                  alt=""
-                  style={{ width: 28, height: 28, borderRadius: 4, objectFit: "contain", flexShrink: 0 }}
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                />
-              )}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {ch.channelNumber && <span style={{ color: "var(--text-secondary)", marginRight: 8 }}>{ch.channelNumber}</span>}
-                  {ch.name}
+          {channels.map((ch) => {
+            const isSelected = selectedChannelId === ch.id;
+            return (
+              <div key={ch.id}>
+                <div
+                  style={{
+                    ...channelRowStyle,
+                    backgroundColor: isSelected ? "var(--bg-tertiary)" : "transparent",
+                  }}
+                  onClick={() => setSelectedChannelId(ch.id)}
+                  onDoubleClick={() => onPlay?.(ch, channels)}
+                >
+                  {ch.logoUrl && (
+                    <img
+                      src={ch.logoUrl}
+                      alt=""
+                      style={{ width: 28, height: 28, borderRadius: 4, objectFit: "contain", flexShrink: 0 }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {ch.channelNumber && <span style={{ color: "var(--text-secondary)", marginRight: 8 }}>{ch.channelNumber}</span>}
+                      {ch.name}
+                    </div>
+                    {ch.groupName && (
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{ch.groupName}</div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => toggleFavorite(ch)}
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: ch.isFavorite ? "#f59e0b" : "var(--text-secondary)" }}
+                  >
+                    {ch.isFavorite ? "★" : "☆"}
+                  </button>
+                  <button
+                    onClick={() => onPlay?.(ch, channels)}
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--accent)" }}
+                  >
+                    ▶
+                  </button>
                 </div>
-                {ch.groupName && (
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{ch.groupName}</div>
+
+                {isSelected && (
+                  <div style={inlineGuideContainerStyle}>
+                    <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 6 }}>
+                      {tr(locale, "Program Guide", "节目单")}
+                    </div>
+                    <TimelineStrip programs={epgPrograms} locale={locale} />
+                    {epgLoading && (
+                      <div style={{ color: "var(--text-secondary)", fontSize: 12, marginTop: 8 }}>
+                        {tr(locale, "Loading guide...", "正在加载节目单...")}
+                      </div>
+                    )}
+                    {!epgLoading && epgPrograms.length === 0 && (
+                      <div style={{ color: "var(--text-secondary)", fontSize: 12, marginTop: 8 }}>
+                        {tr(locale, "No guide data for this channel.", "当前频道暂无节目单数据。")}
+                      </div>
+                    )}
+                    {!epgLoading && epgPrograms.length > 0 && (
+                      <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                        {epgPrograms.slice(0, 6).map((p) => {
+                          const now = Date.now();
+                          const isCurrent = p.startTs <= now && now < p.endTs;
+                          return (
+                            <div
+                              key={p.id}
+                              style={{
+                                ...epgRowStyle,
+                                borderColor: isCurrent ? "var(--accent)" : "var(--border)",
+                                backgroundColor: isCurrent ? "#2563eb22" : "transparent",
+                              }}
+                            >
+                              <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                                {formatTime(p.startTs)} - {formatTime(p.endTs)}
+                              </div>
+                              <div style={{ fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {p.title}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-              <button
-                onClick={() => toggleFavorite(ch)}
-                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: ch.isFavorite ? "#f59e0b" : "var(--text-secondary)" }}
-              >
-                {ch.isFavorite ? "★" : "☆"}
-              </button>
-              <button
-                onClick={() => onPlay?.(ch, channels)}
-                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--accent)" }}
-              >
-                ▶
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
-      </div>
-
-      {/* EPG timeline panel */}
-      <div style={timelinePanelStyle}>
-        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-          {tr(locale, "Timeline", "时间线")}
-        </div>
-        {selectedChannel ? (
-          <>
-            <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {selectedChannel.name}
-            </div>
-            <TimelineStrip programs={epgPrograms} locale={locale} />
-            {epgLoading && (
-              <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>
-                {tr(locale, "Loading guide...", "正在加载节目单...")}
-              </div>
-            )}
-            {!epgLoading && epgPrograms.length === 0 && (
-              <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>
-                {tr(locale, "No guide data for this channel.", "当前频道暂无节目单数据。")}
-              </div>
-            )}
-            {!epgLoading && epgPrograms.length > 0 && (
-              <div style={{ marginTop: 8, overflowY: "auto", flex: 1 }}>
-                {epgPrograms.slice(0, 12).map((p) => {
-                  const now = Date.now();
-                  const isCurrent = p.startTs <= now && now < p.endTs;
-                  return (
-                    <div
-                      key={p.id}
-                      style={{
-                        ...epgRowStyle,
-                        borderColor: isCurrent ? "var(--accent)" : "var(--border)",
-                        backgroundColor: isCurrent ? "#2563eb22" : "transparent",
-                      }}
-                    >
-                      <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-                        {formatTime(p.startTs)} - {formatTime(p.endTs)}
-                      </div>
-                      <div style={{ fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {p.title}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        ) : (
-          <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>
-            {tr(locale, "Select a channel to view guide.", "选择频道以查看节目单。")}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -382,19 +376,6 @@ const channelRowStyle: React.CSSProperties = {
   cursor: "default",
 };
 
-const timelinePanelStyle: React.CSSProperties = {
-  width: 360,
-  maxWidth: "38vw",
-  minWidth: 280,
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  backgroundColor: "var(--bg-secondary)",
-  padding: 12,
-  display: "flex",
-  flexDirection: "column",
-  overflow: "hidden",
-};
-
 const timelineStripStyle: React.CSSProperties = {
   position: "relative",
   height: 42,
@@ -409,4 +390,12 @@ const epgRowStyle: React.CSSProperties = {
   borderRadius: 6,
   padding: "6px 8px",
   marginBottom: 6,
+};
+
+const inlineGuideContainerStyle: React.CSSProperties = {
+  margin: "0 8px 8px",
+  padding: "8px 10px",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  backgroundColor: "var(--bg-secondary)",
 };

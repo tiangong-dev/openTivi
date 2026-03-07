@@ -103,23 +103,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
 
             <div style={guideInlineStyle}>
               {snapshot?.now || snapshot?.next ? (
-                <div style={guideHorizontalStyle}>
-                  <GuideBlock
-                    label={tr(locale, "Now", "当前")}
-                    title={snapshot.now?.title}
-                    startAt={snapshot.now?.startAt}
-                    endAt={snapshot.now?.endAt}
-                    active
-                    locale={locale}
-                  />
-                  <GuideBlock
-                    label={tr(locale, "Next", "下一档")}
-                    title={snapshot.next?.title}
-                    startAt={snapshot.next?.startAt}
-                    endAt={snapshot.next?.endAt}
-                    locale={locale}
-                  />
-                </div>
+                <GuideTimeline snapshot={snapshot} locale={locale} />
               ) : (
                 <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
                   {loading
@@ -135,35 +119,75 @@ export function ChannelRowsWithGuide<T extends Channel>({
   );
 }
 
-function GuideBlock({
-  label,
-  title,
-  startAt,
-  endAt,
-  active = false,
-  locale,
-}: {
-  label: string;
-  title?: string;
-  startAt?: string;
-  endAt?: string;
-  active?: boolean;
-  locale: Locale;
-}) {
+function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; locale: Locale }) {
+  const nowTitle = snapshot.now?.title ?? tr(locale, "No data", "暂无");
+  const nextTitle = snapshot.next?.title ?? tr(locale, "No data", "暂无");
+
+  const nowStart = parseXmltvDate(snapshot.now?.startAt ?? "");
+  const nowEnd = parseXmltvDate(snapshot.now?.endAt ?? "");
+  const nextStart = parseXmltvDate(snapshot.next?.startAt ?? "");
+  const nextEnd = parseXmltvDate(snapshot.next?.endAt ?? "");
+  const currentTs = Date.now();
+
+  const nowDuration = durationMs(nowStart, nowEnd);
+  const nextDuration = durationMs(nextStart, nextEnd);
+
+  const total = nowDuration + nextDuration;
+  const nowRatio = total > 0 ? nowDuration / total : snapshot.now ? 0.6 : 0.4;
+  const nowWidthPercent = Math.round(clamp(nowRatio, 0.25, 0.8) * 100);
+  const nextWidthPercent = 100 - nowWidthPercent;
+
+  let progressPercent = 0;
+  if (nowStart !== null && nowEnd !== null && nowEnd > nowStart) {
+    progressPercent = clamp((currentTs - nowStart) / (nowEnd - nowStart), 0, 1) * 100;
+  }
+
+  const timelineStart = snapshot.now?.startAt ?? snapshot.next?.startAt;
+  const timelineEnd = snapshot.next?.endAt ?? snapshot.now?.endAt;
+
   return (
-    <div
-      style={{
-        ...guideBlockStyle,
-        borderColor: active ? "var(--accent)" : "var(--border)",
-        backgroundColor: active ? "#2563eb22" : "transparent",
-      }}
-    >
-      <div style={{ fontSize: 10, color: "var(--text-secondary)" }}>
-        {label}
-        {startAt && endAt ? ` · ${formatTime(startAt)}-${formatTime(endAt)}` : ""}
+    <div style={timelineContainerStyle}>
+      <div style={timelineHeaderStyle}>
+        <span>{tr(locale, "Timeline", "时间轴")}</span>
+        {timelineStart && timelineEnd ? (
+          <span>
+            {formatTime(timelineStart)} - {formatTime(timelineEnd)}
+          </span>
+        ) : null}
       </div>
-      <div style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {title ?? tr(locale, "No data", "暂无")}
+
+      <div style={timelineTrackStyle}>
+        <div
+          style={{
+            ...segmentStyle,
+            width: `${snapshot.next ? nowWidthPercent : 100}%`,
+            borderRight: snapshot.next ? "1px solid #1d4ed8" : "none",
+            backgroundColor: "#2563eb33",
+          }}
+          title={nowTitle}
+        >
+          <div style={segmentLabelStyle}>
+            {tr(locale, "Now", "当前")} · {nowTitle}
+          </div>
+          <div style={progressTrackStyle}>
+            <div style={{ ...progressFillStyle, width: `${progressPercent}%` }} />
+          </div>
+        </div>
+
+        {snapshot.next ? (
+          <div
+            style={{
+              ...segmentStyle,
+              width: `${nextWidthPercent}%`,
+              backgroundColor: "#11182788",
+            }}
+            title={nextTitle}
+          >
+            <div style={segmentLabelStyle}>
+              {tr(locale, "Next", "下一档")} · {nextTitle}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -188,6 +212,15 @@ function parseXmltvDate(raw: string): number | null {
   return Number.isNaN(ts) ? null : ts;
 }
 
+function durationMs(start: number | null, end: number | null): number {
+  if (start === null || end === null || end <= start) return 0;
+  return end - start;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 const rowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -199,14 +232,51 @@ const guideInlineStyle: React.CSSProperties = {
   padding: "0 8px 8px 46px",
 };
 
-const guideHorizontalStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 6,
+const timelineContainerStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
 };
 
-const guideBlockStyle: React.CSSProperties = {
+const timelineHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  fontSize: 10,
+  color: "var(--text-secondary)",
+};
+
+const timelineTrackStyle: React.CSSProperties = {
+  display: "flex",
+  height: 30,
   border: "1px solid var(--border)",
   borderRadius: 6,
+  overflow: "hidden",
+};
+
+const segmentStyle: React.CSSProperties = {
+  minWidth: 0,
   padding: "4px 6px",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  gap: 2,
+};
+
+const segmentLabelStyle: React.CSSProperties = {
+  fontSize: 11,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const progressTrackStyle: React.CSSProperties = {
+  height: 3,
+  backgroundColor: "#1f2937",
+  borderRadius: 9999,
+  overflow: "hidden",
+};
+
+const progressFillStyle: React.CSSProperties = {
+  height: "100%",
+  backgroundColor: "var(--accent)",
 };

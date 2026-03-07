@@ -70,12 +70,19 @@ mod tests {
             {"stream_id":101,"name":"Test Channel","stream_icon":"http://icon.png","epg_channel_id":"test.ch","category_name":"News","num":1,"container_extension":"m3u8"},
             {"stream_id":102,"name":"Sports Live","stream_icon":"http://icon2.png","epg_channel_id":"sport.ch","category_name":"Sports","num":2,"container_extension":"ts"}
         ]"#;
-        let channels = parse_xtream_live_streams(json, "http://server.com", "user", "pass").unwrap();
+        let channels =
+            parse_xtream_live_streams(json, "http://server.com", "user", "pass").unwrap();
         assert_eq!(channels.len(), 2);
         assert_eq!(channels[0].name, "Test Channel");
-        assert_eq!(channels[0].stream_url, "http://server.com/live/user/pass/101.m3u8");
+        assert_eq!(
+            channels[0].stream_url,
+            "http://server.com/live/user/pass/101.m3u8"
+        );
         assert_eq!(channels[1].name, "Sports Live");
-        assert_eq!(channels[1].stream_url, "http://server.com/live/user/pass/102.ts");
+        assert_eq!(
+            channels[1].stream_url,
+            "http://server.com/live/user/pass/102.ts"
+        );
     }
 
     #[test]
@@ -84,7 +91,8 @@ mod tests {
             {"name":"No ID Channel","category_name":"News"},
             {"stream_id":200,"name":"Valid Channel","container_extension":"ts"}
         ]"#;
-        let channels = parse_xtream_live_streams(json, "http://server.com", "user", "pass").unwrap();
+        let channels =
+            parse_xtream_live_streams(json, "http://server.com", "user", "pass").unwrap();
         assert_eq!(channels.len(), 1);
         assert_eq!(channels[0].name, "Valid Channel");
     }
@@ -92,14 +100,19 @@ mod tests {
     #[test]
     fn test_parse_xtream_default_extension() {
         let json = r#"[{"stream_id":300,"name":"Default Ext"}]"#;
-        let channels = parse_xtream_live_streams(json, "http://server.com", "user", "pass").unwrap();
+        let channels =
+            parse_xtream_live_streams(json, "http://server.com", "user", "pass").unwrap();
         assert_eq!(channels.len(), 1);
-        assert_eq!(channels[0].stream_url, "http://server.com/live/user/pass/300.ts");
+        assert_eq!(
+            channels[0].stream_url,
+            "http://server.com/live/user/pass/300.ts"
+        );
     }
 
     #[test]
     fn test_parse_empty_array() {
-        let channels = parse_xtream_live_streams("[]", "http://server.com", "user", "pass").unwrap();
+        let channels =
+            parse_xtream_live_streams("[]", "http://server.com", "user", "pass").unwrap();
         assert_eq!(channels.len(), 0);
     }
 }

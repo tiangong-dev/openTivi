@@ -29,10 +29,12 @@ async fn handle_proxy(
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
     let url = match params.get("url") {
         Some(u) => u.clone(),
-        None => return Ok(Box::new(warp::reply::with_status(
-            "Missing 'url' parameter",
-            warp::http::StatusCode::BAD_REQUEST,
-        ))),
+        None => {
+            return Ok(Box::new(warp::reply::with_status(
+                "Missing 'url' parameter",
+                warp::http::StatusCode::BAD_REQUEST,
+            )))
+        }
     };
 
     let client = reqwest::Client::new();
@@ -85,7 +87,10 @@ async fn handle_proxy(
 
 /// Rewrite URLs inside m3u8 playlists to go through the proxy.
 fn rewrite_m3u8(content: &str, base_url: &str) -> String {
-    let base = base_url.rfind('/').map(|i| &base_url[..=i]).unwrap_or(base_url);
+    let base = base_url
+        .rfind('/')
+        .map(|i| &base_url[..=i])
+        .unwrap_or(base_url);
 
     content
         .lines()
@@ -94,17 +99,11 @@ fn rewrite_m3u8(content: &str, base_url: &str) -> String {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 line.to_string()
             } else if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-                format!(
-                    "/stream?url={}",
-                    urlencoding::encode(trimmed)
-                )
+                format!("/stream?url={}", urlencoding::encode(trimmed))
             } else {
                 // Relative URL — resolve against base
                 let absolute = format!("{}{}", base, trimmed);
-                format!(
-                    "/stream?url={}",
-                    urlencoding::encode(&absolute)
-                )
+                format!("/stream?url={}", urlencoding::encode(&absolute))
             }
         })
         .collect::<Vec<_>>()
@@ -132,7 +131,10 @@ segment2.ts";
         let lines: Vec<&str> = result.lines().collect();
         assert_eq!(
             lines[4],
-            format!("/stream?url={}", urlencoding::encode("http://example.com/seg1.ts"))
+            format!(
+                "/stream?url={}",
+                urlencoding::encode("http://example.com/seg1.ts")
+            )
         );
     }
 

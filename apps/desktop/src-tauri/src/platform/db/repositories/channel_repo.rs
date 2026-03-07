@@ -77,7 +77,8 @@ pub fn upsert_channels(
         for key in &keys {
             params.push(Box::new(key.clone()));
         }
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         let count = tx.execute(&sql, params_ref.as_slice())?;
         count as u32
     };
@@ -129,7 +130,11 @@ pub fn list_channels(
         sql.push_str(" AND f.channel_id IS NOT NULL");
     }
 
-    sql.push_str(&format!(" ORDER BY c.name LIMIT ?{} OFFSET ?{}", idx, idx + 1));
+    sql.push_str(&format!(
+        " ORDER BY c.name LIMIT ?{} OFFSET ?{}",
+        idx,
+        idx + 1
+    ));
     params.push(Box::new(limit));
     params.push(Box::new(offset));
 
@@ -157,7 +162,8 @@ pub fn list_channels(
 }
 
 pub fn list_groups(conn: &Connection, source_id: Option<i64>) -> AppResult<Vec<String>> {
-    let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(sid) = source_id {
+    let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(sid) = source_id
+    {
         (
             "SELECT DISTINCT group_name FROM channels WHERE group_name IS NOT NULL AND source_id = ?1 ORDER BY group_name".to_string(),
             vec![Box::new(sid)],

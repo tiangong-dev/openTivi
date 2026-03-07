@@ -1,8 +1,18 @@
 use rusqlite::Connection;
 
 const MIGRATIONS: &[(&str, &str)] = &[
-    ("0001_init", include_str!("../../../migrations/0001_init.sql")),
-    ("0002_indexes", include_str!("../../../migrations/0002_indexes.sql")),
+    (
+        "0001_init",
+        include_str!("../../../migrations/0001_init.sql"),
+    ),
+    (
+        "0002_indexes",
+        include_str!("../../../migrations/0002_indexes.sql"),
+    ),
+    (
+        "0003_sources_auto_refresh",
+        include_str!("../../../migrations/0003_sources_auto_refresh.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
@@ -14,12 +24,11 @@ pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error
     )?;
 
     for (name, sql) in MIGRATIONS {
-        let already_applied: bool = conn
-            .query_row(
-                "SELECT COUNT(*) > 0 FROM _migrations WHERE name = ?1",
-                [name],
-                |row| row.get(0),
-            )?;
+        let already_applied: bool = conn.query_row(
+            "SELECT COUNT(*) > 0 FROM _migrations WHERE name = ?1",
+            [name],
+            |row| row.get(0),
+        )?;
 
         if !already_applied {
             conn.execute_batch(sql)?;

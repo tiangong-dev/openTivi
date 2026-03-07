@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
+import { tr, type Locale } from "../../lib/i18n";
 import type { Channel } from "../../types/api";
 
 interface Props {
+  locale: Locale;
+  favoritesOnly?: boolean;
   onPlay?: (channel: Channel, allChannels?: Channel[]) => void;
 }
 
-export function ChannelsView({ onPlay }: Props) {
+export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -20,6 +23,7 @@ export function ChannelsView({ onPlay }: Props) {
         query: {
           groupName: selectedGroup,
           search: search || undefined,
+          favoritesOnly,
           limit: 500,
           offset: 0,
         },
@@ -44,7 +48,7 @@ export function ChannelsView({ onPlay }: Props) {
 
   useEffect(() => {
     loadChannels();
-  }, [selectedGroup, search]);
+  }, [selectedGroup, search, favoritesOnly]);
 
   const toggleFavorite = async (ch: Channel) => {
     try {
@@ -58,7 +62,9 @@ export function ChannelsView({ onPlay }: Props) {
       {/* Group sidebar */}
       {groups.length > 0 && (
         <div style={{ width: 180, flexShrink: 0, overflowY: "auto" }}>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>Groups</div>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
+            {tr(locale, "Groups", "分组")}
+          </div>
           <button
             onClick={() => setSelectedGroup(null)}
             style={{
@@ -66,7 +72,7 @@ export function ChannelsView({ onPlay }: Props) {
               backgroundColor: selectedGroup === null ? "var(--bg-tertiary)" : "transparent",
             }}
           >
-            All
+            {tr(locale, "All", "全部")}
           </button>
           {groups.map((g) => (
             <button
@@ -87,7 +93,7 @@ export function ChannelsView({ onPlay }: Props) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <input
           style={searchStyle}
-          placeholder="Search channels..."
+          placeholder={tr(locale, "Search channels...", "搜索频道...")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -96,7 +102,7 @@ export function ChannelsView({ onPlay }: Props) {
 
         {channels.length === 0 && !error && (
           <div style={{ color: "var(--text-secondary)", marginTop: 24, textAlign: "center" }}>
-            No channels. Go to <b>Sources</b> to import an M3U or Xtream source.
+            {tr(locale, "No channels. Go to ", "暂无频道。请前往")}<b>{tr(locale, "Sources", "源")}</b>{tr(locale, " to import an M3U or Xtream source.", "导入 M3U 或 Xtream 源。")}
           </div>
         )}
 

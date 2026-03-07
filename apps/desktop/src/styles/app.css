@@ -1,0 +1,22 @@
+:root {
+  --bg-primary: #0f0f0f;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #252525;
+  --text-primary: #e0e0e0;
+  --text-secondary: #999;
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --border: #333;
+  --danger: #ef4444;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+#root {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}

@@ -70,7 +70,6 @@ pub struct SourceDto {
     pub channel_count: u32,
     pub group_count: u32,
     pub channels_with_tvg_id: u32,
-    pub matched_epg_channels: u32,
     pub epg_program_count: u32,
     pub last_imported_at: Option<String>,
     pub created_at: String,

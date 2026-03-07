@@ -47,6 +47,6 @@ export interface RecentChannel extends Channel {
 
 export interface Setting {
   key: string;
-  valueJson: unknown;
+  value: unknown;
   updatedAt: string;
 }

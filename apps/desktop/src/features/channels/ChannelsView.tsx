@@ -4,7 +4,7 @@ import { getErrorMessage } from "../../lib/errors";
 import type { Channel } from "../../types/api";
 
 interface Props {
-  onPlay?: (channel: Channel) => void;
+  onPlay?: (channel: Channel, allChannels?: Channel[]) => void;
 }
 
 export function ChannelsView({ onPlay }: Props) {
@@ -105,7 +105,7 @@ export function ChannelsView({ onPlay }: Props) {
             <div
               key={ch.id}
               style={channelRowStyle}
-              onDoubleClick={() => onPlay?.(ch)}
+              onDoubleClick={() => onPlay?.(ch, channels)}
             >
               {ch.logoUrl && (
                 <img
@@ -131,7 +131,7 @@ export function ChannelsView({ onPlay }: Props) {
                 {ch.isFavorite ? "★" : "☆"}
               </button>
               <button
-                onClick={() => onPlay?.(ch)}
+                onClick={() => onPlay?.(ch, channels)}
                 style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--accent)" }}
               >
                 ▶

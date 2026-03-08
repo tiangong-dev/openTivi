@@ -5,7 +5,7 @@ import mpegts from "mpegts.js";
 import { t, type Locale } from "../../lib/i18n";
 import { tauriInvoke } from "../../lib/tauri";
 import { createConfirmPressHandler, mapKeyToTvIntent } from "../../lib/tvInput";
-import type { Channel, EpgProgram } from "../../types/api";
+import type { Channel, ChannelEpgSnapshot, EpgProgram } from "../../types/api";
 
 interface Props {
   channel: Channel;
@@ -22,10 +22,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const mpegtsRef = useRef<mpegts.Player | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const guideAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showChannelListPanelRef = useRef(false);
   const focusedChannelIndexRef = useRef(0);
   const channelsRef = useRef<Channel[]>(channels);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
+  const channelListItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const [error, setError] = useState<string | null>(null);
   const [proxyPort, setProxyPort] = useState<number | null>(null);
@@ -41,6 +43,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [epgNext, setEpgNext] = useState<EpgProgram | null>(null);
   const [epgProgress, setEpgProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
+  const [channelEpgLoading, setChannelEpgLoading] = useState(false);
+
+  const GUIDE_AUTO_HIDE_MS = 3500;
 
   useEffect(() => {
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
@@ -201,6 +207,50 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [channels]);
 
   useEffect(() => {
+    if (!showChannelListPanel || channels.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    const now = Date.now();
+    setChannelEpgLoading(true);
+    tauriInvoke<ChannelEpgSnapshot[]>("get_channels_epg_snapshots", {
+      query: {
+        channelIds: channels.map((item) => item.id),
+        windowStartTs: now - 15 * 60 * 1000,
+        windowEndTs: now + 3 * 60 * 60 * 1000,
+      },
+    })
+      .then((list) => {
+        if (cancelled) return;
+        const map: Record<number, ChannelEpgSnapshot> = {};
+        for (const item of list) {
+          map[item.channelId] = item;
+        }
+        setChannelEpgSnapshots(map);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setChannelEpgSnapshots({});
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setChannelEpgLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [channels, showChannelListPanel]);
+
+  useEffect(() => {
+    if (!showChannelListPanel) {
+      return;
+    }
+    const target = channelListItemRefs.current[focusedChannelIndex];
+    target?.scrollIntoView({ block: "nearest" });
+  }, [focusedChannelIndex, showChannelListPanel]);
+
+  useEffect(() => {
     if (!epgNow) return;
     const interval = setInterval(() => {
       const now = Date.now();
@@ -227,10 +277,18 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   useEffect(() => {
     showOverlay();
+    setShowGuidePanel(true);
+    if (guideAutoHideTimerRef.current) {
+      clearTimeout(guideAutoHideTimerRef.current);
+    }
+    guideAutoHideTimerRef.current = setTimeout(() => {
+      setShowGuidePanel(false);
+    }, GUIDE_AUTO_HIDE_MS);
     return () => {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      if (guideAutoHideTimerRef.current) clearTimeout(guideAutoHideTimerRef.current);
     };
-  }, [channel.id, showOverlay]);
+  }, [GUIDE_AUTO_HIDE_MS, channel.id, showOverlay]);
 
   useEffect(() => {
     if (error) setOverlayVisible(true);
@@ -542,9 +600,23 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
             {channels.map((item, idx) => {
               const isCurrent = item.id === channel.id;
               const isFocused = idx === focusedChannelIndex;
+              const snapshot = channelEpgSnapshots[item.id];
+              const nowProgram = snapshot?.now;
+              const nextProgram = snapshot?.next;
+              const nowLine = nowProgram
+                ? `${formatTime(nowProgram.startAt)}-${formatTime(nowProgram.endAt)} ${nowProgram.title}`
+                : channelEpgLoading
+                  ? t(locale, "player.loadingEpg")
+                  : t(locale, "player.noGuideForChannel");
+              const nextLine = nextProgram
+                ? `${formatTime(nextProgram.startAt)} ${nextProgram.title}`
+                : "—";
               return (
                 <button
                   key={item.id}
+                  ref={(node) => {
+                    channelListItemRefs.current[idx] = node;
+                  }}
                   onClick={() => {
                     setFocusedIndex(idx);
                     onChannelChange(item);
@@ -556,12 +628,20 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
                     backgroundColor: isCurrent ? "#2563eb33" : "rgba(255,255,255,0.02)",
                   }}
                 >
-                  <span style={{ opacity: 0.8, marginRight: 8, minWidth: 36, textAlign: "right" }}>
+                  <span style={{ opacity: 0.8, marginRight: 8, minWidth: 36, textAlign: "right", flexShrink: 0 }}>
                     {item.channelNumber ?? idx + 1}
                   </span>
-                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "left" }}>
-                    {item.name}
-                  </span>
+                  <div style={{ minWidth: 0, textAlign: "left", display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
+                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {item.name}
+                    </span>
+                    <span style={channelProgramNowStyle}>
+                      {t(locale, "player.now")}: {nowLine}
+                    </span>
+                    <span style={channelProgramNextStyle}>
+                      {t(locale, "player.next")}: {nextLine}
+                    </span>
+                  </div>
                 </button>
               );
             })}
@@ -685,7 +765,7 @@ const guidePanelStyle: React.CSSProperties = {
   maxWidth: "40vw",
   borderRadius: 8,
   border: "1px solid var(--border)",
-  backgroundColor: "rgba(20,20,20,0.78)",
+  backgroundColor: "rgba(10,10,10,0.92)",
   backdropFilter: "blur(8px)",
   color: "var(--text-primary)",
   display: "flex",
@@ -735,15 +815,31 @@ const guideItemStyle: React.CSSProperties = {
 
 const channelListItemStyle: React.CSSProperties = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   width: "100%",
   border: "1px solid var(--border)",
   borderRadius: 6,
   background: "transparent",
   color: "var(--text-primary)",
-  padding: "6px 8px",
+  padding: "7px 8px",
   fontSize: 13,
   cursor: "pointer",
+};
+
+const channelProgramNowStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "#cbd5e1",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const channelProgramNextStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "var(--text-secondary)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
 };
 
 const overlayBtnStyle: React.CSSProperties = {

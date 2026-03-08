@@ -1,3 +1,4 @@
+pub mod channel_health_repo;
 pub mod channel_repo;
 pub mod epg_repo;
 pub mod favorites_repo;

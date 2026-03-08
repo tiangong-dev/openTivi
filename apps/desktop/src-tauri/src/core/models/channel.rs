@@ -6,6 +6,7 @@ pub struct Channel {
     pub source_id: i64,
     pub external_id: Option<String>,
     pub name: String,
+    pub normalized_name: String,
     pub channel_number: Option<String>,
     pub group_name: Option<String>,
     pub tvg_id: Option<String>,

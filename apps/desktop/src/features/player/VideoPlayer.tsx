@@ -20,6 +20,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const containerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const mpegtsRef = useRef<mpegts.Player | null>(null);
+  const localeRef = useRef(locale);
+  const playbackKindRef = useRef<PlaybackKind | null>(null);
+  const playbackUrlRef = useRef<string | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guideAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -60,37 +63,96 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [playerFocusZone]);
 
   useEffect(() => {
+    localeRef.current = locale;
+  }, [locale]);
+
+  useEffect(() => {
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
   }, []);
+
+  const teardownHls = () => {
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+  };
+
+  const teardownMpegTs = () => {
+    if (mpegtsRef.current) {
+      mpegtsRef.current.pause();
+      mpegtsRef.current.unload();
+      mpegtsRef.current.detachMediaElement();
+      mpegtsRef.current.destroy();
+      mpegtsRef.current = null;
+    }
+  };
+
+  const teardownNative = () => {
+    if (videoRef.current) {
+      videoRef.current.removeAttribute("src");
+      videoRef.current.load();
+    }
+  };
+
+  const cleanup = () => {
+    teardownHls();
+    teardownMpegTs();
+    teardownNative();
+    playbackKindRef.current = null;
+    playbackUrlRef.current = null;
+  };
 
   useEffect(() => {
     if (proxyPort === null) return;
     const video = videoRef.current;
     if (!video) return;
 
-    cleanup();
+    const proxiedUrl = toProxyUrl(channel.streamUrl, proxyPort);
+    const nextKind = getPlaybackKind(channel.streamUrl);
+    const protocolChanged = playbackKindRef.current !== nextKind;
+    const sourceChanged = playbackUrlRef.current !== proxiedUrl;
+
+    if (!protocolChanged && !sourceChanged) return;
     setError(null);
     setNetworkSpeedBps(null);
 
-    const proxiedUrl = toProxyUrl(channel.streamUrl, proxyPort);
+    if (protocolChanged) {
+      cleanup();
+    }
 
-    if (isHls(channel.streamUrl)) {
-      attachHls(video, proxiedUrl);
-    } else if (isMpegTs(channel.streamUrl)) {
+    if (nextKind === "hls") {
+      if (hlsRef.current) {
+        hlsRef.current.loadSource(proxiedUrl);
+        video.play().catch(() => {});
+      } else {
+        attachHls(video, proxiedUrl);
+      }
+      playbackKindRef.current = "hls";
+    } else if (nextKind === "mpegts") {
+      if (mpegtsRef.current) {
+        teardownMpegTs();
+      }
       attachMpegTs(video, proxiedUrl);
+      playbackKindRef.current = "mpegts";
     } else {
-      video.src = proxiedUrl;
+      if (video.src !== proxiedUrl) {
+        video.src = proxiedUrl;
+      }
       video.play().catch(() => {
         if (Hls.isSupported()) {
           attachHls(video, proxiedUrl);
+          playbackKindRef.current = "hls";
         } else {
-          setError(t(locale, "player.unsupportedStreamFormat"));
+          setError(t(localeRef.current, "player.unsupportedStreamFormat"));
         }
       });
+      playbackKindRef.current = "native";
     }
 
-    return cleanup;
-  }, [channel.streamUrl, proxyPort, locale]);
+    playbackUrlRef.current = proxiedUrl;
+  }, [channel.streamUrl, proxyPort]);
+
+  useEffect(() => cleanup, []);
 
   const attachHls = (video: HTMLVideoElement, url: string) => {
     if (Hls.isSupported()) {
@@ -117,7 +179,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       });
       hls.on(Hls.Events.ERROR, (_e, data) => {
         if (data.fatal) {
-          setError(t(locale, "player.playbackErrorDetails", { details: data.details }));
+          setError(t(localeRef.current, "player.playbackErrorDetails", { details: data.details }));
         }
       });
       hlsRef.current = hls;
@@ -125,7 +187,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       video.src = url;
       video.play().catch(() => {});
     } else {
-      setError(t(locale, "player.hlsNotSupported"));
+      setError(t(localeRef.current, "player.hlsNotSupported"));
     }
   };
 
@@ -147,29 +209,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         }
       });
       player.on(mpegts.Events.ERROR, () => {
-        setError(t(locale, "player.mpegtsPlaybackError"));
+        setError(t(localeRef.current, "player.mpegtsPlaybackError"));
       });
       mpegtsRef.current = player;
     } else {
-      setError(t(locale, "player.mpegtsNotSupported"));
-    }
-  };
-
-  const cleanup = () => {
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-    if (mpegtsRef.current) {
-      mpegtsRef.current.pause();
-      mpegtsRef.current.unload();
-      mpegtsRef.current.detachMediaElement();
-      mpegtsRef.current.destroy();
-      mpegtsRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.removeAttribute("src");
-      videoRef.current.load();
+      setError(t(localeRef.current, "player.mpegtsNotSupported"));
     }
   };
 
@@ -885,6 +929,8 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   );
 }
 
+type PlaybackKind = "hls" | "mpegts" | "native";
+
 function parseXmltvDate(raw: string): number | null {
   const match = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-]\d{4}))?/);
   if (!match) {
@@ -932,6 +978,12 @@ function isHls(url: string): boolean {
 function isMpegTs(url: string): boolean {
   const lower = url.toLowerCase();
   return lower.endsWith(".ts") || lower.includes("container=ts");
+}
+
+function getPlaybackKind(url: string): PlaybackKind {
+  if (isHls(url)) return "hls";
+  if (isMpegTs(url)) return "mpegts";
+  return "native";
 }
 
 const containerStyle: React.CSSProperties = {

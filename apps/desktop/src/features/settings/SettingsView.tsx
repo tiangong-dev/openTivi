@@ -82,7 +82,9 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
   const [focusedSettingKey, setFocusedSettingKey] = useState<string | null>(null);
+  const [domFocusedSettingKey, setDomFocusedSettingKey] = useState<string | null>(null);
   const [hoveredSettingKey, setHoveredSettingKey] = useState<string | null>(null);
+  const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const orderedSettings = useMemo(() => settingCategories.flatMap((cat) => cat.settings), []);
 
@@ -109,6 +111,21 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       setFocusedSettingKey(orderedSettings[0].key);
     }
   }, [focusedSettingKey, orderedSettings]);
+
+  useEffect(() => {
+    const onZoneChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
+      const inThisView = !detail?.view || detail.view === "settings";
+      setIsContentZoneActive(detail?.zone === "content" && inThisView);
+      if (detail?.zone === "nav" && inThisView) {
+        setDomFocusedSettingKey(null);
+      }
+    };
+    window.addEventListener("tv-focus-zone", onZoneChange as EventListener);
+    return () => {
+      window.removeEventListener("tv-focus-zone", onZoneChange as EventListener);
+    };
+  }, []);
 
   const getValue = (def: SettingDef): unknown => {
     return values[def.key] ?? def.defaultValue;
@@ -251,11 +268,18 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
               }}
               role="button"
               tabIndex={0}
+              data-tv-focusable={focusedSettingKey === def.key ? "true" : undefined}
               style={{
                 ...rowStyle,
-                ...(focusedSettingKey === def.key || hoveredSettingKey === def.key ? rowActiveStyle : null),
+                ...(hoveredSettingKey === def.key || (isContentZoneActive && domFocusedSettingKey === def.key) ? rowActiveStyle : null),
               }}
-              onFocus={() => setFocusedSettingKey(def.key)}
+              onFocus={() => {
+                setFocusedSettingKey(def.key);
+                setDomFocusedSettingKey(def.key);
+              }}
+              onBlur={() => {
+                setDomFocusedSettingKey((prev) => (prev === def.key ? null : prev));
+              }}
               onMouseEnter={() => setHoveredSettingKey(def.key)}
               onMouseLeave={() => setHoveredSettingKey((prev) => (prev === def.key ? null : prev))}
               onKeyDown={(event) => {

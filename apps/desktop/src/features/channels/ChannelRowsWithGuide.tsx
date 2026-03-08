@@ -29,7 +29,9 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [guideWindowMinutes, setGuideWindowMinutes] = useState(DEFAULT_GUIDE_WINDOW_MINUTES);
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const [domFocusedIndex, setDomFocusedIndex] = useState<number | null>(null);
   const [hoveredChannelId, setHoveredChannelId] = useState<number | null>(null);
+  const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const pendingPlayTimerRef = useRef<number | null>(null);
   const lastConfirmAtRef = useRef(0);
@@ -49,6 +51,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
   useEffect(() => {
     if (items.length === 0) {
       setFocusedIndex(0);
+      setDomFocusedIndex(null);
       return;
     }
     setFocusedIndex((prev) => Math.min(prev, items.length - 1));
@@ -162,6 +165,14 @@ export function ChannelRowsWithGuide<T extends Channel>({
   };
 
   useEffect(() => {
+    const onZoneChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
+      const inThisView = !detail?.view || ["channels", "favorites", "recents"].includes(detail.view);
+      setIsContentZoneActive(detail?.zone === "content" && inThisView);
+      if (detail?.zone === "nav" && inThisView) {
+        setDomFocusedIndex(null);
+      }
+    };
     const onFocusContent = (event: Event) => {
       const detail = (event as CustomEvent<{ view?: string }>).detail;
       if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
@@ -191,9 +202,11 @@ export function ChannelRowsWithGuide<T extends Channel>({
         triggerFavorite(current);
       }
     };
+    window.addEventListener("tv-focus-zone", onZoneChange as EventListener);
     window.addEventListener("tv-focus-content", onFocusContent as EventListener);
     window.addEventListener("tv-content-key", onContentKey as EventListener);
     return () => {
+      window.removeEventListener("tv-focus-zone", onZoneChange as EventListener);
       window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
       window.removeEventListener("tv-content-key", onContentKey as EventListener);
     };
@@ -203,7 +216,8 @@ export function ChannelRowsWithGuide<T extends Channel>({
     <>
       {items.map((ch, index) => {
         const snapshot = snapshots[ch.id];
-        const isActive = focusedIndex === index || hoveredChannelId === ch.id;
+        const isActive =
+          hoveredChannelId === ch.id || (isContentZoneActive && domFocusedIndex === index);
         return (
           <div key={ch.id} style={{ borderBottom: "1px solid var(--border)" }}>
             <div
@@ -220,7 +234,13 @@ export function ChannelRowsWithGuide<T extends Channel>({
                   triggerFavorite(ch);
                 }
               }}
-              onFocus={() => setFocusedIndex(index)}
+              onFocus={() => {
+                setFocusedIndex(index);
+                setDomFocusedIndex(index);
+              }}
+              onBlur={() => {
+                setDomFocusedIndex((prev) => (prev === index ? null : prev));
+              }}
               onMouseEnter={() => setHoveredChannelId(ch.id)}
               onMouseLeave={() => setHoveredChannelId((prev) => (prev === ch.id ? null : prev))}
               onKeyDown={(event) => {

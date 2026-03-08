@@ -90,6 +90,7 @@ export function AppShell() {
     if (playingChannel) {
       return;
     }
+    window.dispatchEvent(new CustomEvent("tv-focus-zone", { detail: { zone: focusZone, view: activeView } }));
     if (focusZone === "nav") {
       navButtonRefs.current[focusedNavIndex]?.focus();
       return;
@@ -141,6 +142,7 @@ export function AppShell() {
       }
       if (event.key === "ArrowLeft") {
         event.preventDefault();
+        (document.activeElement as HTMLElement | null)?.blur();
         setFocusZone("nav");
         return;
       }
@@ -256,6 +258,7 @@ const navBtnStyle: React.CSSProperties = {
   display: "block",
   width: "100%",
   padding: "10px 16px",
+  backgroundColor: "transparent",
   border: "none",
   color: "var(--text-primary)",
   fontSize: 14,

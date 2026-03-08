@@ -18,7 +18,9 @@ export function SourcesView({ locale }: Props) {
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [editing, setEditing] = useState<EditSourceDraft | null>(null);
   const [focusedSourceIndex, setFocusedSourceIndex] = useState(0);
+  const [domFocusedSourceId, setDomFocusedSourceId] = useState<number | null>(null);
   const [hoveredSourceId, setHoveredSourceId] = useState<number | null>(null);
+  const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const refreshingSourceIds = useRef<Set<number>>(new Set());
   const sourceRowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
 
@@ -38,10 +40,26 @@ export function SourcesView({ locale }: Props) {
   useEffect(() => {
     if (sources.length === 0) {
       setFocusedSourceIndex(0);
+      setDomFocusedSourceId(null);
       return;
     }
     setFocusedSourceIndex((prev) => Math.min(prev, sources.length - 1));
   }, [sources.length]);
+
+  useEffect(() => {
+    const onZoneChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
+      const inThisView = !detail?.view || detail.view === "sources";
+      setIsContentZoneActive(detail?.zone === "content" && inThisView);
+      if (detail?.zone === "nav" && inThisView) {
+        setDomFocusedSourceId(null);
+      }
+    };
+    window.addEventListener("tv-focus-zone", onZoneChange as EventListener);
+    return () => {
+      window.removeEventListener("tv-focus-zone", onZoneChange as EventListener);
+    };
+  }, []);
 
   const handleImportDone = (summary: ImportSummary, auto = false) => {
     setMessage({
@@ -292,12 +310,19 @@ export function SourcesView({ locale }: Props) {
                   }}
                   role="button"
                   tabIndex={0}
+                  data-tv-focusable={focusedSourceIndex === index ? "true" : undefined}
                   style={{
                     borderBottom: "1px solid var(--border)",
                     outline: "none",
-                    ...(focusedSourceIndex === index || hoveredSourceId === s.id ? sourceRowActiveStyle : null),
+                    ...(hoveredSourceId === s.id || (isContentZoneActive && domFocusedSourceId === s.id) ? sourceRowActiveStyle : null),
                   }}
-                  onFocus={() => setFocusedSourceIndex(index)}
+                  onFocus={() => {
+                    setFocusedSourceIndex(index);
+                    setDomFocusedSourceId(s.id);
+                  }}
+                  onBlur={() => {
+                    setDomFocusedSourceId((prev) => (prev === s.id ? null : prev));
+                  }}
                   onMouseEnter={() => setHoveredSourceId(s.id)}
                   onMouseLeave={() => setHoveredSourceId((prev) => (prev === s.id ? null : prev))}
                   onDoubleClick={() => openEdit(s)}

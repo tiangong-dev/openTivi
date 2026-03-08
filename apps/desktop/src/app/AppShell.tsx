@@ -241,6 +241,9 @@ export function AppShell() {
         {navItems.map((item, index) => (
           <button
             key={item.key}
+            data-tv-nav-button="true"
+            data-tv-nav-view={item.key}
+            data-tv-nav-active={item.key === activeView ? "true" : undefined}
             ref={(node) => {
               navButtonRefs.current[index] = node;
             }}

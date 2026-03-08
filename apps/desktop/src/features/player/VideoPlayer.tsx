@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
 
-import { tr, type Locale } from "../../lib/i18n";
+import { t, type Locale } from "../../lib/i18n";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel, EpgProgram } from "../../types/api";
 
@@ -61,7 +61,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         if (Hls.isSupported()) {
           attachHls(video, proxiedUrl);
         } else {
-          setError(tr(locale, "Unsupported stream format", "不支持的流媒体格式"));
+          setError(t(locale, "player.unsupportedStreamFormat"));
         }
       });
     }
@@ -77,7 +77,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
       hls.on(Hls.Events.ERROR, (_e, data) => {
         if (data.fatal) {
-          setError(tr(locale, `Playback error: ${data.details}`, `播放错误：${data.details}`));
+          setError(t(locale, "player.playbackErrorDetails", { details: data.details }));
         }
       });
       hlsRef.current = hls;
@@ -85,7 +85,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       video.src = url;
       video.play().catch(() => {});
     } else {
-      setError(tr(locale, "HLS is not supported", "当前环境不支持 HLS"));
+      setError(t(locale, "player.hlsNotSupported"));
     }
   };
 
@@ -100,11 +100,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       player.load();
       player.play();
       player.on(mpegts.Events.ERROR, () => {
-        setError(tr(locale, "MPEG-TS playback error", "MPEG-TS 播放错误"));
+        setError(t(locale, "player.mpegtsPlaybackError"));
       });
       mpegtsRef.current = player;
     } else {
-      setError(tr(locale, "MPEG-TS is not supported", "当前环境不支持 MPEG-TS"));
+      setError(t(locale, "player.mpegtsNotSupported"));
     }
   };
 
@@ -169,7 +169,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         }
       })
       .catch(() => {
-        setEpgError(tr(locale, "Failed to load EPG data.", "加载节目单失败。"));
+        setEpgError(t(locale, "player.epgLoadFailed"));
       })
       .finally(() => {
         setEpgLoading(false);
@@ -341,24 +341,24 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           <button
             onClick={() => setShowChannelListPanel((v) => !v)}
             style={overlayBtnStyle}
-            title={tr(locale, "Channel list (←)", "频道列表 (←)")}
+            title={t(locale, "player.channelListShortcut")}
           >
             ☰
           </button>
           <button
             onClick={() => setShowGuidePanel((v) => !v)}
             style={overlayBtnStyle}
-            title={tr(locale, "Toggle guide (→)", "切换节目单 (→)")}
+            title={t(locale, "player.toggleGuideShortcut")}
           >
             ≡
           </button>
-          <button onClick={() => switchChannel(-1)} style={overlayBtnStyle} title="Previous channel (↑)">
+          <button onClick={() => switchChannel(-1)} style={overlayBtnStyle} title={t(locale, "player.previousChannelShortcut")}>
             ▲
           </button>
-          <button onClick={() => switchChannel(1)} style={overlayBtnStyle} title="Next channel (↓)">
+          <button onClick={() => switchChannel(1)} style={overlayBtnStyle} title={t(locale, "player.nextChannelShortcut")}>
             ▼
           </button>
-          <button onClick={onClose} style={overlayBtnStyle} title="Close (Esc)">
+          <button onClick={onClose} style={overlayBtnStyle} title={t(locale, "player.closeShortcut")}>
             ✕
           </button>
         </div>
@@ -373,7 +373,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14 }}>
-            <span style={{ opacity: 0.6, fontSize: 12 }}>{tr(locale, "Now", "正在播放")}</span>
+            <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.now")}</span>
             <span style={{ fontWeight: 600 }}>{epgNow.title}</span>
             <span style={{ opacity: 0.5, fontSize: 12 }}>
               {formatTime(epgNow.startAt)} - {formatTime(epgNow.endAt)}
@@ -393,7 +393,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
                 marginTop: 4,
               }}
             >
-              <span style={{ opacity: 0.6, fontSize: 12 }}>{tr(locale, "Next", "下一档")}</span>
+              <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.next")}</span>
               <span>{epgNext.title}</span>
               <span style={{ opacity: 0.5, fontSize: 12 }}>{formatTime(epgNext.startAt)}</span>
             </div>
@@ -404,18 +404,18 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       {showGuidePanel && (
         <div style={guidePanelStyle}>
           <div style={guideHeaderStyle}>
-            <span>{tr(locale, "Program Guide", "节目单")}</span>
+            <span>{t(locale, "player.programGuide")}</span>
             <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
-              {tr(locale, "Right key to hide", "按右键隐藏")}
+              {t(locale, "player.rightKeyToHide")}
             </span>
           </div>
           {epgLoading && (
-            <div style={guideHintStyle}>{tr(locale, "Loading EPG...", "正在加载节目单...")}</div>
+            <div style={guideHintStyle}>{t(locale, "player.loadingEpg")}</div>
           )}
           {!epgLoading && epgError && <div style={guideHintStyle}>{epgError}</div>}
           {!epgLoading && !epgError && epgPrograms.length === 0 && (
             <div style={guideHintStyle}>
-              {tr(locale, "No guide data for this channel.", "当前频道暂无节目单数据。")}
+              {t(locale, "player.noGuideForChannel")}
             </div>
           )}
           {!epgLoading && !epgError && epgPrograms.length > 0 && (
@@ -446,9 +446,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       {showChannelListPanel && (
         <div style={channelListPanelStyle}>
           <div style={guideHeaderStyle}>
-            <span>{tr(locale, "Channels", "频道列表")}</span>
+            <span>{t(locale, "player.channelsPanelTitle")}</span>
             <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
-              {tr(locale, "Enter to play", "回车播放")}
+              {t(locale, "player.enterToPlay")}
             </span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, overflowY: "auto" }}>

@@ -11,6 +11,8 @@ use warp::{Filter, Reply};
 const PLAYLIST_CACHE_TTL: Duration = Duration::from_secs(2);
 const PLAYLIST_CACHE_MAX_ENTRIES: usize = 64;
 const HOST_WARM_TTL: Duration = Duration::from_secs(12);
+const SEGMENT_PREFETCH_TIMEOUT: Duration = Duration::from_millis(1500);
+const SEGMENT_PREFETCH_RANGE: &str = "bytes=0-65535";
 
 #[derive(Clone)]
 struct ProxyState {
@@ -164,8 +166,35 @@ async fn handle_warm(
     };
 
     maybe_schedule_host_warm(state.clone(), &url).await;
-    if is_playlist_url(&url) {
-        let _ = warm_playlist_cache(state, url).await;
+    let mode = params
+        .get("mode")
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_else(|| "auto".to_string());
+    let segment_count = params
+        .get("segment_count")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(1)
+        .max(1)
+        .min(3);
+
+    match mode.as_str() {
+        "conn" => {}
+        "playlist" => {
+            if is_playlist_url(&url) {
+                let _ = warm_playlist_cache(state, url).await;
+            }
+        }
+        "segment" => {
+            if is_playlist_url(&url) {
+                let _ = warm_playlist_cache(state.clone(), url.clone()).await;
+                let _ = prefetch_playlist_segments(state, url, segment_count).await;
+            }
+        }
+        _ => {
+            if is_playlist_url(&url) {
+                let _ = warm_playlist_cache(state, url).await;
+            }
+        }
     }
 
     Ok(warp::reply::with_status("", warp::http::StatusCode::NO_CONTENT).into_response())
@@ -257,6 +286,67 @@ async fn warm_playlist_cache(state: ProxyState, url: String) -> Result<(), ()> {
         },
     )
     .await;
+    Ok(())
+}
+
+async fn prefetch_playlist_segments(
+    state: ProxyState,
+    playlist_url: String,
+    segment_count: usize,
+) -> Result<(), ()> {
+    let response = state.client.get(&playlist_url).send().await.map_err(|_| ())?;
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    if !is_playlist_content_type(&content_type) && !is_playlist_url(&playlist_url) {
+        return Ok(());
+    }
+    let body = response.bytes().await.map_err(|_| ())?;
+    let playlist_text = String::from_utf8_lossy(&body);
+    let segment_urls = extract_segment_urls(&playlist_text, &playlist_url, segment_count);
+    for segment_url in segment_urls {
+        let _ = prefetch_segment(state.client.clone(), segment_url).await;
+    }
+    Ok(())
+}
+
+fn extract_segment_urls(content: &str, base_url: &str, segment_count: usize) -> Vec<String> {
+    let base = base_url
+        .rfind('/')
+        .map(|i| &base_url[..=i])
+        .unwrap_or(base_url);
+    let mut urls = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let url = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+            trimmed.to_string()
+        } else {
+            format!("{}{}", base, trimmed)
+        };
+        urls.push(url);
+        if urls.len() >= segment_count {
+            break;
+        }
+    }
+    urls
+}
+
+async fn prefetch_segment(client: reqwest::Client, segment_url: String) -> Result<(), ()> {
+    let request = client
+        .get(segment_url)
+        .header(reqwest::header::RANGE, SEGMENT_PREFETCH_RANGE)
+        .send();
+    let mut response = match tokio::time::timeout(SEGMENT_PREFETCH_TIMEOUT, request).await {
+        Ok(Ok(resp)) => resp,
+        _ => return Err(()),
+    };
+    let _ = tokio::time::timeout(SEGMENT_PREFETCH_TIMEOUT, response.chunk()).await;
     Ok(())
 }
 
@@ -393,5 +483,18 @@ segment2.ts";
         let result = rewrite_m3u8(content, BASE_URL);
         let lines: Vec<&str> = result.lines().collect();
         assert_eq!(lines[1], "");
+    }
+
+    #[test]
+    fn test_extract_segment_urls_handles_absolute_and_relative() {
+        let content = "#EXTM3U\n#EXTINF:10,\nsegment1.ts\n#EXTINF:10,\nhttps://cdn.example.com/segment2.ts";
+        let urls = extract_segment_urls(content, BASE_URL, 2);
+        assert_eq!(
+            urls,
+            vec![
+                "http://example.com/live/segment1.ts".to_string(),
+                "https://cdn.example.com/segment2.ts".to_string()
+            ]
+        );
     }
 }

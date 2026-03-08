@@ -33,6 +33,9 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::set_setting,
             commands::playback::resolve_playback,
+            commands::prewarm::prewarm_report_primary,
+            commands::prewarm::prewarm_submit_intents,
+            commands::prewarm::prewarm_clear_source,
             commands::update::check_app_update,
         ])
         .run(tauri::generate_context!())

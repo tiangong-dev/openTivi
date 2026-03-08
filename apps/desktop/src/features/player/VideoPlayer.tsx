@@ -52,6 +52,17 @@ interface Props {
   onChannelChange: (channel: Channel) => void;
 }
 
+type PrewarmReason = "explicit_switch" | "neighbor" | "list_focus" | "background";
+type PrewarmSource = "player" | "channel_list_outer" | "channel_list_inner";
+
+interface PrewarmIntentInput {
+  channelId: number;
+  streamUrl: string;
+  reason: PrewarmReason;
+  source: PrewarmSource;
+  ttlMs?: number;
+}
+
 export function VideoPlayer({ channel, channels, locale, onClose, onChannelChange }: Props) {
   const primaryVideoRef = useRef<HTMLVideoElement>(null);
   const standbyVideoRef = useRef<HTMLVideoElement>(null);
@@ -76,9 +87,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const channelListItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const slotReadyRef = useRef<[boolean, boolean]>([false, false]);
   const preferredDirectionRef = useRef<-1 | 1>(1);
-  const neighborWarmTsRef = useRef<Map<string, number>>(new Map());
-  const neighborWarmInFlightRef = useRef<Map<string, AbortController>>(new Map());
-  const neighborWarmLruRef = useRef<string[]>([]);
+  const decoderPrewarmAllowedRef = useRef(true);
 
   const [error, setError] = useState<string | null>(null);
   const [proxyPort, setProxyPort] = useState<number | null>(null);
@@ -118,6 +127,32 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   useEffect(() => {
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
   }, []);
+
+  const reportPrimaryState = useCallback(async (channelId: number | null, started: boolean) => {
+    try {
+      const allow = await tauriInvoke<boolean>("prewarm_report_primary", {
+        input: { channelId, started },
+      });
+      decoderPrewarmAllowedRef.current = allow;
+      return allow;
+    } catch {
+      return decoderPrewarmAllowedRef.current;
+    }
+  }, []);
+
+  const submitPrewarmIntents = useCallback(
+    async (intents: PrewarmIntentInput[], decoderSlots = 0): Promise<number[]> => {
+      if (intents.length === 0) return [];
+      try {
+        return await tauriInvoke<number[]>("prewarm_submit_intents", {
+          input: { intents, decoderSlots },
+        });
+      } catch {
+        return [];
+      }
+    },
+    [],
+  );
 
   const getVideoBySlot = useCallback(
     (slot: 0 | 1) => (slot === 0 ? primaryVideoRef.current : standbyVideoRef.current),
@@ -186,6 +221,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const markReady = () => {
         if (slotChannelIdRef.current[slot] === target.id) {
           slotReadyRef.current[slot] = true;
+          if (slot === activeSlotRef.current) {
+            void reportPrimaryState(target.id, true);
+          }
         }
       };
 
@@ -280,7 +318,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       slotChannelIdRef.current[slot] = target.id;
       return true;
     },
-    [destroySlot, getVideoBySlot, proxyPort],
+    [destroySlot, getVideoBySlot, proxyPort, reportPrimaryState],
   );
 
   useEffect(() => {
@@ -310,6 +348,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     proxyPort,
     setSlotMuted,
   ]);
+
+  useEffect(() => {
+    void reportPrimaryState(channel.id, false);
+  }, [channel.id, reportPrimaryState]);
 
   useEffect(() => {
     setEpgLoading(true);
@@ -379,6 +421,31 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   useEffect(() => {
     channelsRef.current = channels;
   }, [channels]);
+
+  useEffect(() => {
+    if (!showChannelListPanel || channels.length === 0) return;
+    const focused = channels[focusedChannelIndex];
+    if (!focused) return;
+    const prev = channels[(focusedChannelIndex - 1 + channels.length) % channels.length];
+    const next = channels[(focusedChannelIndex + 1) % channels.length];
+    const intents = new Map<number, PrewarmIntentInput>();
+    for (const item of [focused, prev, next]) {
+      if (!item) continue;
+      intents.set(item.id, {
+        channelId: item.id,
+        streamUrl: item.streamUrl,
+        reason: "list_focus",
+        source: "channel_list_inner",
+        ttlMs: 1200,
+      });
+    }
+    void submitPrewarmIntents(Array.from(intents.values()), 0);
+  }, [channels, focusedChannelIndex, showChannelListPanel, submitPrewarmIntents]);
+
+  useEffect(() => {
+    if (showChannelListPanel) return;
+    void tauriInvoke("prewarm_clear_source", { source: "channel_list_inner" }).catch(() => undefined);
+  }, [showChannelListPanel]);
 
   useEffect(() => {
     if (!showChannelListPanel || channels.length === 0) {
@@ -529,61 +596,31 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     osdTimerRef.current = setTimeout(() => setOsdChannel(null), 2000);
   }, []);
 
-  const warmProxyUrl = useCallback(
-    (rawUrl: string, force = false) => {
-      if (proxyPort === null) return;
-      const now = Date.now();
-      const cacheMs = 1800;
-      const tsMap = neighborWarmTsRef.current;
-      const last = tsMap.get(rawUrl) ?? 0;
-      const inflight = neighborWarmInFlightRef.current.has(rawUrl);
-      if (!force && now - last < cacheMs) return;
-      if (inflight) return;
-
-      if (neighborWarmInFlightRef.current.size >= 2) {
-        const oldest = neighborWarmLruRef.current.shift();
-        if (oldest) {
-          neighborWarmInFlightRef.current.get(oldest)?.abort();
-          neighborWarmInFlightRef.current.delete(oldest);
-        }
-      }
-
-      const controller = new AbortController();
-      neighborWarmInFlightRef.current.set(rawUrl, controller);
-      neighborWarmLruRef.current = neighborWarmLruRef.current.filter((url) => url !== rawUrl);
-      neighborWarmLruRef.current.push(rawUrl);
-      if (neighborWarmLruRef.current.length > 24) {
-        neighborWarmLruRef.current = neighborWarmLruRef.current.slice(-24);
-      }
-
-      const warmUrl = `http://127.0.0.1:${proxyPort}/warm?url=${encodeURIComponent(rawUrl)}`;
-      void fetch(warmUrl, {
-        method: "GET",
-        cache: "no-store",
-        signal: controller.signal,
-      })
-        .catch(() => undefined)
-        .finally(() => {
-          tsMap.set(rawUrl, Date.now());
-          neighborWarmInFlightRef.current.delete(rawUrl);
-        });
-    },
-    [proxyPort],
-  );
-
   const prewarmChannel = useCallback(
     (next: Channel) => {
-      if (proxyPort === null) return;
       const currentPlaybackChannelId = getCurrentPlaybackChannelId();
       if (next.id === currentPlaybackChannelId) return;
+      void submitPrewarmIntents(
+        [
+          {
+            channelId: next.id,
+            streamUrl: next.streamUrl,
+            reason: "neighbor",
+            source: "player",
+            ttlMs: 2500,
+          },
+        ],
+        1,
+      );
+      if (!decoderPrewarmAllowedRef.current) return;
+      if (proxyPort === null) return;
       const standbySlot = getStandbySlot(activeSlotRef.current);
       if (shouldLoadInStandby(slotChannelIdRef.current[standbySlot], next.id)) {
         loadChannelInSlot(standbySlot, next, true);
       }
       setSlotMuted(standbySlot, true);
-      warmProxyUrl(next.streamUrl);
     },
-    [getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, warmProxyUrl],
+    [getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, submitPrewarmIntents],
   );
 
   useEffect(() => {
@@ -595,9 +632,16 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       if (predicted) {
         prewarmChannel(predicted);
       }
-      for (const target of warmTargets) {
-        warmProxyUrl(target.streamUrl);
-      }
+      void submitPrewarmIntents(
+        warmTargets.map((target) => ({
+          channelId: target.id,
+          streamUrl: target.streamUrl,
+          reason: "neighbor" as const,
+          source: "player" as const,
+          ttlMs: 2000,
+        })),
+        0,
+      );
     }, 320);
     return () => clearTimeout(timer);
   }, [
@@ -607,7 +651,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     getCurrentPlaybackChannelId,
     prewarmChannel,
     proxyPort,
-    warmProxyUrl,
+    submitPrewarmIntents,
   ]);
 
   const switchChannel = useCallback(
@@ -616,6 +660,18 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const baseChannelId = getCurrentPlaybackChannelId();
       const next = getAdjacentChannel(channels, baseChannelId, direction);
       if (!next || next.id === baseChannelId) return;
+      void submitPrewarmIntents(
+        [
+          {
+            channelId: next.id,
+            streamUrl: next.streamUrl,
+            reason: "explicit_switch",
+            source: "player",
+            ttlMs: 6000,
+          },
+        ],
+        1,
+      );
       showSwitchOsd(next);
       const standbySlot = getStandbySlot(activeSlotRef.current);
       if (shouldLoadInStandby(slotChannelIdRef.current[standbySlot], next.id)) {
@@ -632,6 +688,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       loadChannelInSlot,
       onChannelChange,
       showSwitchOsd,
+      submitPrewarmIntents,
     ],
   );
 
@@ -867,13 +924,15 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         clearTimeout(channelListAutoHideTimerRef.current);
         channelListAutoHideTimerRef.current = null;
       }
-      neighborWarmInFlightRef.current.forEach((controller) => controller.abort());
-      neighborWarmInFlightRef.current.clear();
-      neighborWarmLruRef.current = [];
+      void tauriInvoke("prewarm_clear_source", { source: "channel_list_inner" }).catch(
+        () => undefined,
+      );
+      void tauriInvoke("prewarm_clear_source", { source: "player" }).catch(() => undefined);
+      void reportPrimaryState(null, false);
       destroySlot(0);
       destroySlot(1);
     };
-  }, [destroySlot]);
+  }, [destroySlot, reportPrimaryState]);
 
   return (
     <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>

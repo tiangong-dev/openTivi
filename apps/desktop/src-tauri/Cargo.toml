@@ -21,7 +21,7 @@ quick-xml = "0.37"
 reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "rustls-tls", "blocking", "stream"] }
 chrono = { version = "0.4", features = ["serde"] }
 url = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 log = "0.4"
 warp = "0.3"
 dirs = "5"

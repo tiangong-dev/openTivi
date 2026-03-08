@@ -16,13 +16,16 @@ interface Props {
 }
 
 export function VideoPlayer({ channel, channels, locale, onClose, onChannelChange }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const primaryVideoRef = useRef<HTMLVideoElement>(null);
+  const standbyVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const hlsRef = useRef<Hls | null>(null);
-  const mpegtsRef = useRef<mpegts.Player | null>(null);
+  const hlsSlotsRef = useRef<[Hls | null, Hls | null]>([null, null]);
+  const mpegtsSlotsRef = useRef<[mpegts.Player | null, mpegts.Player | null]>([null, null]);
+  const slotKindRef = useRef<[PlaybackKind | null, PlaybackKind | null]>([null, null]);
+  const slotUrlRef = useRef<[string | null, string | null]>([null, null]);
+  const slotChannelIdRef = useRef<[number | null, number | null]>([null, null]);
+  const activeSlotRef = useRef<0 | 1>(0);
   const localeRef = useRef(locale);
-  const playbackKindRef = useRef<PlaybackKind | null>(null);
-  const playbackUrlRef = useRef<string | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guideAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,6 +41,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const pendingSwitchChannelRef = useRef<Channel | null>(null);
   const pendingSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prewarmAbortRef = useRef<AbortController | null>(null);
+  const neighborWarmTsRef = useRef<Map<string, number>>(new Map());
+  const neighborWarmInFlightRef = useRef<Map<string, AbortController>>(new Map());
+  const neighborWarmLruRef = useRef<string[]>([]);
 
   const [error, setError] = useState<string | null>(null);
   const [proxyPort, setProxyPort] = useState<number | null>(null);
@@ -57,6 +63,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [networkSpeedBps, setNetworkSpeedBps] = useState<number | null>(null);
   const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [channelEpgLoading, setChannelEpgLoading] = useState(false);
+  const [activeSlot, setActiveSlot] = useState<0 | 1>(0);
 
   const GUIDE_AUTO_HIDE_MS = 3500;
   const CHANNEL_LIST_AUTO_HIDE_MS = 5000;
@@ -71,155 +78,195 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [locale]);
 
   useEffect(() => {
+    activeSlotRef.current = activeSlot;
+  }, [activeSlot]);
+
+  useEffect(() => {
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
   }, []);
 
-  const teardownHls = () => {
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-  };
+  const getVideoBySlot = useCallback(
+    (slot: 0 | 1) => (slot === 0 ? primaryVideoRef.current : standbyVideoRef.current),
+    [],
+  );
 
-  const teardownMpegTs = () => {
-    if (mpegtsRef.current) {
-      mpegtsRef.current.pause();
-      mpegtsRef.current.unload();
-      mpegtsRef.current.detachMediaElement();
-      mpegtsRef.current.destroy();
-      mpegtsRef.current = null;
-    }
-  };
+  const setSlotMuted = useCallback(
+    (slot: 0 | 1, muted: boolean) => {
+      const video = getVideoBySlot(slot);
+      if (!video) return;
+      video.muted = muted;
+    },
+    [getVideoBySlot],
+  );
 
-  const teardownNative = () => {
-    if (videoRef.current) {
-      videoRef.current.removeAttribute("src");
-      videoRef.current.load();
-    }
-  };
+  const destroySlot = useCallback(
+    (slot: 0 | 1) => {
+      if (hlsSlotsRef.current[slot]) {
+        hlsSlotsRef.current[slot]?.destroy();
+        hlsSlotsRef.current[slot] = null;
+      }
+      if (mpegtsSlotsRef.current[slot]) {
+        mpegtsSlotsRef.current[slot]?.pause();
+        mpegtsSlotsRef.current[slot]?.unload();
+        mpegtsSlotsRef.current[slot]?.detachMediaElement();
+        mpegtsSlotsRef.current[slot]?.destroy();
+        mpegtsSlotsRef.current[slot] = null;
+      }
+      const video = getVideoBySlot(slot);
+      if (video) {
+        video.removeAttribute("src");
+        video.load();
+      }
+      slotKindRef.current[slot] = null;
+      slotUrlRef.current[slot] = null;
+      slotChannelIdRef.current[slot] = null;
+    },
+    [getVideoBySlot],
+  );
 
-  const cleanup = () => {
-    teardownHls();
-    teardownMpegTs();
-    teardownNative();
-    playbackKindRef.current = null;
-    playbackUrlRef.current = null;
-  };
+  const activateSlot = useCallback(
+    (slot: 0 | 1) => {
+      const other: 0 | 1 = slot === 0 ? 1 : 0;
+      activeSlotRef.current = slot;
+      setActiveSlot(slot);
+      setSlotMuted(slot, false);
+      setSlotMuted(other, true);
+      const activeVideo = getVideoBySlot(slot);
+      activeVideo?.play().catch(() => {});
+    },
+    [getVideoBySlot, setSlotMuted],
+  );
+
+  const loadChannelInSlot = useCallback(
+    (slot: 0 | 1, target: Channel, prewarm: boolean) => {
+      if (proxyPort === null) return false;
+      const video = getVideoBySlot(slot);
+      if (!video) return false;
+
+      destroySlot(slot);
+      video.muted = prewarm;
+      const proxiedUrl = toProxyUrl(target.streamUrl, proxyPort);
+      const kind = getPlaybackKind(target.streamUrl);
+
+      if (kind === "hls") {
+        if (Hls.isSupported()) {
+          const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+          hls.loadSource(proxiedUrl);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            video.play().catch(() => {});
+          });
+          hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
+            if (slot !== activeSlotRef.current) return;
+            const fragData = data as unknown as {
+              stats?: {
+                total?: number;
+                loaded?: number;
+                loading?: { start?: number; end?: number };
+              };
+            };
+            const loadedBytes = fragData.stats?.total ?? fragData.stats?.loaded ?? 0;
+            const loadingStart = fragData.stats?.loading?.start ?? 0;
+            const loadingEnd = fragData.stats?.loading?.end ?? 0;
+            const durationMs = loadingEnd - loadingStart;
+            if (loadedBytes > 0 && durationMs > 0) {
+              const bitsPerSecond = (loadedBytes * 8 * 1000) / durationMs;
+              setNetworkSpeedBps(bitsPerSecond);
+            }
+          });
+          hls.on(Hls.Events.ERROR, (_e, data) => {
+            if (slot !== activeSlotRef.current) return;
+            if (data.fatal) {
+              setError(t(localeRef.current, "player.playbackErrorDetails", { details: data.details }));
+            }
+          });
+          hlsSlotsRef.current[slot] = hls;
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          video.src = proxiedUrl;
+          video.play().catch(() => {});
+        } else if (slot === activeSlotRef.current) {
+          setError(t(localeRef.current, "player.hlsNotSupported"));
+        }
+      } else if (kind === "mpegts") {
+        if (mpegts.isSupported()) {
+          const player = mpegts.createPlayer({
+            type: "mpegts",
+            isLive: true,
+            url: proxiedUrl,
+          });
+          player.attachMediaElement(video);
+          player.load();
+          player.play();
+          player.on(mpegts.Events.STATISTICS_INFO, (stats) => {
+            if (slot !== activeSlotRef.current) return;
+            const speedKiloBytesPerSec = Number((stats as { speed?: number })?.speed);
+            if (Number.isFinite(speedKiloBytesPerSec) && speedKiloBytesPerSec > 0) {
+              const bitsPerSecond = speedKiloBytesPerSec * 1024 * 8;
+              setNetworkSpeedBps(bitsPerSecond);
+            }
+          });
+          player.on(mpegts.Events.ERROR, () => {
+            if (slot !== activeSlotRef.current) return;
+            setError(t(localeRef.current, "player.mpegtsPlaybackError"));
+          });
+          mpegtsSlotsRef.current[slot] = player;
+        } else if (slot === activeSlotRef.current) {
+          setError(t(localeRef.current, "player.mpegtsNotSupported"));
+        }
+      } else {
+        video.src = proxiedUrl;
+        video.play().catch(() => {
+          if (slot !== activeSlotRef.current) return;
+          if (Hls.isSupported()) {
+            const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+            hls.loadSource(proxiedUrl);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              video.play().catch(() => {});
+            });
+            hlsSlotsRef.current[slot] = hls;
+          } else {
+            setError(t(localeRef.current, "player.unsupportedStreamFormat"));
+          }
+        });
+      }
+
+      slotKindRef.current[slot] = kind;
+      slotUrlRef.current[slot] = proxiedUrl;
+      slotChannelIdRef.current[slot] = target.id;
+      return true;
+    },
+    [destroySlot, getVideoBySlot, proxyPort],
+  );
 
   useEffect(() => {
     if (proxyPort === null) return;
-    const video = videoRef.current;
-    if (!video) return;
+    const active = activeSlotRef.current;
+    const standby: 0 | 1 = active === 0 ? 1 : 0;
 
-    const proxiedUrl = toProxyUrl(channel.streamUrl, proxyPort);
-    const nextKind = getPlaybackKind(channel.streamUrl);
-    const protocolChanged = playbackKindRef.current !== nextKind;
-    const sourceChanged = playbackUrlRef.current !== proxiedUrl;
+    if (slotChannelIdRef.current[active] === channel.id) {
+      setSlotMuted(active, false);
+      return;
+    }
 
-    if (!protocolChanged && !sourceChanged) return;
     setError(null);
     setNetworkSpeedBps(null);
 
-    if (protocolChanged) {
-      cleanup();
+    if (slotChannelIdRef.current[standby] === channel.id) {
+      activateSlot(standby);
+      return;
     }
 
-    if (nextKind === "hls") {
-      if (hlsRef.current) {
-        hlsRef.current.loadSource(proxiedUrl);
-        video.play().catch(() => {});
-      } else {
-        attachHls(video, proxiedUrl);
-      }
-      playbackKindRef.current = "hls";
-    } else if (nextKind === "mpegts") {
-      if (mpegtsRef.current) {
-        teardownMpegTs();
-      }
-      attachMpegTs(video, proxiedUrl);
-      playbackKindRef.current = "mpegts";
-    } else {
-      if (video.src !== proxiedUrl) {
-        video.src = proxiedUrl;
-      }
-      video.play().catch(() => {
-        if (Hls.isSupported()) {
-          attachHls(video, proxiedUrl);
-          playbackKindRef.current = "hls";
-        } else {
-          setError(t(localeRef.current, "player.unsupportedStreamFormat"));
-        }
-      });
-      playbackKindRef.current = "native";
-    }
-
-    playbackUrlRef.current = proxiedUrl;
-  }, [channel.streamUrl, proxyPort]);
-
-  useEffect(() => cleanup, []);
-
-  const attachHls = (video: HTMLVideoElement, url: string) => {
-    if (Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
-      hls.loadSource(url);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
-      hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
-        const fragData = data as unknown as {
-          stats?: {
-            total?: number;
-            loaded?: number;
-            loading?: { start?: number; end?: number };
-          };
-        };
-        const loadedBytes = fragData.stats?.total ?? fragData.stats?.loaded ?? 0;
-        const loadingStart = fragData.stats?.loading?.start ?? 0;
-        const loadingEnd = fragData.stats?.loading?.end ?? 0;
-        const durationMs = loadingEnd - loadingStart;
-        if (loadedBytes > 0 && durationMs > 0) {
-          const bitsPerSecond = (loadedBytes * 8 * 1000) / durationMs;
-          setNetworkSpeedBps(bitsPerSecond);
-        }
-      });
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (data.fatal) {
-          setError(t(localeRef.current, "player.playbackErrorDetails", { details: data.details }));
-        }
-      });
-      hlsRef.current = hls;
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = url;
-      video.play().catch(() => {});
-    } else {
-      setError(t(localeRef.current, "player.hlsNotSupported"));
-    }
-  };
-
-  const attachMpegTs = (video: HTMLVideoElement, url: string) => {
-    if (mpegts.isSupported()) {
-      const player = mpegts.createPlayer({
-        type: "mpegts",
-        isLive: true,
-        url,
-      });
-      player.attachMediaElement(video);
-      player.load();
-      player.play();
-      player.on(mpegts.Events.STATISTICS_INFO, (stats) => {
-        const speedKiloBytesPerSec = Number((stats as { speed?: number })?.speed);
-        if (Number.isFinite(speedKiloBytesPerSec) && speedKiloBytesPerSec > 0) {
-          const bitsPerSecond = speedKiloBytesPerSec * 1024 * 8;
-          setNetworkSpeedBps(bitsPerSecond);
-        }
-      });
-      player.on(mpegts.Events.ERROR, () => {
-        setError(t(localeRef.current, "player.mpegtsPlaybackError"));
-      });
-      mpegtsRef.current = player;
-    } else {
-      setError(t(localeRef.current, "player.mpegtsNotSupported"));
-    }
-  };
+    loadChannelInSlot(active, channel, false);
+    setSlotMuted(active, false);
+  }, [
+    activateSlot,
+    channel.id,
+    channel.streamUrl,
+    loadChannelInSlot,
+    proxyPort,
+    setSlotMuted,
+  ]);
 
   useEffect(() => {
     setEpgLoading(true);
@@ -389,7 +436,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   useEffect(() => {
     const readDecodedBytes = () => {
-      const video = videoRef.current as (HTMLVideoElement & {
+      const video = getVideoBySlot(activeSlotRef.current) as (HTMLVideoElement & {
         webkitVideoDecodedByteCount?: number;
         webkitAudioDecodedByteCount?: number;
       }) | null;
@@ -403,7 +450,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     let lastBytes = readDecodedBytes();
     let lastTs = Date.now();
     speedFallbackTimerRef.current = setInterval(() => {
-      const hlsEstimate = Number((hlsRef.current as unknown as { bandwidthEstimate?: number } | null)?.bandwidthEstimate ?? 0);
+      const activeHls = hlsSlotsRef.current[activeSlotRef.current];
+      const hlsEstimate = Number(
+        (activeHls as unknown as { bandwidthEstimate?: number } | null)?.bandwidthEstimate ?? 0,
+      );
       if (Number.isFinite(hlsEstimate) && hlsEstimate > 0) {
         setNetworkSpeedBps((prev) => (prev === null ? hlsEstimate : prev * 0.65 + hlsEstimate * 0.35));
         return;
@@ -433,7 +483,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         speedFallbackTimerRef.current = null;
       }
     };
-  }, [channel.id]);
+  }, [channel.id, getVideoBySlot]);
 
   const showOverlay = useCallback(() => {
     setOverlayVisible(true);
@@ -493,33 +543,76 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     [channels],
   );
 
-  const prewarmChannel = useCallback(
-    (next: Channel) => {
+  const warmProxyUrl = useCallback(
+    (rawUrl: string, force = false) => {
       if (proxyPort === null) return;
-      cancelPrewarm();
+      const now = Date.now();
+      const cacheMs = 1800;
+      const tsMap = neighborWarmTsRef.current;
+      const last = tsMap.get(rawUrl) ?? 0;
+      if (!force && now - last < cacheMs) return;
+      if (neighborWarmInFlightRef.current.has(rawUrl)) return;
+
+      if (neighborWarmInFlightRef.current.size >= 2) {
+        const oldest = neighborWarmLruRef.current.shift();
+        if (oldest) {
+          neighborWarmInFlightRef.current.get(oldest)?.abort();
+          neighborWarmInFlightRef.current.delete(oldest);
+        }
+      }
+
       const controller = new AbortController();
-      prewarmAbortRef.current = controller;
-      const proxiedUrl = toProxyUrl(next.streamUrl, proxyPort);
-      void fetch(proxiedUrl, {
+      neighborWarmInFlightRef.current.set(rawUrl, controller);
+      neighborWarmLruRef.current = neighborWarmLruRef.current.filter((url) => url !== rawUrl);
+      neighborWarmLruRef.current.push(rawUrl);
+      if (neighborWarmLruRef.current.length > 24) {
+        neighborWarmLruRef.current = neighborWarmLruRef.current.slice(-24);
+      }
+
+      const warmUrl = `http://127.0.0.1:${proxyPort}/warm?url=${encodeURIComponent(rawUrl)}`;
+      void fetch(warmUrl, {
         method: "GET",
         cache: "no-store",
         signal: controller.signal,
       })
-        .then(async (response) => {
-          if (!response.ok) return;
-          const reader = response.body?.getReader();
-          if (!reader) return;
-          await reader.read().catch(() => undefined);
-          await reader.cancel().catch(() => undefined);
-        })
         .catch(() => undefined)
         .finally(() => {
-          if (prewarmAbortRef.current === controller) {
-            prewarmAbortRef.current = null;
-          }
+          tsMap.set(rawUrl, Date.now());
+          neighborWarmInFlightRef.current.delete(rawUrl);
         });
     },
-    [cancelPrewarm, proxyPort],
+    [proxyPort],
+  );
+
+  useEffect(() => {
+    if (proxyPort === null || channels.length < 2) return;
+    const timer = setTimeout(() => {
+      const prev = getAdjacentChannel(channel.id, -1);
+      const next = getAdjacentChannel(channel.id, 1);
+      if (prev) warmProxyUrl(prev.streamUrl);
+      if (next) warmProxyUrl(next.streamUrl);
+    }, 320);
+    return () => clearTimeout(timer);
+  }, [channel.id, channels.length, getAdjacentChannel, proxyPort, warmProxyUrl]);
+
+  const prewarmChannel = useCallback(
+    (next: Channel) => {
+      if (proxyPort === null) return;
+      const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
+      loadChannelInSlot(standbySlot, next, true);
+      setSlotMuted(standbySlot, true);
+      warmProxyUrl(next.streamUrl, true);
+      cancelPrewarm();
+      const controller = new AbortController();
+      prewarmAbortRef.current = controller;
+      const prewarmUrl = `http://127.0.0.1:${proxyPort}/warm?url=${encodeURIComponent(next.streamUrl)}`;
+      void fetch(prewarmUrl, { signal: controller.signal })
+        .catch(() => undefined)
+        .finally(() => {
+          if (prewarmAbortRef.current === controller) prewarmAbortRef.current = null;
+        });
+    },
+    [cancelPrewarm, loadChannelInSlot, proxyPort, setSlotMuted, warmProxyUrl],
   );
 
   const commitPendingSwitch = useCallback(() => {
@@ -528,8 +621,22 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     pendingSwitchChannelRef.current = null;
     cancelPrewarm();
     if (!next || next.id === channel.id) return;
+    setError(null);
+    setNetworkSpeedBps(null);
+    const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
+    if (slotChannelIdRef.current[standbySlot] !== next.id) {
+      loadChannelInSlot(standbySlot, next, false);
+    }
+    activateSlot(standbySlot);
     onChannelChange(next);
-  }, [cancelPrewarm, channel.id, clearPendingSwitchTimer, onChannelChange]);
+  }, [
+    activateSlot,
+    cancelPrewarm,
+    channel.id,
+    clearPendingSwitchTimer,
+    loadChannelInSlot,
+    onChannelChange,
+  ]);
 
   const previewSwitchChannel = useCallback(
     (direction: -1 | 1) => {
@@ -560,9 +667,18 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const next = getAdjacentChannel(channel.id, direction);
       if (!next) return;
       showSwitchOsd(next);
+      setError(null);
+      setNetworkSpeedBps(null);
+      const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
+      if (slotChannelIdRef.current[standbySlot] === next.id) {
+        activateSlot(standbySlot);
+      } else {
+        loadChannelInSlot(standbySlot, next, false);
+        activateSlot(standbySlot);
+      }
       onChannelChange(next);
     },
-    [channel.id, getAdjacentChannel, onChannelChange, showSwitchOsd],
+    [activateSlot, channel.id, getAdjacentChannel, loadChannelInSlot, onChannelChange, showSwitchOsd],
   );
 
   const setChannelListPanel = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
@@ -623,15 +739,16 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, []);
 
   const togglePlayPause = useCallback(() => {
-    if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      videoRef.current.play().catch(() => {});
+    const activeVideo = getVideoBySlot(activeSlotRef.current);
+    if (!activeVideo) return;
+    if (activeVideo.paused) {
+      activeVideo.play().catch(() => {});
       setIsPaused(false);
       return;
     }
-    videoRef.current.pause();
+    activeVideo.pause();
     setIsPaused(true);
-  }, []);
+  }, [getVideoBySlot]);
 
   useEffect(() => {
     confirmPressRef.current = createConfirmPressHandler({
@@ -813,12 +930,38 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       }
       clearPendingSwitchTimer();
       cancelPrewarm();
+      neighborWarmInFlightRef.current.forEach((controller) => controller.abort());
+      neighborWarmInFlightRef.current.clear();
+      neighborWarmLruRef.current = [];
+      destroySlot(0);
+      destroySlot(1);
     };
-  }, [cancelPrewarm, clearPendingSwitchTimer]);
+  }, [cancelPrewarm, clearPendingSwitchTimer, destroySlot]);
 
   return (
     <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>
-      <video ref={videoRef} style={videoStyle} autoPlay />
+      <video
+        ref={primaryVideoRef}
+        style={{
+          ...videoStyle,
+          opacity: activeSlot === 0 ? 1 : 0,
+          zIndex: activeSlot === 0 ? 1 : 0,
+          pointerEvents: "none",
+        }}
+        autoPlay
+        muted={activeSlot !== 0}
+      />
+      <video
+        ref={standbyVideoRef}
+        style={{
+          ...videoStyle,
+          opacity: activeSlot === 1 ? 1 : 0,
+          zIndex: activeSlot === 1 ? 1 : 0,
+          pointerEvents: "none",
+        }}
+        autoPlay
+        muted={activeSlot !== 1}
+      />
 
       <div
         style={{

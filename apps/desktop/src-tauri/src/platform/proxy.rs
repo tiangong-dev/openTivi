@@ -1,8 +1,32 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::TcpListener;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
+use tokio::sync::RwLock;
+use url::Url;
 use warp::{Filter, Reply};
+
+const PLAYLIST_CACHE_TTL: Duration = Duration::from_secs(2);
+const PLAYLIST_CACHE_MAX_ENTRIES: usize = 64;
+const HOST_WARM_TTL: Duration = Duration::from_secs(12);
+
+#[derive(Clone)]
+struct ProxyState {
+    client: reqwest::Client,
+    playlist_cache: Arc<RwLock<HashMap<String, CachedPlaylist>>>,
+    host_warm_marks: Arc<RwLock<HashMap<String, Instant>>>,
+}
+
+#[derive(Clone)]
+struct CachedPlaylist {
+    status: u16,
+    content_type: String,
+    body: Vec<u8>,
+    created_at: Instant,
+    expires_at: Instant,
+}
 
 /// Start a local HTTP proxy server for streaming.
 /// Returns the port it's listening on.
@@ -15,11 +39,21 @@ pub fn start_proxy_server() -> u16 {
         .pool_max_idle_per_host(8)
         .build()
         .expect("Failed to create proxy HTTP client");
+    let state = ProxyState {
+        client,
+        playlist_cache: Arc::new(RwLock::new(HashMap::new())),
+        host_warm_marks: Arc::new(RwLock::new(HashMap::new())),
+    };
 
-    let route = warp::path("stream")
+    let stream_route = warp::path("stream")
         .and(warp::query::<HashMap<String, String>>())
-        .and(with_http_client(client))
+        .and(with_proxy_state(state.clone()))
         .and_then(handle_proxy);
+    let warm_route = warp::path("warm")
+        .and(warp::query::<HashMap<String, String>>())
+        .and(with_proxy_state(state))
+        .and_then(handle_warm);
+    let route = stream_route.or(warm_route);
 
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("Failed to create proxy runtime");
@@ -33,7 +67,7 @@ pub fn start_proxy_server() -> u16 {
 
 async fn handle_proxy(
     params: HashMap<String, String>,
-    client: reqwest::Client,
+    state: ProxyState,
 ) -> Result<warp::reply::Response, warp::Rejection> {
     let url = match params.get("url") {
         Some(u) => u.clone(),
@@ -46,7 +80,13 @@ async fn handle_proxy(
         }
     };
 
-    let response = match client.get(&url).send().await {
+    maybe_schedule_host_warm(state.clone(), &url).await;
+
+    if let Some(cached) = get_cached_playlist_response(&state, &url).await {
+        return Ok(cached);
+    }
+
+    let response = match state.client.get(&url).send().await {
         Ok(r) => r,
         Err(e) => {
             return Ok(warp::reply::with_status(
@@ -57,16 +97,18 @@ async fn handle_proxy(
         }
     };
 
-    let status = warp::http::StatusCode::from_u16(response.status().as_u16())
-        .unwrap_or(warp::http::StatusCode::BAD_GATEWAY);
+    let status_u16 = response.status().as_u16();
+    let status =
+        warp::http::StatusCode::from_u16(status_u16).unwrap_or(warp::http::StatusCode::BAD_GATEWAY);
     let content_type = response
         .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("application/octet-stream")
         .to_string();
+    let is_playlist = is_playlist_content_type(&content_type) || is_playlist_url(&url);
 
-    if content_type.contains("mpegurl") || content_type.contains("m3u") {
+    if is_playlist {
         let body = match response.bytes().await {
             Ok(b) => b,
             Err(e) => {
@@ -80,7 +122,20 @@ async fn handle_proxy(
 
         let text = String::from_utf8_lossy(&body);
         let rewritten = rewrite_m3u8(&text, &url);
-        let mut reply = warp::reply::Response::new(warp::hyper::Body::from(rewritten.into_bytes()));
+        let body_bytes = rewritten.into_bytes();
+        cache_playlist(
+            &state,
+            &url,
+            CachedPlaylist {
+                status: status_u16,
+                content_type: content_type.clone(),
+                body: body_bytes.clone(),
+                created_at: Instant::now(),
+                expires_at: Instant::now() + PLAYLIST_CACHE_TTL,
+            },
+        )
+        .await;
+        let mut reply = warp::reply::Response::new(warp::hyper::Body::from(body_bytes));
         *reply.status_mut() = status;
         insert_common_headers(reply.headers_mut(), &content_type);
         return Ok(reply);
@@ -93,10 +148,158 @@ async fn handle_proxy(
     Ok(reply)
 }
 
-fn with_http_client(
-    client: reqwest::Client,
-) -> impl Filter<Extract = (reqwest::Client,), Error = Infallible> + Clone {
-    warp::any().map(move || client.clone())
+async fn handle_warm(
+    params: HashMap<String, String>,
+    state: ProxyState,
+) -> Result<warp::reply::Response, warp::Rejection> {
+    let url = match params.get("url") {
+        Some(u) => u.clone(),
+        None => {
+            return Ok(warp::reply::with_status(
+                "Missing 'url' parameter",
+                warp::http::StatusCode::BAD_REQUEST,
+            )
+            .into_response())
+        }
+    };
+
+    maybe_schedule_host_warm(state.clone(), &url).await;
+    if is_playlist_url(&url) {
+        let _ = warm_playlist_cache(state, url).await;
+    }
+
+    Ok(warp::reply::with_status("", warp::http::StatusCode::NO_CONTENT).into_response())
+}
+
+fn with_proxy_state(
+    state: ProxyState,
+) -> impl Filter<Extract = (ProxyState,), Error = Infallible> + Clone {
+    warp::any().map(move || state.clone())
+}
+
+async fn get_cached_playlist_response(
+    state: &ProxyState,
+    url: &str,
+) -> Option<warp::reply::Response> {
+    let now = Instant::now();
+    {
+        let cache = state.playlist_cache.read().await;
+        if let Some(item) = cache.get(url) {
+            if item.expires_at > now {
+                return Some(build_cached_playlist_response(item));
+            }
+        }
+    }
+    let mut cache = state.playlist_cache.write().await;
+    if let Some(item) = cache.get(url) {
+        if item.expires_at <= now {
+            cache.remove(url);
+        } else {
+            return Some(build_cached_playlist_response(item));
+        }
+    }
+    None
+}
+
+fn build_cached_playlist_response(item: &CachedPlaylist) -> warp::reply::Response {
+    let status = warp::http::StatusCode::from_u16(item.status)
+        .unwrap_or(warp::http::StatusCode::BAD_GATEWAY);
+    let mut reply = warp::reply::Response::new(warp::hyper::Body::from(item.body.clone()));
+    *reply.status_mut() = status;
+    insert_common_headers(reply.headers_mut(), &item.content_type);
+    reply
+}
+
+async fn cache_playlist(state: &ProxyState, url: &str, item: CachedPlaylist) {
+    let mut cache = state.playlist_cache.write().await;
+    cache.insert(url.to_string(), item);
+    if cache.len() <= PLAYLIST_CACHE_MAX_ENTRIES {
+        return;
+    }
+    let mut entries: Vec<(String, Instant)> = cache
+        .iter()
+        .map(|(key, value)| (key.clone(), value.created_at))
+        .collect();
+    entries.sort_by_key(|(_key, created_at)| *created_at);
+    let remove_count = cache.len().saturating_sub(PLAYLIST_CACHE_MAX_ENTRIES);
+    for (key, _created_at) in entries.into_iter().take(remove_count) {
+        cache.remove(&key);
+    }
+}
+
+async fn warm_playlist_cache(state: ProxyState, url: String) -> Result<(), ()> {
+    if get_cached_playlist_response(&state, &url).await.is_some() {
+        return Ok(());
+    }
+    let response = state.client.get(&url).send().await.map_err(|_| ())?;
+    let status = response.status().as_u16();
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    if !is_playlist_content_type(&content_type) && !is_playlist_url(&url) {
+        return Ok(());
+    }
+    let body = response.bytes().await.map_err(|_| ())?;
+    let text = String::from_utf8_lossy(&body);
+    let rewritten = rewrite_m3u8(&text, &url).into_bytes();
+    cache_playlist(
+        &state,
+        &url,
+        CachedPlaylist {
+            status,
+            content_type,
+            body: rewritten,
+            created_at: Instant::now(),
+            expires_at: Instant::now() + PLAYLIST_CACHE_TTL,
+        },
+    )
+    .await;
+    Ok(())
+}
+
+async fn maybe_schedule_host_warm(state: ProxyState, raw_url: &str) {
+    let parsed = match Url::parse(raw_url) {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    let host = match parsed.host_str() {
+        Some(value) => value,
+        None => return,
+    };
+    let port = parsed.port_or_known_default().unwrap_or_default();
+    let host_key = format!("{}://{}:{}", parsed.scheme(), host, port);
+    let now = Instant::now();
+    {
+        let mut marks = state.host_warm_marks.write().await;
+        if let Some(last) = marks.get(&host_key) {
+            if now.duration_since(*last) < HOST_WARM_TTL {
+                return;
+            }
+        }
+        marks.insert(host_key, now);
+    }
+    let origin = if parsed.port().is_some() {
+        format!("{}://{}:{}/", parsed.scheme(), host, port)
+    } else {
+        format!("{}://{}/", parsed.scheme(), host)
+    };
+    let client = state.client.clone();
+    tokio::spawn(async move {
+        let _ = client.head(origin).send().await;
+    });
+}
+
+fn is_playlist_content_type(content_type: &str) -> bool {
+    let lower = content_type.to_ascii_lowercase();
+    lower.contains("mpegurl") || lower.contains("m3u")
+}
+
+fn is_playlist_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.contains(".m3u8") || lower.contains("m3u8")
 }
 
 fn insert_common_headers(headers: &mut warp::http::HeaderMap, content_type: &str) {

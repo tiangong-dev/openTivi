@@ -15,6 +15,7 @@ interface Props<T extends Channel = Channel> {
   onPlay?: (channel: T, allChannels?: T[]) => void;
   onToggleFavorite?: (channel: T) => void;
   renderMeta?: (channel: T) => ReactNode;
+  onMoveBeforeFirst?: () => void;
 }
 
 export function ChannelRowsWithGuide<T extends Channel>({
@@ -23,6 +24,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
   onPlay,
   onToggleFavorite,
   renderMeta,
+  onMoveBeforeFirst,
 }: Props<T>) {
   const [snapshots, setSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [loading, setLoading] = useState(false);
@@ -194,6 +196,11 @@ export function ChannelRowsWithGuide<T extends Channel>({
         return;
       }
       if (key === "ArrowUp") {
+        if (focusedIndex === 0 && onMoveBeforeFirst) {
+          event.preventDefault();
+          onMoveBeforeFirst();
+          return;
+        }
         event.preventDefault();
         focusRowByIndex(focusedIndex - 1);
         return;

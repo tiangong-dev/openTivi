@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
 import { t, type Locale } from "../../lib/i18n";
@@ -16,7 +16,9 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   const [groups, setGroups] = useState<string[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [isSearchEditing, setIsSearchEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadChannels = async () => {
     try {
@@ -58,6 +60,13 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     } catch (_) {}
   };
 
+  const focusSearchNavigationMode = () => {
+    setIsSearchEditing(false);
+    window.setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 0);
+  };
+
   return (
     <div style={{ padding: 24, display: "flex", gap: 16, height: "100%" }}>
       {/* Group sidebar */}
@@ -93,11 +102,25 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
       {/* Channel list */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <input
-          data-tv-navigation-priority="true"
+          ref={searchInputRef}
+          data-tv-navigation-priority={isSearchEditing ? undefined : "true"}
+          data-tv-focusable="true"
           style={searchStyle}
           placeholder={t(locale, "channels.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          onBlur={() => setIsSearchEditing(false)}
+          onKeyDown={(event) => {
+            if (!isSearchEditing && event.key === "Enter") {
+              event.preventDefault();
+              setIsSearchEditing(true);
+              return;
+            }
+            if (isSearchEditing && event.key === "Escape") {
+              event.preventDefault();
+              setIsSearchEditing(false);
+            }
+          }}
         />
 
         {error && <div style={{ color: "var(--danger)", marginTop: 8 }}>{error}</div>}
@@ -114,6 +137,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
             locale={locale}
             onPlay={onPlay}
             onToggleFavorite={toggleFavorite}
+            onMoveBeforeFirst={focusSearchNavigationMode}
           />
         </div>
       </div>

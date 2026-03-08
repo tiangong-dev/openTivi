@@ -30,7 +30,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guideAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelListAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const speedObserverRef = useRef<PerformanceObserver | null>(null);
   const speedFallbackTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playerFocusZoneRef = useRef<"player" | "nav">("player");
   const showChannelListPanelRef = useRef(false);
@@ -38,10 +37,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const channelsRef = useRef<Channel[]>(channels);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
   const channelListItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const pendingSwitchChannelRef = useRef<Channel | null>(null);
-  const pendingSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingSwitchStartedAtRef = useRef(0);
-  const prewarmAbortRef = useRef<AbortController | null>(null);
   const slotReadyRef = useRef<[boolean, boolean]>([false, false]);
   const preferredDirectionRef = useRef<-1 | 1>(1);
   const neighborWarmTsRef = useRef<Map<string, number>>(new Map());
@@ -70,8 +65,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   const GUIDE_AUTO_HIDE_MS = 3500;
   const CHANNEL_LIST_AUTO_HIDE_MS = 5000;
-  const CHANNEL_SWITCH_COMMIT_DELAY_MS = 120;
-  const CHANNEL_SWITCH_READY_WAIT_MAX_MS = 420;
 
   useEffect(() => {
     playerFocusZoneRef.current = playerFocusZone;
@@ -264,7 +257,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     }
 
     setError(null);
-    setNetworkSpeedBps(null);
 
     if (slotChannelIdRef.current[standby] === channel.id) {
       activateSlot(standby);
@@ -413,42 +405,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [epgNow]);
 
   useEffect(() => {
-    if (proxyPort === null) {
-      return;
-    }
-    if (typeof PerformanceObserver === "undefined") {
-      return;
-    }
-    const proxyPrefix = `http://127.0.0.1:${proxyPort}/stream?`;
-    const observer = new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) {
-        if (entry.entryType !== "resource") {
-          continue;
-        }
-        const resource = entry as PerformanceResourceTiming;
-        if (!resource.name.startsWith(proxyPrefix)) {
-          continue;
-        }
-        const bytes = resource.transferSize > 0 ? resource.transferSize : resource.encodedBodySize;
-        const durationMs = resource.duration;
-        if (bytes <= 0 || durationMs <= 0) {
-          continue;
-        }
-        const bitsPerSecond = (bytes * 8 * 1000) / durationMs;
-        setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.65 + bitsPerSecond * 0.35));
-      }
-    });
-    observer.observe({ type: "resource", buffered: false });
-    speedObserverRef.current = observer;
-    return () => {
-      observer.disconnect();
-      if (speedObserverRef.current === observer) {
-        speedObserverRef.current = null;
-      }
-    };
-  }, [proxyPort]);
-
-  useEffect(() => {
     const readDecodedBytes = () => {
       const video = getVideoBySlot(activeSlotRef.current) as (HTMLVideoElement & {
         webkitVideoDecodedByteCount?: number;
@@ -469,7 +425,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         (activeHls as unknown as { bandwidthEstimate?: number } | null)?.bandwidthEstimate ?? 0,
       );
       if (Number.isFinite(hlsEstimate) && hlsEstimate > 0) {
-        setNetworkSpeedBps((prev) => (prev === null ? hlsEstimate : prev * 0.65 + hlsEstimate * 0.35));
+        setNetworkSpeedBps((prev) => (prev === null ? hlsEstimate : prev * 0.4 + hlsEstimate * 0.6));
         return;
       }
 
@@ -488,7 +444,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         return;
       }
       const bitsPerSecond = (deltaBytes * 8 * 1000) / deltaMs;
-      setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.65 + bitsPerSecond * 0.35));
+      setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.4 + bitsPerSecond * 0.6));
     }, 1000);
 
     return () => {
@@ -526,19 +482,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     if (error) setOverlayVisible(true);
   }, [error]);
 
-  const clearPendingSwitchTimer = useCallback(() => {
-    if (pendingSwitchTimerRef.current) {
-      clearTimeout(pendingSwitchTimerRef.current);
-      pendingSwitchTimerRef.current = null;
-    }
-  }, []);
-
-  const cancelPrewarm = useCallback(() => {
-    if (prewarmAbortRef.current) {
-      prewarmAbortRef.current.abort();
-      prewarmAbortRef.current = null;
-    }
-  }, []);
+  const getCurrentPlaybackChannelId = useCallback(() => {
+    return slotChannelIdRef.current[activeSlotRef.current] ?? channel.id;
+  }, [channel.id]);
 
   const showSwitchOsd = useCallback((next: Channel) => {
     setOsdChannel(next);
@@ -564,8 +510,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const cacheMs = 1800;
       const tsMap = neighborWarmTsRef.current;
       const last = tsMap.get(rawUrl) ?? 0;
+      const inflight = neighborWarmInFlightRef.current.has(rawUrl);
       if (!force && now - last < cacheMs) return;
-      if (neighborWarmInFlightRef.current.has(rawUrl)) return;
+      if (inflight) return;
 
       if (neighborWarmInFlightRef.current.size >= 2) {
         const oldest = neighborWarmLruRef.current.shift();
@@ -599,35 +546,27 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   );
 
   const prewarmChannel = useCallback(
-    (next: Channel, forceReload = false) => {
+    (next: Channel) => {
       if (proxyPort === null) return;
-      if (next.id === channel.id) return;
+      const currentPlaybackChannelId = getCurrentPlaybackChannelId();
+      if (next.id === currentPlaybackChannelId) return;
       const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
-      if (forceReload || slotChannelIdRef.current[standbySlot] !== next.id) {
+      if (slotChannelIdRef.current[standbySlot] !== next.id) {
         loadChannelInSlot(standbySlot, next, true);
       }
       setSlotMuted(standbySlot, true);
-      warmProxyUrl(next.streamUrl, true);
-      cancelPrewarm();
-      const controller = new AbortController();
-      prewarmAbortRef.current = controller;
-      const prewarmUrl = `http://127.0.0.1:${proxyPort}/warm?url=${encodeURIComponent(next.streamUrl)}`;
-      void fetch(prewarmUrl, { signal: controller.signal })
-        .catch(() => undefined)
-        .finally(() => {
-          if (prewarmAbortRef.current === controller) prewarmAbortRef.current = null;
-        });
+      warmProxyUrl(next.streamUrl);
     },
-    [cancelPrewarm, channel.id, loadChannelInSlot, proxyPort, setSlotMuted, warmProxyUrl],
+    [getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, warmProxyUrl],
   );
 
   useEffect(() => {
     if (proxyPort === null || channels.length < 2) return;
     const timer = setTimeout(() => {
-      if (pendingSwitchChannelRef.current) return;
       const preferred = preferredDirectionRef.current;
-      const predicted = getAdjacentChannel(channel.id, preferred);
-      const opposite = getAdjacentChannel(channel.id, preferred === 1 ? -1 : 1);
+      const baseChannelId = getCurrentPlaybackChannelId();
+      const predicted = getAdjacentChannel(baseChannelId, preferred);
+      const opposite = getAdjacentChannel(baseChannelId, preferred === 1 ? -1 : 1);
       if (predicted) {
         prewarmChannel(predicted);
       }
@@ -638,110 +577,34 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [
     channel.id,
     channels.length,
+    getCurrentPlaybackChannelId,
     getAdjacentChannel,
     prewarmChannel,
     proxyPort,
     warmProxyUrl,
   ]);
 
-  const commitPendingSwitch = useCallback(() => {
-    const next = pendingSwitchChannelRef.current;
-    if (!next || next.id === channel.id) {
-      clearPendingSwitchTimer();
-      pendingSwitchChannelRef.current = null;
-      pendingSwitchStartedAtRef.current = 0;
-      cancelPrewarm();
-      return;
-    }
-
-    const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
-    if (slotChannelIdRef.current[standbySlot] !== next.id) {
-      loadChannelInSlot(standbySlot, next, true);
-      setSlotMuted(standbySlot, true);
-    }
-
-    const standbyReady =
-      slotChannelIdRef.current[standbySlot] === next.id && slotReadyRef.current[standbySlot];
-    const waitedMs = Date.now() - pendingSwitchStartedAtRef.current;
-    if (!standbyReady && waitedMs < CHANNEL_SWITCH_READY_WAIT_MAX_MS) {
-      clearPendingSwitchTimer();
-      pendingSwitchTimerRef.current = setTimeout(() => {
-        commitPendingSwitch();
-      }, 45);
-      return;
-    }
-
-    clearPendingSwitchTimer();
-    pendingSwitchChannelRef.current = null;
-    pendingSwitchStartedAtRef.current = 0;
-    cancelPrewarm();
-    setError(null);
-    setNetworkSpeedBps(null);
-    activateSlot(standbySlot);
-    onChannelChange(next);
-  }, [
-    CHANNEL_SWITCH_READY_WAIT_MAX_MS,
-    activateSlot,
-    cancelPrewarm,
-    channel.id,
-    clearPendingSwitchTimer,
-    loadChannelInSlot,
-    onChannelChange,
-    setSlotMuted,
-  ]);
-
-  const previewSwitchChannel = useCallback(
-    (direction: -1 | 1) => {
-      preferredDirectionRef.current = direction;
-      const baseChannelId = pendingSwitchChannelRef.current?.id ?? channel.id;
-      const next = getAdjacentChannel(baseChannelId, direction);
-      if (!next) return;
-      if (next.id === channel.id) {
-        pendingSwitchChannelRef.current = null;
-        pendingSwitchStartedAtRef.current = 0;
-        clearPendingSwitchTimer();
-        cancelPrewarm();
-        return;
-      }
-      pendingSwitchChannelRef.current = next;
-      pendingSwitchStartedAtRef.current = Date.now();
-      showSwitchOsd(next);
-      prewarmChannel(next);
-      clearPendingSwitchTimer();
-      pendingSwitchTimerRef.current = setTimeout(() => {
-        commitPendingSwitch();
-      }, CHANNEL_SWITCH_COMMIT_DELAY_MS);
-    },
-    [
-      CHANNEL_SWITCH_COMMIT_DELAY_MS,
-      channel.id,
-      cancelPrewarm,
-      clearPendingSwitchTimer,
-      commitPendingSwitch,
-      getAdjacentChannel,
-      prewarmChannel,
-      showSwitchOsd,
-    ],
-  );
-
   const switchChannel = useCallback(
     (direction: -1 | 1) => {
       preferredDirectionRef.current = direction;
-      const next = getAdjacentChannel(channel.id, direction);
-      if (!next) return;
+      const baseChannelId = getCurrentPlaybackChannelId();
+      const next = getAdjacentChannel(baseChannelId, direction);
+      if (!next || next.id === baseChannelId) return;
       showSwitchOsd(next);
-      pendingSwitchChannelRef.current = next;
-      pendingSwitchStartedAtRef.current = Date.now();
-      prewarmChannel(next);
-      clearPendingSwitchTimer();
-      commitPendingSwitch();
+      const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
+      if (slotChannelIdRef.current[standbySlot] !== next.id) {
+        loadChannelInSlot(standbySlot, next, false);
+      }
+      setError(null);
+      activateSlot(standbySlot);
+      onChannelChange(next);
     },
     [
-      channel.id,
-      clearPendingSwitchTimer,
-      commitPendingSwitch,
+      activateSlot,
       getAdjacentChannel,
-      prewarmChannel,
+      getCurrentPlaybackChannelId,
+      loadChannelInSlot,
+      onChannelChange,
       showSwitchOsd,
     ],
   );
@@ -911,7 +774,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
             return (prev - 1 + size) % size;
           });
         } else {
-          previewSwitchChannel(-1);
+          switchChannel(-1);
         }
         showOverlay();
         return;
@@ -925,7 +788,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
             return (prev + 1) % size;
           });
         } else {
-          previewSwitchChannel(1);
+          switchChannel(1);
         }
         showOverlay();
         return;
@@ -953,13 +816,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         confirmPressRef.current?.onKeyUp();
         return;
       }
-      if (
-        (intent === "MoveUp" || intent === "MoveDown") &&
-        !showChannelListPanelRef.current
-      ) {
-        e.preventDefault();
-        commitPendingSwitch();
-      }
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
@@ -975,18 +831,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     setChannelListPanel,
     setFocusedIndex,
     showOverlay,
-    previewSwitchChannel,
-    commitPendingSwitch,
     switchChannel,
     touchChannelListAutoHide,
   ]);
-
-  useEffect(() => {
-    pendingSwitchChannelRef.current = null;
-    pendingSwitchStartedAtRef.current = 0;
-    clearPendingSwitchTimer();
-    cancelPrewarm();
-  }, [cancelPrewarm, channel.id, clearPendingSwitchTimer]);
 
   useEffect(() => {
     return () => {
@@ -994,16 +841,13 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         clearTimeout(channelListAutoHideTimerRef.current);
         channelListAutoHideTimerRef.current = null;
       }
-      pendingSwitchStartedAtRef.current = 0;
-      clearPendingSwitchTimer();
-      cancelPrewarm();
       neighborWarmInFlightRef.current.forEach((controller) => controller.abort());
       neighborWarmInFlightRef.current.clear();
       neighborWarmLruRef.current = [];
       destroySlot(0);
       destroySlot(1);
     };
-  }, [cancelPrewarm, clearPendingSwitchTimer, destroySlot]);
+  }, [destroySlot]);
 
   return (
     <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>

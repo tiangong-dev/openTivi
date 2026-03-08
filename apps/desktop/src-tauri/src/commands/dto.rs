@@ -181,3 +181,13 @@ pub struct PlaybackSourceDto {
     pub stream_url: String,
     pub logo_url: Option<String>,
 }
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUpdateInfoDto {
+    pub current_version: String,
+    pub latest_version: String,
+    pub has_update: bool,
+    pub release_url: String,
+    pub published_at: Option<String>,
+}

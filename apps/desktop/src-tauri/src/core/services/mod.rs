@@ -7,3 +7,4 @@ pub mod playback_service;
 pub mod recents_service;
 pub mod settings_service;
 pub mod source_service;
+pub mod update_service;

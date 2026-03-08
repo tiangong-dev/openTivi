@@ -1,0 +1,121 @@
+name: Desktop Release Build
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual test build version (e.g. 0.1.1-beta.1). Empty means current version."
+        required: false
+        type: string
+      publish_prerelease:
+        description: "Create a GitHub prerelease for manual build"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  APP_DIR: apps/desktop
+  BUNDLE_DIR: apps/desktop/src-tauri/target/release/bundle
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            patchelf
+
+      - name: Resolve target version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            TARGET_VERSION="${GITHUB_REF_NAME}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            TARGET_VERSION="${{ inputs.version }}"
+          else
+            TARGET_VERSION="$(bash scripts/version_manager.sh current)"
+          fi
+
+          bash scripts/version_manager.sh sync --version "${TARGET_VERSION}"
+          bash scripts/version_manager.sh check
+
+          NORMALIZED_VERSION="$(bash scripts/version_manager.sh current)"
+          echo "value=${NORMALIZED_VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install dependencies
+        run: pnpm --dir "${APP_DIR}" install --frozen-lockfile
+
+      - name: Build desktop bundle
+        run: pnpm --dir "${APP_DIR}" tauri build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opentivi-${{ steps.version.outputs.value }}-linux
+          path: |
+            ${{ env.BUNDLE_DIR }}/**/*
+          if-no-files-found: error
+
+      - name: Publish release from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ${{ env.BUNDLE_DIR }}/**/*.AppImage
+            ${{ env.BUNDLE_DIR }}/**/*.deb
+            ${{ env.BUNDLE_DIR }}/**/*.rpm
+            ${{ env.BUNDLE_DIR }}/**/*.dmg
+            ${{ env.BUNDLE_DIR }}/**/*.msi
+            ${{ env.BUNDLE_DIR }}/**/*.exe
+
+      - name: Publish prerelease from manual dispatch
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.value }}-test.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Test Build v${{ steps.version.outputs.value }} #${{ github.run_number }}
+          prerelease: true
+          generate_release_notes: false
+          files: |
+            ${{ env.BUNDLE_DIR }}/**/*.AppImage
+            ${{ env.BUNDLE_DIR }}/**/*.deb
+            ${{ env.BUNDLE_DIR }}/**/*.rpm
+            ${{ env.BUNDLE_DIR }}/**/*.dmg
+            ${{ env.BUNDLE_DIR }}/**/*.msi
+            ${{ env.BUNDLE_DIR }}/**/*.exe

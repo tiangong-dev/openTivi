@@ -123,5 +123,15 @@
   "settings.edit.hint": "Use Left/Right or buttons to change value.",
   "settings.edit.decrease": "Decrease",
   "settings.edit.increase": "Increase",
-  "settings.edit.done": "Done"
+  "settings.edit.done": "Done",
+  "settings.update.title": "App Update",
+  "settings.update.checkNow": "Check now",
+  "settings.update.checking": "Checking...",
+  "settings.update.currentVersion": "Current: v{version}",
+  "settings.update.latestVersion": "Latest: v{version}",
+  "settings.update.available": "New version available: v{version}",
+  "settings.update.upToDate": "You are on the latest version.",
+  "settings.update.publishedAt": "Published at: {value}",
+  "settings.update.copyLink": "Copy download link",
+  "settings.update.copied": "Link copied"
 }

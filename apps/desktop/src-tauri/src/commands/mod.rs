@@ -6,3 +6,4 @@ pub mod playback;
 pub mod recents;
 pub mod settings;
 pub mod sources;
+pub mod update;

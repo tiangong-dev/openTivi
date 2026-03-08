@@ -68,3 +68,11 @@ export interface Setting {
   value: unknown;
   updatedAt: string;
 }
+
+export interface AppUpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  releaseUrl: string;
+  publishedAt?: string;
+}

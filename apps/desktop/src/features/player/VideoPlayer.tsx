@@ -43,6 +43,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const pendingSwitchStartedAtRef = useRef(0);
   const prewarmAbortRef = useRef<AbortController | null>(null);
   const slotReadyRef = useRef<[boolean, boolean]>([false, false]);
+  const preferredDirectionRef = useRef<-1 | 1>(1);
   const neighborWarmTsRef = useRef<Map<string, number>>(new Map());
   const neighborWarmInFlightRef = useRef<Map<string, AbortController>>(new Map());
   const neighborWarmLruRef = useRef<string[]>([]);
@@ -597,23 +598,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     [proxyPort],
   );
 
-  useEffect(() => {
-    if (proxyPort === null || channels.length < 2) return;
-    const timer = setTimeout(() => {
-      const prev = getAdjacentChannel(channel.id, -1);
-      const next = getAdjacentChannel(channel.id, 1);
-      if (prev) warmProxyUrl(prev.streamUrl);
-      if (next) warmProxyUrl(next.streamUrl);
-    }, 320);
-    return () => clearTimeout(timer);
-  }, [channel.id, channels.length, getAdjacentChannel, proxyPort, warmProxyUrl]);
-
   const prewarmChannel = useCallback(
-    (next: Channel) => {
+    (next: Channel, forceReload = false) => {
       if (proxyPort === null) return;
       if (next.id === channel.id) return;
       const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
-      if (slotChannelIdRef.current[standbySlot] !== next.id) {
+      if (forceReload || slotChannelIdRef.current[standbySlot] !== next.id) {
         loadChannelInSlot(standbySlot, next, true);
       }
       setSlotMuted(standbySlot, true);
@@ -630,6 +620,29 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     },
     [cancelPrewarm, channel.id, loadChannelInSlot, proxyPort, setSlotMuted, warmProxyUrl],
   );
+
+  useEffect(() => {
+    if (proxyPort === null || channels.length < 2) return;
+    const timer = setTimeout(() => {
+      if (pendingSwitchChannelRef.current) return;
+      const preferred = preferredDirectionRef.current;
+      const predicted = getAdjacentChannel(channel.id, preferred);
+      const opposite = getAdjacentChannel(channel.id, preferred === 1 ? -1 : 1);
+      if (predicted) {
+        prewarmChannel(predicted);
+      }
+      if (predicted) warmProxyUrl(predicted.streamUrl);
+      if (opposite) warmProxyUrl(opposite.streamUrl);
+    }, 320);
+    return () => clearTimeout(timer);
+  }, [
+    channel.id,
+    channels.length,
+    getAdjacentChannel,
+    prewarmChannel,
+    proxyPort,
+    warmProxyUrl,
+  ]);
 
   const commitPendingSwitch = useCallback(() => {
     const next = pendingSwitchChannelRef.current;
@@ -679,6 +692,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   const previewSwitchChannel = useCallback(
     (direction: -1 | 1) => {
+      preferredDirectionRef.current = direction;
       const baseChannelId = pendingSwitchChannelRef.current?.id ?? channel.id;
       const next = getAdjacentChannel(baseChannelId, direction);
       if (!next) return;
@@ -712,21 +726,24 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   const switchChannel = useCallback(
     (direction: -1 | 1) => {
+      preferredDirectionRef.current = direction;
       const next = getAdjacentChannel(channel.id, direction);
       if (!next) return;
       showSwitchOsd(next);
-      setError(null);
-      setNetworkSpeedBps(null);
-      const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
-      if (slotChannelIdRef.current[standbySlot] === next.id) {
-        activateSlot(standbySlot);
-      } else {
-        loadChannelInSlot(standbySlot, next, false);
-        activateSlot(standbySlot);
-      }
-      onChannelChange(next);
+      pendingSwitchChannelRef.current = next;
+      pendingSwitchStartedAtRef.current = Date.now();
+      prewarmChannel(next);
+      clearPendingSwitchTimer();
+      commitPendingSwitch();
     },
-    [activateSlot, channel.id, getAdjacentChannel, loadChannelInSlot, onChannelChange, showSwitchOsd],
+    [
+      channel.id,
+      clearPendingSwitchTimer,
+      commitPendingSwitch,
+      getAdjacentChannel,
+      prewarmChannel,
+      showSwitchOsd,
+    ],
   );
 
   const setChannelListPanel = useCallback((next: boolean | ((prev: boolean) => boolean)) => {

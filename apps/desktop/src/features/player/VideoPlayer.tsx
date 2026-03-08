@@ -6,6 +6,43 @@ import { t, type Locale } from "../../lib/i18n";
 import { tauriInvoke } from "../../lib/tauri";
 import { createConfirmPressHandler, mapKeyToTvIntent } from "../../lib/tvInput";
 import type { Channel, ChannelEpgSnapshot, EpgProgram } from "../../types/api";
+import {
+  buildNeighborWarmPlan,
+  getAdjacentChannel,
+  getStandbySlot,
+  resolveCurrentPlaybackChannelId,
+  shouldLoadInStandby,
+} from "./playerSwitchCore";
+import {
+  formatNetworkSpeed,
+  formatTime,
+  getGuidePrograms,
+  getPlaybackKind,
+  parseXmltvDate,
+  toProxyUrl,
+  type PlaybackKind,
+} from "./playerUtils";
+import {
+  bottomBarStyle,
+  channelListItemStyle,
+  channelListPanelStyle,
+  channelProgramNextStyle,
+  channelProgramNowStyle,
+  containerStyle,
+  errorOverlayStyle,
+  guideHeaderStyle,
+  guideHintStyle,
+  guideItemStyle,
+  guidePanelStyle,
+  networkSpeedStyle,
+  osdStyle,
+  overlayBtnStyle,
+  pauseIndicatorStyle,
+  progressBarStyle,
+  progressTrackStyle,
+  topBarStyle,
+  videoStyle,
+} from "./playerStyles";
 
 interface Props {
   channel: Channel;
@@ -483,7 +520,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [error]);
 
   const getCurrentPlaybackChannelId = useCallback(() => {
-    return slotChannelIdRef.current[activeSlotRef.current] ?? channel.id;
+    return resolveCurrentPlaybackChannelId(slotChannelIdRef.current, activeSlotRef.current, channel.id);
   }, [channel.id]);
 
   const showSwitchOsd = useCallback((next: Channel) => {
@@ -491,17 +528,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     if (osdTimerRef.current) clearTimeout(osdTimerRef.current);
     osdTimerRef.current = setTimeout(() => setOsdChannel(null), 2000);
   }, []);
-
-  const getAdjacentChannel = useCallback(
-    (baseChannelId: number, direction: -1 | 1): Channel | null => {
-      if (channels.length === 0) return null;
-      const idx = channels.findIndex((c) => c.id === baseChannelId);
-      if (idx === -1) return null;
-      const nextIdx = (idx + direction + channels.length) % channels.length;
-      return channels[nextIdx] ?? null;
-    },
-    [channels],
-  );
 
   const warmProxyUrl = useCallback(
     (rawUrl: string, force = false) => {
@@ -550,8 +576,8 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       if (proxyPort === null) return;
       const currentPlaybackChannelId = getCurrentPlaybackChannelId();
       if (next.id === currentPlaybackChannelId) return;
-      const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
-      if (slotChannelIdRef.current[standbySlot] !== next.id) {
+      const standbySlot = getStandbySlot(activeSlotRef.current);
+      if (shouldLoadInStandby(slotChannelIdRef.current[standbySlot], next.id)) {
         loadChannelInSlot(standbySlot, next, true);
       }
       setSlotMuted(standbySlot, true);
@@ -565,20 +591,20 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     const timer = setTimeout(() => {
       const preferred = preferredDirectionRef.current;
       const baseChannelId = getCurrentPlaybackChannelId();
-      const predicted = getAdjacentChannel(baseChannelId, preferred);
-      const opposite = getAdjacentChannel(baseChannelId, preferred === 1 ? -1 : 1);
+      const { predicted, warmTargets } = buildNeighborWarmPlan(channels, baseChannelId, preferred);
       if (predicted) {
         prewarmChannel(predicted);
       }
-      if (predicted) warmProxyUrl(predicted.streamUrl);
-      if (opposite) warmProxyUrl(opposite.streamUrl);
+      for (const target of warmTargets) {
+        warmProxyUrl(target.streamUrl);
+      }
     }, 320);
     return () => clearTimeout(timer);
   }, [
     channel.id,
     channels.length,
+    channels,
     getCurrentPlaybackChannelId,
-    getAdjacentChannel,
     prewarmChannel,
     proxyPort,
     warmProxyUrl,
@@ -588,11 +614,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     (direction: -1 | 1) => {
       preferredDirectionRef.current = direction;
       const baseChannelId = getCurrentPlaybackChannelId();
-      const next = getAdjacentChannel(baseChannelId, direction);
+      const next = getAdjacentChannel(channels, baseChannelId, direction);
       if (!next || next.id === baseChannelId) return;
       showSwitchOsd(next);
-      const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
-      if (slotChannelIdRef.current[standbySlot] !== next.id) {
+      const standbySlot = getStandbySlot(activeSlotRef.current);
+      if (shouldLoadInStandby(slotChannelIdRef.current[standbySlot], next.id)) {
         loadChannelInSlot(standbySlot, next, false);
       }
       setError(null);
@@ -601,7 +627,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     },
     [
       activateSlot,
-      getAdjacentChannel,
+      channels,
       getCurrentPlaybackChannelId,
       loadChannelInSlot,
       onChannelChange,
@@ -1117,263 +1143,3 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   );
 }
 
-type PlaybackKind = "hls" | "mpegts" | "native";
-
-function parseXmltvDate(raw: string): number | null {
-  const match = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-]\d{4}))?/);
-  if (!match) {
-    const fallback = Date.parse(raw);
-    return Number.isNaN(fallback) ? null : fallback;
-  }
-  const [, y, mo, d, h, mi, s, offset] = match;
-  const tz = offset ? `${offset.slice(0, 3)}:${offset.slice(3)}` : "Z";
-  const iso = `${y}-${mo}-${d}T${h}:${mi}:${s}${tz}`;
-  const ts = Date.parse(iso);
-  return Number.isNaN(ts) ? null : ts;
-}
-
-function formatTime(value: string): string {
-  const ts = parseXmltvDate(value);
-  if (ts === null) return value;
-  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatNetworkSpeed(bitsPerSecond: number): string {
-  if (bitsPerSecond >= 1_000_000) {
-    return `${(bitsPerSecond / 1_000_000).toFixed(2)} Mbps`;
-  }
-  return `${(bitsPerSecond / 1_000).toFixed(1)} Kbps`;
-}
-
-function getGuidePrograms(programs: EpgProgram[]): EpgProgram[] {
-  const now = Date.now();
-  const upcoming = programs.filter((p) => {
-    const end = parseXmltvDate(p.endAt);
-    return end !== null && end >= now - 15 * 60 * 1000;
-  });
-  return (upcoming.length > 0 ? upcoming : programs).slice(0, 12);
-}
-
-function toProxyUrl(originalUrl: string, port: number): string {
-  return `http://127.0.0.1:${port}/stream?url=${encodeURIComponent(originalUrl)}`;
-}
-
-function isHls(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.includes(".m3u8") || lower.includes("format=m3u8");
-}
-
-function isMpegTs(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.endsWith(".ts") || lower.includes("container=ts");
-}
-
-function getPlaybackKind(url: string): PlaybackKind {
-  if (isHls(url)) return "hls";
-  if (isMpegTs(url)) return "mpegts";
-  return "native";
-}
-
-const containerStyle: React.CSSProperties = {
-  position: "relative",
-  width: "100%",
-  height: "100%",
-  backgroundColor: "#000",
-  overflow: "hidden",
-  cursor: "default",
-};
-
-const videoStyle: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  width: "100%",
-  height: "100%",
-  objectFit: "contain",
-  backgroundColor: "#000",
-};
-
-const topBarStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 0,
-  left: 0,
-  right: 0,
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "16px 20px",
-  background: "linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%)",
-  color: "#fff",
-  transition: "opacity 0.3s ease",
-  zIndex: 10,
-};
-
-const bottomBarStyle: React.CSSProperties = {
-  position: "absolute",
-  bottom: 0,
-  left: 0,
-  right: 0,
-  padding: "16px 20px",
-  background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)",
-  color: "#fff",
-  transition: "opacity 0.3s ease",
-  zIndex: 10,
-};
-
-const guidePanelStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 72,
-  right: 12,
-  bottom: 92,
-  width: 340,
-  maxWidth: "40vw",
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  backgroundColor: "rgba(10,10,10,0.92)",
-  backdropFilter: "blur(8px)",
-  color: "var(--text-primary)",
-  display: "flex",
-  flexDirection: "column",
-  padding: 10,
-  gap: 8,
-  zIndex: 12,
-};
-
-const channelListPanelStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 72,
-  left: 12,
-  bottom: 92,
-  width: 320,
-  maxWidth: "38vw",
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  backgroundColor: "rgba(20,20,20,0.78)",
-  backdropFilter: "blur(8px)",
-  color: "var(--text-primary)",
-  display: "flex",
-  flexDirection: "column",
-  padding: 10,
-  gap: 8,
-  zIndex: 12,
-};
-
-const guideHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  fontSize: 13,
-  fontWeight: 600,
-};
-
-const guideHintStyle: React.CSSProperties = {
-  color: "var(--text-secondary)",
-  fontSize: 12,
-};
-
-const guideItemStyle: React.CSSProperties = {
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  padding: "6px 8px",
-};
-
-const channelListItemStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  width: "100%",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  background: "transparent",
-  color: "var(--text-primary)",
-  padding: "7px 8px",
-  fontSize: 13,
-  cursor: "pointer",
-};
-
-const channelProgramNowStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: "#cbd5e1",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-};
-
-const channelProgramNextStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: "var(--text-secondary)",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-};
-
-const overlayBtnStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.15)",
-  backdropFilter: "blur(8px)",
-  border: "none",
-  color: "#fff",
-  width: 36,
-  height: 36,
-  borderRadius: "50%",
-  cursor: "pointer",
-  fontSize: 14,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const progressTrackStyle: React.CSSProperties = {
-  width: "100%",
-  height: 3,
-  backgroundColor: "rgba(255,255,255,0.2)",
-  borderRadius: 2,
-  marginTop: 8,
-  overflow: "hidden",
-};
-
-const progressBarStyle: React.CSSProperties = {
-  height: "100%",
-  backgroundColor: "#3b82f6",
-  borderRadius: 2,
-  transition: "width 0.5s ease",
-};
-
-const networkSpeedStyle: React.CSSProperties = {
-  marginTop: 6,
-  fontSize: 12,
-  color: "rgba(255,255,255,0.75)",
-};
-
-const errorOverlayStyle: React.CSSProperties = {
-  position: "absolute",
-  bottom: 80,
-  left: "50%",
-  transform: "translateX(-50%)",
-  padding: "10px 20px",
-  backgroundColor: "rgba(0,0,0,0.8)",
-  backdropFilter: "blur(8px)",
-  borderRadius: 8,
-  zIndex: 20,
-};
-
-const pauseIndicatorStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  fontSize: 64,
-  color: "rgba(255,255,255,0.7)",
-  pointerEvents: "none",
-  zIndex: 15,
-};
-
-const osdStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  textAlign: "center",
-  color: "#fff",
-  textShadow: "0 2px 12px rgba(0,0,0,0.8)",
-  pointerEvents: "none",
-  zIndex: 15,
-  animation: "fadeIn 0.2s ease",
-};

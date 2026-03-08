@@ -847,6 +847,16 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
                   <span style={{ opacity: 0.8, marginRight: 8, minWidth: 36, textAlign: "right", flexShrink: 0 }}>
                     {item.channelNumber ?? idx + 1}
                   </span>
+                  {item.logoUrl && (
+                    <img
+                      src={item.logoUrl}
+                      alt=""
+                      style={{ width: 24, height: 24, borderRadius: 4, objectFit: "contain", marginRight: 8, flexShrink: 0 }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  )}
                   <div style={{ minWidth: 0, textAlign: "left", display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
                     <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {item.name}
@@ -878,7 +888,19 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           {osdChannel.channelNumber && (
             <div style={{ fontSize: 48, fontWeight: 700, opacity: 0.9 }}>{osdChannel.channelNumber}</div>
           )}
-          <div style={{ fontSize: 24, fontWeight: 600 }}>{osdChannel.name}</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+            {osdChannel.logoUrl && (
+              <img
+                src={osdChannel.logoUrl}
+                alt=""
+                style={{ width: 36, height: 36, borderRadius: 4, objectFit: "contain", flexShrink: 0 }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+            )}
+            <div style={{ fontSize: 24, fontWeight: 600 }}>{osdChannel.name}</div>
+          </div>
         </div>
       )}
     </div>

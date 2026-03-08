@@ -200,12 +200,33 @@ function GuideTimeline({
     const end = parseXmltvDate(program.endAt);
     return start !== null && end !== null && start <= currentTs && currentTs < end;
   });
+  const splitPoints = timelinePrograms
+    .map((program, index) => {
+      if (range <= 0) return null;
+      const start = parseXmltvDate(program.startAt);
+      if (start === null) return null;
+      const ratio = clamp((start - windowStart) / range, 0, 1);
+      if (ratio <= 0 || ratio >= 1) return null;
+      return {
+        key: `${program.startAt}-${index}`,
+        ratio,
+        label: formatTime(program.startAt),
+      };
+    })
+    .filter((point): point is NonNullable<typeof point> => Boolean(point))
+    .sort((a, b) => a.ratio - b.ratio)
+    .filter((point, index, list) => index === 0 || Math.abs(point.ratio - list[index - 1].ratio) > 0.003);
   const progressBlock = currentProgram
     ? calcBlock(parseXmltvDate(currentProgram.startAt), currentTs, windowStart, windowEnd)
     : null;
 
   return (
     <div style={timelineWrapStyle}>
+      {splitPoints.map((point) => (
+        <div key={`label-${point.key}`} style={{ ...timelineSplitLabelStyle, left: `${(point.ratio * 100).toFixed(2)}%` }}>
+          {point.label}
+        </div>
+      ))}
       <div style={timelineStyle}>
         {segments.map((segment) => (
           <div
@@ -224,6 +245,9 @@ function GuideTimeline({
             </div>
           </div>
         ))}
+        {splitPoints.map((point) => (
+          <div key={`line-${point.key}`} style={{ ...timelineSplitStyle, left: `${(point.ratio * 100).toFixed(2)}%` }} />
+        ))}
         {progressBlock ? (
           <div
             style={{
@@ -237,6 +261,12 @@ function GuideTimeline({
       </div>
     </div>
   );
+}
+
+function formatTime(raw: string): string {
+  const ts = parseXmltvDate(raw);
+  if (ts === null) return raw;
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function parseXmltvDate(raw: string): number | null {
@@ -330,6 +360,27 @@ const timelineProgressStyle: React.CSSProperties = {
   backgroundColor: "#2563eb2f",
   pointerEvents: "none",
   zIndex: 0,
+};
+
+const timelineSplitStyle: React.CSSProperties = {
+  position: "absolute",
+  top: 0,
+  bottom: 0,
+  width: 0,
+  borderLeft: "1px solid #cbd5e1aa",
+  pointerEvents: "none",
+};
+
+const timelineSplitLabelStyle: React.CSSProperties = {
+  position: "absolute",
+  top: -9,
+  fontSize: 9,
+  color: "#cbd5e1",
+  whiteSpace: "nowrap",
+  opacity: 0.8,
+  transform: "translateX(4px)",
+  pointerEvents: "none",
+  zIndex: 3,
 };
 
 const timelineCursorStyle: React.CSSProperties = {

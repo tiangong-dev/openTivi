@@ -68,6 +68,10 @@
   "sources.action.delete": "Delete",
   "sources.add.title": "Add Source",
   "sources.empty": "No sources yet. Press \"Add Source\" to import one.",
+  "sources.deleteConfirm.title": "Delete Source",
+  "sources.deleteConfirm.message": "Are you sure you want to delete \"{name}\"? This action cannot be undone.",
+  "sources.deleteConfirm.cancel": "Cancel",
+  "sources.deleteConfirm.confirm": "Delete",
   "sources.edit.title": "Edit Source",
   "sources.edit.name": "Name",
   "sources.edit.location": "Location",
@@ -114,5 +118,10 @@
   "settings.option.minutes": "{minutes} min",
   "settings.value.on": "On",
   "settings.value.off": "Off",
-  "settings.hint.tv": "Use Up/Down to select, Enter/Right to change, Left to return."
+  "settings.hint.tv": "Use Up/Down to select, Enter to edit, Left to return.",
+  "settings.edit.title": "Edit {label}",
+  "settings.edit.hint": "Use Left/Right or buttons to change value.",
+  "settings.edit.decrease": "Decrease",
+  "settings.edit.increase": "Increase",
+  "settings.edit.done": "Done"
 }

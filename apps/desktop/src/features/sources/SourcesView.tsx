@@ -19,6 +19,8 @@ export function SourcesView({ locale }: Props) {
   const [savingEdit, setSavingEdit] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [editing, setEditing] = useState<EditSourceDraft | null>(null);
+  const [deleteConfirmSource, setDeleteConfirmSource] = useState<Source | null>(null);
+  const [deleteConfirmAction, setDeleteConfirmAction] = useState<"cancel" | "delete">("cancel");
   const [focusedSourceIndex, setFocusedSourceIndex] = useState(0);
   const [focusTarget, setFocusTarget] = useState<SourceFocusTarget>("add");
   const [domFocusedSourceId, setDomFocusedSourceId] = useState<number | null>(null);
@@ -26,6 +28,14 @@ export function SourcesView({ locale }: Props) {
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const refreshingSourceIds = useRef<Set<number>>(new Set());
   const addButtonRef = useRef<HTMLButtonElement | null>(null);
+  const addTabRefs = useRef<Record<ImportTab, HTMLButtonElement | null>>({
+    m3u: null,
+    xtream: null,
+    xmltv: null,
+  });
+  const addModalFirstInputRef = useRef<HTMLInputElement | null>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
+  const deleteConfirmRef = useRef<HTMLButtonElement | null>(null);
   const sourceRowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
 
   const loadSources = async () => {
@@ -70,6 +80,19 @@ export function SourcesView({ locale }: Props) {
     rowNode?.scrollIntoView({ block: "nearest" });
   };
 
+  const openDeleteConfirm = (source: Source) => {
+    setDeleteConfirmSource(source);
+    setDeleteConfirmAction("cancel");
+  };
+
+  const executeDeleteConfirmed = async () => {
+    if (!deleteConfirmSource) return;
+    const targetId = deleteConfirmSource.id;
+    setDeleteConfirmSource(null);
+    await handleDelete(targetId);
+    focusAddButton();
+  };
+
   useEffect(() => {
     const onZoneChange = (event: Event) => {
       const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
@@ -103,9 +126,52 @@ export function SourcesView({ locale }: Props) {
       if (detail?.view && detail.view !== "sources") {
         return;
       }
-      if (showAddModal || editing) return;
       const key = detail?.key;
       if (!key) return;
+      if (deleteConfirmSource) {
+        if (key === "ArrowLeft" || key === "ArrowRight") {
+          event.preventDefault();
+          setDeleteConfirmAction((prev) => (prev === "cancel" ? "delete" : "cancel"));
+          return;
+        }
+        if (key === "Enter" || key === " ") {
+          event.preventDefault();
+          if (deleteConfirmAction === "delete") {
+            void executeDeleteConfirmed();
+          } else {
+            setDeleteConfirmSource(null);
+            focusAddButton();
+          }
+          return;
+        }
+        return;
+      }
+
+      if (showAddModal) {
+        if (key === "ArrowLeft" || key === "ArrowRight") {
+          event.preventDefault();
+          const tabs: ImportTab[] = ["m3u", "xtream", "xmltv"];
+          const currentIndex = tabs.findIndex((tab) => tab === activeTab);
+          const direction = key === "ArrowRight" ? 1 : -1;
+          const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
+          const nextTab = tabs[nextIndex];
+          setActiveTab(nextTab);
+          window.setTimeout(() => addTabRefs.current[nextTab]?.focus(), 0);
+          return;
+        }
+        if (key === "ArrowDown" || key === "Enter" || key === " ") {
+          event.preventDefault();
+          addModalFirstInputRef.current?.focus();
+          return;
+        }
+        if (key === "ArrowUp") {
+          event.preventDefault();
+          addTabRefs.current[activeTab]?.focus();
+        }
+        return;
+      }
+
+      if (editing) return;
 
       if (key === "ArrowDown") {
         event.preventDefault();
@@ -158,7 +224,7 @@ export function SourcesView({ locale }: Props) {
 
       if (key === "Delete" || key === "Backspace") {
         event.preventDefault();
-        void handleDelete(current.id);
+        openDeleteConfirm(current);
         return;
       }
       if (key === "r" || key === "R") {
@@ -173,14 +239,17 @@ export function SourcesView({ locale }: Props) {
       window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
       window.removeEventListener("tv-content-key", onContentKey as EventListener);
     };
-  }, [editing, focusTarget, focusedSourceIndex, showAddModal, sources]);
+  }, [activeTab, deleteConfirmAction, deleteConfirmSource, editing, focusTarget, focusedSourceIndex, showAddModal, sources]);
 
   useEffect(() => {
-    if (!showAddModal && !editing) return;
+    if (!showAddModal && !editing && !deleteConfirmSource) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      if (editing) {
+      if (deleteConfirmSource) {
+        setDeleteConfirmSource(null);
+        focusAddButton();
+      } else if (editing) {
         setEditing(null);
       } else {
         setShowAddModal(false);
@@ -191,7 +260,23 @@ export function SourcesView({ locale }: Props) {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [editing, showAddModal]);
+  }, [deleteConfirmSource, editing, showAddModal]);
+
+  useEffect(() => {
+    if (!showAddModal) return;
+    window.setTimeout(() => addTabRefs.current[activeTab]?.focus(), 0);
+  }, [showAddModal, activeTab]);
+
+  useEffect(() => {
+    if (!deleteConfirmSource) return;
+    window.setTimeout(() => {
+      if (deleteConfirmAction === "delete") {
+        deleteConfirmRef.current?.focus();
+      } else {
+        deleteCancelRef.current?.focus();
+      }
+    }, 0);
+  }, [deleteConfirmAction, deleteConfirmSource]);
 
   const handleImportDone = (summary: ImportSummary, auto = false) => {
     setMessage({
@@ -453,7 +538,7 @@ export function SourcesView({ locale }: Props) {
                     <button
                       onClick={(event) => {
                         event.stopPropagation();
-                        void handleDelete(s.id);
+                        openDeleteConfirm(s);
                       }}
                       tabIndex={-1}
                       style={{ ...actionBtnStyle, color: "var(--danger)" }}
@@ -480,6 +565,9 @@ export function SourcesView({ locale }: Props) {
               {(["m3u", "xtream", "xmltv"] as ImportTab[]).map((tab) => (
                 <button
                   key={tab}
+                  ref={(node) => {
+                    addTabRefs.current[tab] = node;
+                  }}
                   onClick={() => setActiveTab(tab)}
                   style={{
                     padding: "8px 16px",
@@ -499,6 +587,7 @@ export function SourcesView({ locale }: Props) {
                 locale={locale}
                 loading={loading}
                 setLoading={setLoading}
+                  firstInputRef={addModalFirstInputRef}
                 onDone={(summary) => {
                   handleImportDone(summary, false);
                   setShowAddModal(false);
@@ -512,6 +601,7 @@ export function SourcesView({ locale }: Props) {
                 locale={locale}
                 loading={loading}
                 setLoading={setLoading}
+                  firstInputRef={addModalFirstInputRef}
                 onDone={(summary) => {
                   handleImportDone(summary, false);
                   setShowAddModal(false);
@@ -525,6 +615,7 @@ export function SourcesView({ locale }: Props) {
                 locale={locale}
                 loading={loading}
                 setLoading={setLoading}
+                  firstInputRef={addModalFirstInputRef}
                 onDone={(summary) => {
                   handleImportDone(summary, false);
                   setShowAddModal(false);
@@ -542,6 +633,48 @@ export function SourcesView({ locale }: Props) {
                 style={{ ...submitBtnStyle, backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)" }}
               >
                 {t(locale, "sources.edit.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmSource && (
+        <div style={modalOverlayStyle}>
+          <div style={modalCardStyle}>
+            <h3 style={{ marginTop: 0 }}>{t(locale, "sources.deleteConfirm.title")}</h3>
+            <p style={{ marginTop: 0, color: "var(--text-secondary)" }}>
+              {t(locale, "sources.deleteConfirm.message", { name: deleteConfirmSource.name })}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button
+                ref={deleteCancelRef}
+                onClick={() => {
+                  setDeleteConfirmSource(null);
+                  focusAddButton();
+                }}
+                style={{
+                  ...submitBtnStyle,
+                  backgroundColor:
+                    deleteConfirmAction === "cancel" ? "var(--bg-tertiary)" : "transparent",
+                  color: "var(--text-primary)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {t(locale, "sources.deleteConfirm.cancel")}
+              </button>
+              <button
+                ref={deleteConfirmRef}
+                onClick={() => {
+                  void executeDeleteConfirmed();
+                }}
+                style={{
+                  ...submitBtnStyle,
+                  backgroundColor:
+                    deleteConfirmAction === "delete" ? "var(--danger)" : "#7f1d1d",
+                }}
+              >
+                {t(locale, "sources.deleteConfirm.confirm")}
               </button>
             </div>
           </div>
@@ -645,9 +778,10 @@ interface FormProps {
   setLoading: (v: boolean) => void;
   onDone: (s: ImportSummary) => void;
   onError: (msg: string) => void;
+  firstInputRef: { current: HTMLInputElement | null };
 }
 
-function M3uForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
+function M3uForm({ locale, loading, setLoading, onDone, onError, firstInputRef }: FormProps) {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [autoRefreshMinutes, setAutoRefreshMinutes] = useState("");
@@ -681,6 +815,7 @@ function M3uForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
       <label style={labelStyle}>
         {t(locale, "sources.form.name")}
         <input
+          ref={firstInputRef}
           style={inputStyle}
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -709,7 +844,7 @@ function M3uForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
   );
 }
 
-function XtreamForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
+function XtreamForm({ locale, loading, setLoading, onDone, onError, firstInputRef }: FormProps) {
   const [name, setName] = useState("");
   const [serverUrl, setServerUrl] = useState("");
   const [username, setUsername] = useState("");
@@ -740,6 +875,7 @@ function XtreamForm({ locale, loading, setLoading, onDone, onError }: FormProps)
       <label style={labelStyle}>
         {t(locale, "sources.form.name")}
         <input
+          ref={firstInputRef}
           style={inputStyle}
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -765,7 +901,7 @@ function XtreamForm({ locale, loading, setLoading, onDone, onError }: FormProps)
   );
 }
 
-function XmltvForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
+function XmltvForm({ locale, loading, setLoading, onDone, onError, firstInputRef }: FormProps) {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
 
@@ -790,6 +926,7 @@ function XmltvForm({ locale, loading, setLoading, onDone, onError }: FormProps) 
       <label style={labelStyle}>
         {t(locale, "sources.form.name")}
         <input
+          ref={firstInputRef}
           style={inputStyle}
           value={name}
           onChange={(e) => setName(e.target.value)}

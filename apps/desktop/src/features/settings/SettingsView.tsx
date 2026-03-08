@@ -82,11 +82,14 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
   const [focusedSettingKey, setFocusedSettingKey] = useState<string | null>(null);
+  const [editingSettingKey, setEditingSettingKey] = useState<string | null>(null);
   const [domFocusedSettingKey, setDomFocusedSettingKey] = useState<string | null>(null);
   const [hoveredSettingKey, setHoveredSettingKey] = useState<string | null>(null);
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const closeModalBtnRef = useRef<HTMLButtonElement | null>(null);
   const orderedSettings = useMemo(() => settingCategories.flatMap((cat) => cat.settings), []);
+  const editingSetting = orderedSettings.find((item) => item.key === editingSettingKey) ?? null;
 
   const loadSettings = async () => {
     try {
@@ -133,6 +136,10 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       if (detail?.view && detail.view !== "settings") {
         return;
       }
+      if (editingSetting) {
+        window.setTimeout(() => closeModalBtnRef.current?.focus(), 0);
+        return;
+      }
       if (orderedSettings.length === 0) return;
       const currentIndex = focusedSettingKey
         ? orderedSettings.findIndex((item) => item.key === focusedSettingKey)
@@ -146,6 +153,24 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       }
       const key = detail?.key;
       if (!key || orderedSettings.length === 0) return;
+      if (editingSetting) {
+        if (key === "ArrowRight") {
+          event.preventDefault();
+          triggerSetting(editingSetting, 1);
+          return;
+        }
+        if (key === "ArrowLeft") {
+          event.preventDefault();
+          triggerSetting(editingSetting, -1);
+          return;
+        }
+        if (key === "Enter" || key === " ") {
+          event.preventDefault();
+          triggerSetting(editingSetting, 1);
+          return;
+        }
+        return;
+      }
       const currentIndex = focusedSettingKey
         ? orderedSettings.findIndex((item) => item.key === focusedSettingKey)
         : 0;
@@ -162,14 +187,9 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
         focusSettingByIndex(normalizedIndex - 1);
         return;
       }
-      if (key === "ArrowRight") {
-        event.preventDefault();
-        triggerSetting(current, 1);
-        return;
-      }
       if (key === "Enter" || key === " ") {
         event.preventDefault();
-        triggerSetting(current, 1);
+        setEditingSettingKey(current.key);
       }
     };
     window.addEventListener("tv-focus-content", onFocusContent as EventListener);
@@ -178,7 +198,26 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
       window.removeEventListener("tv-content-key", onContentKey as EventListener);
     };
-  }, [focusedSettingKey, orderedSettings]);
+  }, [editingSetting, focusedSettingKey, orderedSettings]);
+
+  useEffect(() => {
+    if (!editingSetting) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setEditingSettingKey(null);
+      window.setTimeout(() => {
+        const index = orderedSettings.findIndex((item) => item.key === editingSetting.key);
+        if (index >= 0) {
+          focusSettingByIndex(index);
+        }
+      }, 0);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [editingSetting, orderedSettings]);
 
   const getValue = (def: SettingDef): unknown => {
     return values[def.key] ?? def.defaultValue;
@@ -246,14 +285,14 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       return Boolean(value) ? t(locale, "settings.value.on") : t(locale, "settings.value.off");
     }
     if (def.type === "range") {
-      return String(Number(value));
+      return `${Number(value)}`;
     }
     const option = def.options?.find((item) => item.value === String(value));
     return option ? t(locale, option.labelKey, option.labelParams) : String(value);
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 560, height: "100%", overflowY: "auto" }}>
+    <div style={{ padding: 24, width: "100%", height: "100%", overflowY: "auto" }}>
       {flash && <div style={flashStyle}>{t(locale, "settings.flash.saved")}</div>}
 
       {error && <div style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div>}
@@ -294,6 +333,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
               }}
               onMouseEnter={() => setHoveredSettingKey(def.key)}
               onMouseLeave={() => setHoveredSettingKey((prev) => (prev === def.key ? null : prev))}
+              onClick={() => setEditingSettingKey(def.key)}
             >
               <span style={rowLabelStyle}>{t(locale, def.labelKey)}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -304,6 +344,56 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
           ))}
         </div>
       ))}
+
+      {editingSetting && (
+        <div style={modalOverlayStyle}>
+          <div style={modalCardStyle}>
+            <h3 style={{ marginTop: 0, marginBottom: 12 }}>
+              {t(locale, "settings.edit.title", { label: t(locale, editingSetting.labelKey) })}
+            </h3>
+            <div style={{ color: "var(--text-secondary)", fontSize: 12, marginBottom: 10 }}>
+              {t(locale, "settings.edit.hint")}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+              <button
+                type="button"
+                onClick={() => triggerSetting(editingSetting, -1)}
+                style={modalActionBtnStyle}
+              >
+                {t(locale, "settings.edit.decrease")}
+              </button>
+              <span style={{ minWidth: 140, textAlign: "center", color: "var(--accent)", fontWeight: 600 }}>
+                {displaySettingValue(editingSetting)}
+              </span>
+              <button
+                type="button"
+                onClick={() => triggerSetting(editingSetting, 1)}
+                style={modalActionBtnStyle}
+              >
+                {t(locale, "settings.edit.increase")}
+              </button>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+              <button
+                ref={closeModalBtnRef}
+                type="button"
+                onClick={() => {
+                  const index = orderedSettings.findIndex((item) => item.key === editingSetting.key);
+                  setEditingSettingKey(null);
+                  window.setTimeout(() => {
+                    if (index >= 0) {
+                      focusSettingByIndex(index);
+                    }
+                  }, 0);
+                }}
+                style={{ ...modalActionBtnStyle, backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)" }}
+              >
+                {t(locale, "settings.edit.done")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -339,6 +429,34 @@ const hintStyle: React.CSSProperties = {
   color: "var(--text-secondary)",
   fontSize: 12,
   marginBottom: 12,
+};
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  backgroundColor: "rgba(0,0,0,0.45)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1000,
+};
+
+const modalCardStyle: React.CSSProperties = {
+  width: 480,
+  maxWidth: "90vw",
+  backgroundColor: "var(--bg-secondary)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: 16,
+};
+
+const modalActionBtnStyle: React.CSSProperties = {
+  padding: "8px 14px",
+  borderRadius: 4,
+  border: "1px solid var(--border)",
+  backgroundColor: "var(--accent)",
+  color: "#fff",
+  cursor: "pointer",
 };
 
 const flashStyle: React.CSSProperties = {

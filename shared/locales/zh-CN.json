@@ -68,6 +68,10 @@
   "sources.action.delete": "删除",
   "sources.add.title": "添加源",
   "sources.empty": "暂无源。请按“添加源”开始导入。",
+  "sources.deleteConfirm.title": "删除源",
+  "sources.deleteConfirm.message": "确认删除“{name}”吗？该操作不可恢复。",
+  "sources.deleteConfirm.cancel": "取消",
+  "sources.deleteConfirm.confirm": "确认删除",
   "sources.edit.title": "编辑源",
   "sources.edit.name": "名称",
   "sources.edit.location": "地址",
@@ -114,5 +118,10 @@
   "settings.option.minutes": "{minutes} 分钟",
   "settings.value.on": "开启",
   "settings.value.off": "关闭",
-  "settings.hint.tv": "上下选择，回车/右键修改，左键返回侧边导航。"
+  "settings.hint.tv": "上下选择，回车进入编辑，左键返回侧边导航。",
+  "settings.edit.title": "编辑 {label}",
+  "settings.edit.hint": "可用左右键或按钮修改当前值。",
+  "settings.edit.decrease": "减小",
+  "settings.edit.increase": "增大",
+  "settings.edit.done": "完成"
 }

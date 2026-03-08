@@ -5,6 +5,7 @@ pub type AppResult<T> = Result<T, AppError>;
 #[derive(Debug, thiserror::Error, Serialize)]
 #[serde(tag = "kind", content = "message")]
 pub enum AppError {
+    #[allow(dead_code)]
     #[error("validation error: {0}")]
     Validation(String),
     #[error("not found: {0}")]

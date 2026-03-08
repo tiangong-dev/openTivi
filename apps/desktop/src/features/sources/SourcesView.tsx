@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
-import { tr, type Locale } from "../../lib/i18n";
+import { t, type Locale } from "../../lib/i18n";
 import type { Source, ImportSummary } from "../../types/api";
 
 type ImportTab = "m3u" | "xtream" | "xmltv";
@@ -36,16 +36,16 @@ export function SourcesView({ locale }: Props) {
     setMessage({
       type: "ok",
       text: auto
-        ? tr(
-            locale,
-            `Auto refresh completed. Imported ${summary.channelsImported}, updated ${summary.channelsUpdated}, removed ${summary.channelsRemoved}.`,
-            `自动刷新完成。新增 ${summary.channelsImported}，更新 ${summary.channelsUpdated}，删除 ${summary.channelsRemoved}。`,
-          )
-        : tr(
-            locale,
-            `Imported ${summary.channelsImported} channels, updated ${summary.channelsUpdated}, removed ${summary.channelsRemoved}.`,
-            `导入完成：新增 ${summary.channelsImported}，更新 ${summary.channelsUpdated}，删除 ${summary.channelsRemoved}。`,
-          ),
+        ? t(locale, "sources.message.autoRefreshCompleted", {
+            imported: summary.channelsImported,
+            updated: summary.channelsUpdated,
+            removed: summary.channelsRemoved,
+          })
+        : t(locale, "sources.message.importCompleted", {
+            imported: summary.channelsImported,
+            updated: summary.channelsUpdated,
+            removed: summary.channelsRemoved,
+          }),
     });
     void loadSources();
   };
@@ -79,14 +79,14 @@ export function SourcesView({ locale }: Props) {
     if (!name || !location) {
       setMessage({
         type: "err",
-        text: tr(locale, "Name and location are required.", "名称和地址不能为空。"),
+        text: t(locale, "sources.validation.nameLocationRequired"),
       });
       return;
     }
     if (editing.kind === "xtream" && (!editing.username.trim() || !editing.password.trim())) {
       setMessage({
         type: "err",
-        text: tr(locale, "Xtream username and password are required.", "Xtream 用户名和密码不能为空。"),
+        text: t(locale, "sources.validation.xtreamCredentialsRequired"),
       });
       return;
     }
@@ -113,7 +113,7 @@ export function SourcesView({ locale }: Props) {
       setEditing(null);
       setMessage({
         type: "ok",
-        text: tr(locale, "Source updated.", "源已更新。"),
+        text: t(locale, "sources.message.sourceUpdated"),
       });
       void loadSources();
     } catch (e) {
@@ -177,7 +177,7 @@ export function SourcesView({ locale }: Props) {
 
   return (
     <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 16 }}>{tr(locale, "Sources", "源")}</h2>
+      <h2 style={{ marginBottom: 16 }}>{t(locale, "sources.title")}</h2>
 
       {message && (
         <div
@@ -211,7 +211,7 @@ export function SourcesView({ locale }: Props) {
             {tab === "m3u"
               ? "M3U"
               : tab === "xtream"
-                ? tr(locale, "Xtream Codes", "Xtream 账号")
+                ? t(locale, "sources.tab.xtream")
                 : "XMLTV EPG"}
           </button>
         ))}
@@ -249,17 +249,17 @@ export function SourcesView({ locale }: Props) {
       {/* Source list */}
       {sources.length > 0 && (
         <div style={{ marginTop: 24 }}>
-          <h3 style={{ marginBottom: 12 }}>{tr(locale, "Imported Sources", "已导入源")}</h3>
+          <h3 style={{ marginBottom: 12 }}>{t(locale, "sources.section.importedSources")}</h3>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ textAlign: "left", color: "var(--text-secondary)", fontSize: 12 }}>
-                <th style={thStyle}>{tr(locale, "Name", "名称")}</th>
-                <th style={thStyle}>{tr(locale, "Type", "类型")}</th>
-                <th style={thStyle}>{tr(locale, "Location", "地址")}</th>
-                <th style={thStyle}>{tr(locale, "Imported Overview", "导入概况")}</th>
-                <th style={thStyle}>{tr(locale, "Auto Refresh", "自动刷新")}</th>
-                <th style={thStyle}>{tr(locale, "Last Import", "上次导入")}</th>
-                <th style={thStyle}>{tr(locale, "Actions", "操作")}</th>
+                <th style={thStyle}>{t(locale, "sources.table.name")}</th>
+                <th style={thStyle}>{t(locale, "sources.table.type")}</th>
+                <th style={thStyle}>{t(locale, "sources.table.location")}</th>
+                <th style={thStyle}>{t(locale, "sources.table.importedOverview")}</th>
+                <th style={thStyle}>{t(locale, "sources.table.autoRefresh")}</th>
+                <th style={thStyle}>{t(locale, "sources.table.lastImport")}</th>
+                <th style={thStyle}>{t(locale, "sources.table.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -277,19 +277,19 @@ export function SourcesView({ locale }: Props) {
                   </td>
                   <td style={tdStyle}>
                     {s.kind === "m3u" && s.autoRefreshMinutes
-                      ? tr(locale, `Every ${s.autoRefreshMinutes} min`, `每 ${s.autoRefreshMinutes} 分钟`)
+                      ? t(locale, "sources.autoRefreshEveryMinutes", { minutes: s.autoRefreshMinutes })
                       : "—"}
                   </td>
                   <td style={tdStyle}>{s.lastImportedAt ?? "—"}</td>
                   <td style={tdStyle}>
                     <button onClick={() => handleRefresh(s.id)} disabled={loading} style={actionBtnStyle}>
-                      {tr(locale, "Refresh", "刷新")}
+                      {t(locale, "sources.action.refresh")}
                     </button>
                     <button onClick={() => openEdit(s)} style={actionBtnStyle}>
-                      {tr(locale, "Edit", "编辑")}
+                      {t(locale, "sources.action.edit")}
                     </button>
                     <button onClick={() => handleDelete(s.id)} style={{ ...actionBtnStyle, color: "var(--danger)" }}>
-                      {tr(locale, "Delete", "删除")}
+                      {t(locale, "sources.action.delete")}
                     </button>
                   </td>
                 </tr>
@@ -302,9 +302,9 @@ export function SourcesView({ locale }: Props) {
       {editing && (
         <div style={modalOverlayStyle}>
           <div style={modalCardStyle}>
-            <h3 style={{ marginTop: 0, marginBottom: 12 }}>{tr(locale, "Edit Source", "编辑源")}</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 12 }}>{t(locale, "sources.edit.title")}</h3>
             <label style={labelStyle}>
-              {tr(locale, "Name", "名称")}
+              {t(locale, "sources.edit.name")}
               <input
                 style={inputStyle}
                 value={editing.name}
@@ -312,7 +312,7 @@ export function SourcesView({ locale }: Props) {
               />
             </label>
             <label style={labelStyle}>
-              {tr(locale, "Location", "地址")}
+              {t(locale, "sources.edit.location")}
               <input
                 style={inputStyle}
                 value={editing.location}
@@ -322,7 +322,7 @@ export function SourcesView({ locale }: Props) {
             {editing.kind === "xtream" && (
               <>
                 <label style={labelStyle}>
-                  {tr(locale, "Username", "用户名")}
+                  {t(locale, "sources.edit.username")}
                   <input
                     style={inputStyle}
                     value={editing.username}
@@ -330,7 +330,7 @@ export function SourcesView({ locale }: Props) {
                   />
                 </label>
                 <label style={labelStyle}>
-                  {tr(locale, "Password", "密码")}
+                  {t(locale, "sources.edit.password")}
                   <input
                     style={inputStyle}
                     type="password"
@@ -342,7 +342,7 @@ export function SourcesView({ locale }: Props) {
             )}
             {editing.kind === "m3u" && (
               <label style={labelStyle}>
-                {tr(locale, "Auto refresh interval (minutes)", "自动刷新间隔（分钟）")}
+                {t(locale, "sources.edit.autoRefreshInterval")}
                 <input
                   style={inputStyle}
                   type="number"
@@ -358,7 +358,7 @@ export function SourcesView({ locale }: Props) {
                 checked={editing.enabled}
                 onChange={(e) => setEditing({ ...editing, enabled: e.target.checked })}
               />
-              {tr(locale, "Enabled", "启用")}
+              {t(locale, "sources.edit.enabled")}
             </label>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
               <button
@@ -366,10 +366,10 @@ export function SourcesView({ locale }: Props) {
                 style={{ ...submitBtnStyle, backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)" }}
                 disabled={savingEdit}
               >
-                {tr(locale, "Cancel", "取消")}
+                {t(locale, "sources.edit.cancel")}
               </button>
               <button onClick={handleSaveEdit} style={submitBtnStyle} disabled={savingEdit}>
-                {savingEdit ? tr(locale, "Saving...", "保存中...") : tr(locale, "Save", "保存")}
+                {savingEdit ? t(locale, "sources.edit.saving") : t(locale, "sources.edit.save")}
               </button>
             </div>
           </div>
@@ -430,26 +430,31 @@ function M3uForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
   return (
     <form onSubmit={handleSubmit} style={formStyle}>
       <label style={labelStyle}>
-        {tr(locale, "Name", "名称")}
-        <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder={tr(locale, "My IPTV", "我的 IPTV")} />
+        {t(locale, "sources.form.name")}
+        <input
+          style={inputStyle}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t(locale, "sources.form.m3uNamePlaceholder")}
+        />
       </label>
       <label style={labelStyle}>
-        {tr(locale, "M3U URL or file path", "M3U 链接或文件路径")}
+        {t(locale, "sources.form.m3uLocation")}
         <input style={inputStyle} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="http://example.com/playlist.m3u" />
       </label>
       <label style={labelStyle}>
-        {tr(locale, "Auto refresh interval (minutes)", "自动刷新间隔（分钟）")}
+        {t(locale, "sources.form.autoRefreshInterval")}
         <input
           style={inputStyle}
           value={autoRefreshMinutes}
           onChange={(e) => setAutoRefreshMinutes(e.target.value)}
-          placeholder={tr(locale, "Leave empty to disable", "留空表示关闭")}
+          placeholder={t(locale, "sources.form.autoRefreshPlaceholder")}
           type="number"
           min={1}
         />
       </label>
       <button type="submit" disabled={loading} style={submitBtnStyle}>
-        {loading ? tr(locale, "Importing...", "导入中...") : tr(locale, "Import M3U", "导入 M3U")}
+        {loading ? t(locale, "sources.form.importing") : t(locale, "sources.form.importM3u")}
       </button>
     </form>
   );
@@ -484,23 +489,28 @@ function XtreamForm({ locale, loading, setLoading, onDone, onError }: FormProps)
   return (
     <form onSubmit={handleSubmit} style={formStyle}>
       <label style={labelStyle}>
-        {tr(locale, "Name", "名称")}
-        <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder={tr(locale, "My Xtream", "我的 Xtream")} />
+        {t(locale, "sources.form.name")}
+        <input
+          style={inputStyle}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t(locale, "sources.form.xtreamNamePlaceholder")}
+        />
       </label>
       <label style={labelStyle}>
-        {tr(locale, "Server URL", "服务器地址")}
+        {t(locale, "sources.form.serverUrl")}
         <input style={inputStyle} value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="http://example.com:8080" />
       </label>
       <label style={labelStyle}>
-        {tr(locale, "Username", "用户名")}
+        {t(locale, "sources.form.username")}
         <input style={inputStyle} value={username} onChange={(e) => setUsername(e.target.value)} />
       </label>
       <label style={labelStyle}>
-        {tr(locale, "Password", "密码")}
+        {t(locale, "sources.form.password")}
         <input style={inputStyle} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </label>
       <button type="submit" disabled={loading} style={submitBtnStyle}>
-        {loading ? tr(locale, "Importing...", "导入中...") : tr(locale, "Import Xtream", "导入 Xtream")}
+        {loading ? t(locale, "sources.form.importing") : t(locale, "sources.form.importXtream")}
       </button>
     </form>
   );
@@ -529,15 +539,20 @@ function XmltvForm({ locale, loading, setLoading, onDone, onError }: FormProps) 
   return (
     <form onSubmit={handleSubmit} style={formStyle}>
       <label style={labelStyle}>
-        {tr(locale, "Name", "名称")}
-        <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder={tr(locale, "My EPG", "我的 EPG")} />
+        {t(locale, "sources.form.name")}
+        <input
+          style={inputStyle}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t(locale, "sources.form.xmltvNamePlaceholder")}
+        />
       </label>
       <label style={labelStyle}>
-        {tr(locale, "XMLTV URL or file path", "XMLTV 链接或文件路径")}
+        {t(locale, "sources.form.xmltvLocation")}
         <input style={inputStyle} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="http://example.com/epg.xml" />
       </label>
       <button type="submit" disabled={loading} style={submitBtnStyle}>
-        {loading ? tr(locale, "Importing...", "导入中...") : tr(locale, "Import XMLTV", "导入 XMLTV")}
+        {loading ? t(locale, "sources.form.importing") : t(locale, "sources.form.importXmltv")}
       </button>
     </form>
   );
@@ -552,17 +567,13 @@ function parseSqliteDate(value?: string): number | null {
 
 function formatSourceOverview(source: Source, locale: Locale): string {
   if (source.kind === "xmltv") {
-    return tr(
-      locale,
-      `EPG programs: ${source.epgProgramCount}.`,
-      `EPG 条目：${source.epgProgramCount}。`,
-    );
+    return t(locale, "sources.overview.epgPrograms", { count: source.epgProgramCount });
   }
-  return tr(
-    locale,
-    `Channels: ${source.channelCount}, groups: ${source.groupCount}, TVG-ID channels: ${source.channelsWithTvgId}.`,
-    `频道：${source.channelCount}，分组：${source.groupCount}，含 TVG-ID：${source.channelsWithTvgId}。`,
-  );
+  return t(locale, "sources.overview.channels", {
+    channels: source.channelCount,
+    groups: source.groupCount,
+    withTvgId: source.channelsWithTvgId,
+  });
 }
 
 const formStyle: React.CSSProperties = {

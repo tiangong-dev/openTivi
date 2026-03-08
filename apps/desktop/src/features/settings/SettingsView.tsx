@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { getErrorMessage } from "../../lib/errors";
-import { LOCALE_SETTING_KEY, tr, type Locale } from "../../lib/i18n";
+import { LOCALE_SETTING_KEY, t, type Locale, type TranslationKey } from "../../lib/i18n";
 import { DEFAULT_GUIDE_WINDOW_MINUTES, GUIDE_WINDOW_MINUTES_SETTING_KEY } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Setting } from "../../types/api";
@@ -13,68 +13,65 @@ interface Props {
 
 interface SettingDef {
   key: string;
-  label: string;
+  labelKey: TranslationKey;
   type: "toggle" | "select" | "range";
   defaultValue: unknown;
-  options?: { label: string; value: string }[];
+  options?: { labelKey: TranslationKey; value: string; labelParams?: Record<string, string | number> }[];
   min?: number;
   max?: number;
 }
 
-const settingCategories: { title: string; settings: SettingDef[] }[] = [
+const minuteOptions = [60, 90, 120, 150, 180, 240, 300, 360].map((minutes) => ({
+  labelKey: "settings.option.minutes" as const,
+  value: String(minutes),
+  labelParams: { minutes },
+}));
+
+const settingCategories: { titleKey: TranslationKey; settings: SettingDef[] }[] = [
   {
-    title: "General",
+    titleKey: "settings.category.general",
     settings: [
       {
         key: LOCALE_SETTING_KEY,
-        label: "Language",
+        labelKey: "settings.locale.label",
         type: "select",
         defaultValue: "en-US",
         options: [
-          { label: "English", value: "en-US" },
-          { label: "中文", value: "zh-CN" },
+          { labelKey: "settings.locale.en", value: "en-US" },
+          { labelKey: "settings.locale.zh", value: "zh-CN" },
         ],
       },
       {
         key: "app.startView",
-        label: "Start View",
+        labelKey: "settings.startView.label",
         type: "select",
         defaultValue: "channels",
         options: [
-          { label: "Channels", value: "channels" },
-          { label: "Sources", value: "sources" },
-          { label: "Favorites", value: "favorites" },
-          { label: "Recents", value: "recents" },
+          { labelKey: "settings.startView.channels", value: "channels" },
+          { labelKey: "settings.startView.sources", value: "sources" },
+          { labelKey: "settings.startView.favorites", value: "favorites" },
+          { labelKey: "settings.startView.recents", value: "recents" },
         ],
       },
     ],
   },
   {
-    title: "Playback",
+    titleKey: "settings.category.playback",
     settings: [
-      { key: "player.autoplay", label: "Autoplay", type: "toggle", defaultValue: true },
-      { key: "player.volume", label: "Volume", type: "range", defaultValue: 80, min: 0, max: 100 },
+      { key: "player.autoplay", labelKey: "settings.player.autoplay", type: "toggle", defaultValue: true },
+      { key: "player.volume", labelKey: "settings.player.volume", type: "range", defaultValue: 80, min: 0, max: 100 },
     ],
   },
   {
-    title: "EPG",
+    titleKey: "settings.category.epg",
     settings: [
-      { key: "epg.autoRefresh", label: "Auto Refresh EPG", type: "toggle", defaultValue: false },
+      { key: "epg.autoRefresh", labelKey: "settings.epg.autoRefresh", type: "toggle", defaultValue: false },
       {
         key: GUIDE_WINDOW_MINUTES_SETTING_KEY,
-        label: "Guide Timeline Window",
+        labelKey: "settings.epg.guideTimelineWindow",
         type: "select",
         defaultValue: String(DEFAULT_GUIDE_WINDOW_MINUTES),
-        options: [
-          { label: "60 min", value: "60" },
-          { label: "90 min", value: "90" },
-          { label: "120 min", value: "120" },
-          { label: "150 min", value: "150" },
-          { label: "180 min", value: "180" },
-          { label: "240 min", value: "240" },
-          { label: "300 min", value: "300" },
-          { label: "360 min", value: "360" },
-        ],
+        options: minuteOptions,
       },
     ],
   },
@@ -146,7 +143,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
         >
           {def.options?.map((o) => (
             <option key={o.value} value={o.value}>
-              {o.label}
+              {t(locale, o.labelKey, o.labelParams)}
             </option>
           ))}
         </select>
@@ -174,12 +171,12 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
 
   return (
     <div style={{ padding: 24, maxWidth: 560, height: "100%", overflowY: "auto" }}>
-      {flash && <div style={flashStyle}>{tr(locale, "Settings saved", "设置已保存")}</div>}
+      {flash && <div style={flashStyle}>{t(locale, "settings.flash.saved")}</div>}
 
       {error && <div style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div>}
 
       {settingCategories.map((cat) => (
-        <div key={cat.title} style={{ marginBottom: 24 }}>
+        <div key={cat.titleKey} style={{ marginBottom: 24 }}>
           <div
             style={{
               fontSize: 12,
@@ -189,11 +186,11 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
               letterSpacing: 1,
             }}
           >
-            {cat.title}
+            {t(locale, cat.titleKey)}
           </div>
           {cat.settings.map((def) => (
             <div key={def.key} style={rowStyle}>
-              <span style={{ fontSize: 14 }}>{def.label}</span>
+              <span style={{ fontSize: 14 }}>{t(locale, def.labelKey)}</span>
               {renderControl(def)}
             </div>
           ))}

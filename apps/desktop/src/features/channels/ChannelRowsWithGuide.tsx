@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { tr, type Locale } from "../../lib/i18n";
+import { t, type Locale } from "../../lib/i18n";
 import {
   DEFAULT_GUIDE_WINDOW_MINUTES,
   GUIDE_WINDOW_MINUTES_SETTING_KEY,
@@ -154,8 +154,8 @@ export function ChannelRowsWithGuide<T extends Channel>({
               ) : (
                 <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
                   {loading
-                    ? tr(locale, "Loading guide...", "正在加载节目单...")
-                    : tr(locale, "No guide data.", "暂无节目单数据。")}
+                    ? t(locale, "guide.loading")
+                    : t(locale, "guide.noData")}
                 </div>
               )}
             </div>
@@ -241,7 +241,7 @@ function GuideTimeline({
             title={segment.program.title ?? ""}
           >
             <div style={timelineTextStyle}>
-              {segment.program.title || tr(locale, "No guide", "暂无节目")}
+              {segment.program.title || t(locale, "guide.noProgram")}
             </div>
           </div>
         ))}

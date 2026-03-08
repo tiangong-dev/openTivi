@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { getErrorMessage } from "../../lib/errors";
-import { tr, type Locale } from "../../lib/i18n";
+import { t, type Locale } from "../../lib/i18n";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel, RecentChannel } from "../../types/api";
 import { ChannelRowsWithGuide } from "../channels/ChannelRowsWithGuide";
@@ -38,11 +38,11 @@ export function RecentsView({ locale, onPlay }: Props) {
 
   return (
     <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
-      <h2 style={{ margin: 0 }}>{tr(locale, "Recents", "最近观看")}</h2>
+      <h2 style={{ margin: 0 }}>{t(locale, "recents.title")}</h2>
       {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
       {!error && items.length === 0 && (
         <div style={{ color: "var(--text-secondary)" }}>
-          {tr(locale, "No recently watched channels yet.", "还没有最近观看记录。")}
+          {t(locale, "recents.empty")}
         </div>
       )}
       <div style={{ flex: 1, overflowY: "auto" }}>
@@ -53,7 +53,7 @@ export function RecentsView({ locale, onPlay }: Props) {
           onToggleFavorite={toggleFavorite}
           renderMeta={(ch) => (
             <>
-              {tr(locale, "Played", "播放次数")} {ch.playCount} · {tr(locale, "Last watched", "上次观看")} {formatRelativeTime(ch.lastWatchedAt, locale)}
+              {t(locale, "recents.played")} {ch.playCount} · {t(locale, "recents.lastWatched")} {formatRelativeTime(ch.lastWatchedAt, locale)}
             </>
           )}
         />
@@ -68,16 +68,16 @@ function formatRelativeTime(iso: string, locale: Locale): string {
   if (Number.isNaN(then)) return iso;
 
   const diffSec = Math.floor((now - then) / 1000);
-  if (diffSec < 60) return tr(locale, "just now", "刚刚");
+  if (diffSec < 60) return t(locale, "recents.justNow");
   if (diffSec < 3600) {
     const mins = Math.floor(diffSec / 60);
-    return tr(locale, `${mins} min ago`, `${mins} 分钟前`);
+    return t(locale, "recents.minutesAgo", { minutes: mins });
   }
   if (diffSec < 86400) {
     const hours = Math.floor(diffSec / 3600);
-    return tr(locale, `${hours}h ago`, `${hours} 小时前`);
+    return t(locale, "recents.hoursAgo", { hours });
   }
-  if (diffSec < 172800) return tr(locale, "yesterday", "昨天");
+  if (diffSec < 172800) return t(locale, "recents.yesterday");
   const days = Math.floor(diffSec / 86400);
-  return tr(locale, `${days}d ago`, `${days} 天前`);
+  return t(locale, "recents.daysAgo", { days });
 }

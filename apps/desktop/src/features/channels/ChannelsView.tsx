@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
-import { tr, type Locale } from "../../lib/i18n";
+import { t, type Locale } from "../../lib/i18n";
 import type { Channel } from "../../types/api";
 import { ChannelRowsWithGuide } from "./ChannelRowsWithGuide";
 
@@ -64,7 +64,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
       {groups.length > 0 && (
         <div style={{ width: 180, flexShrink: 0, overflowY: "auto" }}>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
-            {tr(locale, "Groups", "分组")}
+            {t(locale, "channels.groups")}
           </div>
           <button
             onClick={() => setSelectedGroup(null)}
@@ -73,7 +73,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
               backgroundColor: selectedGroup === null ? "var(--bg-tertiary)" : "transparent",
             }}
           >
-            {tr(locale, "All", "全部")}
+            {t(locale, "channels.all")}
           </button>
           {groups.map((g) => (
             <button
@@ -94,7 +94,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <input
           style={searchStyle}
-          placeholder={tr(locale, "Search channels...", "搜索频道...")}
+          placeholder={t(locale, "channels.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -103,7 +103,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
 
         {channels.length === 0 && !error && (
           <div style={{ color: "var(--text-secondary)", marginTop: 24, textAlign: "center" }}>
-            {tr(locale, "No channels. Go to ", "暂无频道。请前往")}<b>{tr(locale, "Sources", "源")}</b>{tr(locale, " to import an M3U or Xtream source.", "导入 M3U 或 Xtream 源。")}
+            {t(locale, "channels.emptyPrefix")}<b>{t(locale, "channels.emptySources")}</b>{t(locale, "channels.emptySuffix")}
           </div>
         )}
 

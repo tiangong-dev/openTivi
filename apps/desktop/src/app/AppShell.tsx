@@ -6,7 +6,7 @@ import { RecentsView } from "../features/recents/RecentsView";
 import { SettingsView } from "../features/settings/SettingsView";
 import { VideoPlayer } from "../features/player/VideoPlayer";
 import { tauriInvoke } from "../lib/tauri";
-import { detectDefaultLocale, LOCALE_SETTING_KEY, resolveLocale, tr, type Locale } from "../lib/i18n";
+import { detectDefaultLocale, LOCALE_SETTING_KEY, resolveLocale, t, type Locale } from "../lib/i18n";
 import type { Channel, Setting } from "../types/api";
 
 type View = "channels" | "favorites" | "recents" | "sources" | "settings";
@@ -41,11 +41,11 @@ export function AppShell() {
   };
 
   const navItems: { key: View; label: string }[] = [
-    { key: "channels", label: tr(locale, "Channels", "频道") },
-    { key: "favorites", label: tr(locale, "Favorites", "收藏") },
-    { key: "recents", label: tr(locale, "Recents", "最近观看") },
-    { key: "sources", label: tr(locale, "Sources", "源") },
-    { key: "settings", label: tr(locale, "Settings", "设置") },
+    { key: "channels", label: t(locale, "nav.channels") },
+    { key: "favorites", label: t(locale, "nav.favorites") },
+    { key: "recents", label: t(locale, "nav.recents") },
+    { key: "sources", label: t(locale, "nav.sources") },
+    { key: "settings", label: t(locale, "nav.settings") },
   ];
 
   const renderView = () => {

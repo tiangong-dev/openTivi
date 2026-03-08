@@ -1,7 +1,7 @@
 export const GUIDE_WINDOW_MINUTES_SETTING_KEY = "epg.timelineWindowMinutes";
 export const DEFAULT_GUIDE_WINDOW_MINUTES = 180;
 
-const ALLOWED_GUIDE_WINDOW_MINUTES = new Set([90, 120, 180]);
+const ALLOWED_GUIDE_WINDOW_MINUTES = new Set([60, 90, 120, 150, 180, 240, 300, 360]);
 
 export function resolveGuideWindowMinutes(raw: unknown): number {
   const value =

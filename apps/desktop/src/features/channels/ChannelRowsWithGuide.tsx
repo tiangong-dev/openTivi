@@ -124,8 +124,6 @@ function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; loc
   const nowEnd = parseXmltvDate(snapshot.now?.endAt ?? "");
   const nextStart = parseXmltvDate(snapshot.next?.startAt ?? "");
   const nextEnd = parseXmltvDate(snapshot.next?.endAt ?? "");
-  const rangeStart = nowStart ?? nextStart;
-  const rangeEnd = nextEnd ?? nowEnd;
 
   const nowDuration = durationMs(nowStart, nowEnd);
   const nextDuration = durationMs(nextStart, nextEnd);
@@ -133,7 +131,7 @@ function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; loc
 
   const fallbackNow = snapshot.now ? 0.62 : 0.5;
   const rawNowRatio = totalDuration > 0 ? nowDuration / totalDuration : fallbackNow;
-  const nowRatio = snapshot.next ? clamp(rawNowRatio, 0.28, 0.78) : 1;
+  const nowRatio = snapshot.next ? rawNowRatio : 1;
   const nowWidth = `${Math.round(nowRatio * 100)}%`;
   const nextWidth = `${100 - Math.round(nowRatio * 100)}%`;
 
@@ -142,7 +140,7 @@ function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; loc
     progress = clamp((Date.now() - nowStart) / (nowEnd - nowStart), 0, 1);
   }
   const currentMarker = clamp(nowRatio * progress, 0, 1);
-  const ticks = buildTimelineTicks(rangeStart, rangeEnd, 30 * 60 * 1000);
+  const splitMarker = snapshot.next ? clamp(nowRatio, 0, 1) : null;
 
   return (
     <div style={timelineStyle}>
@@ -179,11 +177,13 @@ function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; loc
           </div>
         </div>
       ) : null}
-      {ticks.map((tick) => (
-        <div key={tick.ts} style={{ ...timelineTickStyle, left: `${(tick.ratio * 100).toFixed(2)}%` }}>
-          <div style={timelineTickLabelStyle}>{formatTickTime(tick.ts)}</div>
+      {splitMarker !== null ? (
+        <div style={{ ...timelineSplitStyle, left: `${(splitMarker * 100).toFixed(2)}%` }}>
+          {snapshot.next?.startAt ? (
+            <div style={timelineSplitLabelStyle}>{formatTime(snapshot.next.startAt)}</div>
+          ) : null}
         </div>
-      ))}
+      ) : null}
       {snapshot.now ? <div style={{ ...timelineCursorStyle, left: `${(currentMarker * 100).toFixed(2)}%` }} /> : null}
     </div>
   );
@@ -192,10 +192,6 @@ function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; loc
 function formatTime(raw: string): string {
   const ts = parseXmltvDate(raw);
   if (ts === null) return raw;
-  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatTickTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
@@ -219,24 +215,6 @@ function durationMs(start: number | null, end: number | null): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function buildTimelineTicks(
-  rangeStart: number | null,
-  rangeEnd: number | null,
-  stepMs: number,
-): Array<{ ts: number; ratio: number }> {
-  if (rangeStart === null || rangeEnd === null || rangeEnd <= rangeStart || stepMs <= 0) {
-    return [];
-  }
-  const firstTick = Math.ceil(rangeStart / stepMs) * stepMs;
-  const duration = rangeEnd - rangeStart;
-  const ticks: Array<{ ts: number; ratio: number }> = [];
-  for (let ts = firstTick; ts < rangeEnd; ts += stepMs) {
-    if (ts <= rangeStart) continue;
-    ticks.push({ ts, ratio: clamp((ts - rangeStart) / duration, 0, 1) });
-  }
-  return ticks;
 }
 
 const rowStyle: React.CSSProperties = {
@@ -284,21 +262,21 @@ const timelineTextStyle: React.CSSProperties = {
 const timelineProgressStyle: React.CSSProperties = {
   position: "absolute",
   left: 0,
+  top: 0,
   bottom: 0,
-  height: 3,
-  backgroundColor: "#2563eb44",
+  backgroundColor: "#2563eb2f",
 };
 
-const timelineTickStyle: React.CSSProperties = {
+const timelineSplitStyle: React.CSSProperties = {
   position: "absolute",
   top: 0,
   bottom: 0,
   width: 0,
-  borderLeft: "1px solid #ffffff2b",
+  borderLeft: "1px solid #cbd5e1aa",
   pointerEvents: "none",
 };
 
-const timelineTickLabelStyle: React.CSSProperties = {
+const timelineSplitLabelStyle: React.CSSProperties = {
   position: "absolute",
   top: 1,
   left: 3,

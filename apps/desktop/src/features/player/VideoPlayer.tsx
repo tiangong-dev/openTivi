@@ -40,7 +40,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const channelListItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const pendingSwitchChannelRef = useRef<Channel | null>(null);
   const pendingSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSwitchStartedAtRef = useRef(0);
   const prewarmAbortRef = useRef<AbortController | null>(null);
+  const slotReadyRef = useRef<[boolean, boolean]>([false, false]);
   const neighborWarmTsRef = useRef<Map<string, number>>(new Map());
   const neighborWarmInFlightRef = useRef<Map<string, AbortController>>(new Map());
   const neighborWarmLruRef = useRef<string[]>([]);
@@ -68,6 +70,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const GUIDE_AUTO_HIDE_MS = 3500;
   const CHANNEL_LIST_AUTO_HIDE_MS = 5000;
   const CHANNEL_SWITCH_COMMIT_DELAY_MS = 120;
+  const CHANNEL_SWITCH_READY_WAIT_MAX_MS = 420;
 
   useEffect(() => {
     playerFocusZoneRef.current = playerFocusZone;
@@ -117,6 +120,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         video.removeAttribute("src");
         video.load();
       }
+      slotReadyRef.current[slot] = false;
       slotKindRef.current[slot] = null;
       slotUrlRef.current[slot] = null;
       slotChannelIdRef.current[slot] = null;
@@ -144,9 +148,15 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       if (!video) return false;
 
       destroySlot(slot);
+      slotReadyRef.current[slot] = false;
       video.muted = prewarm;
       const proxiedUrl = toProxyUrl(target.streamUrl, proxyPort);
       const kind = getPlaybackKind(target.streamUrl);
+      const markReady = () => {
+        if (slotChannelIdRef.current[slot] === target.id) {
+          slotReadyRef.current[slot] = true;
+        }
+      };
 
       if (kind === "hls") {
         if (Hls.isSupported()) {
@@ -154,6 +164,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           hls.loadSource(proxiedUrl);
           hls.attachMedia(video);
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            markReady();
             video.play().catch(() => {});
           });
           hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
@@ -198,6 +209,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           player.load();
           player.play();
           player.on(mpegts.Events.STATISTICS_INFO, (stats) => {
+            markReady();
             if (slot !== activeSlotRef.current) return;
             const speedKiloBytesPerSec = Number((stats as { speed?: number })?.speed);
             if (Number.isFinite(speedKiloBytesPerSec) && speedKiloBytesPerSec > 0) {
@@ -214,6 +226,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           setError(t(localeRef.current, "player.mpegtsNotSupported"));
         }
       } else {
+        video.addEventListener("loadeddata", markReady, { once: true });
         video.src = proxiedUrl;
         video.play().catch(() => {
           if (slot !== activeSlotRef.current) return;
@@ -620,25 +633,48 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   const commitPendingSwitch = useCallback(() => {
     const next = pendingSwitchChannelRef.current;
-    clearPendingSwitchTimer();
-    pendingSwitchChannelRef.current = null;
-    cancelPrewarm();
-    if (!next || next.id === channel.id) return;
-    setError(null);
-    setNetworkSpeedBps(null);
+    if (!next || next.id === channel.id) {
+      clearPendingSwitchTimer();
+      pendingSwitchChannelRef.current = null;
+      pendingSwitchStartedAtRef.current = 0;
+      cancelPrewarm();
+      return;
+    }
+
     const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
     if (slotChannelIdRef.current[standbySlot] !== next.id) {
-      loadChannelInSlot(standbySlot, next, false);
+      loadChannelInSlot(standbySlot, next, true);
+      setSlotMuted(standbySlot, true);
     }
+
+    const standbyReady =
+      slotChannelIdRef.current[standbySlot] === next.id && slotReadyRef.current[standbySlot];
+    const waitedMs = Date.now() - pendingSwitchStartedAtRef.current;
+    if (!standbyReady && waitedMs < CHANNEL_SWITCH_READY_WAIT_MAX_MS) {
+      clearPendingSwitchTimer();
+      pendingSwitchTimerRef.current = setTimeout(() => {
+        commitPendingSwitch();
+      }, 45);
+      return;
+    }
+
+    clearPendingSwitchTimer();
+    pendingSwitchChannelRef.current = null;
+    pendingSwitchStartedAtRef.current = 0;
+    cancelPrewarm();
+    setError(null);
+    setNetworkSpeedBps(null);
     activateSlot(standbySlot);
     onChannelChange(next);
   }, [
+    CHANNEL_SWITCH_READY_WAIT_MAX_MS,
     activateSlot,
     cancelPrewarm,
     channel.id,
     clearPendingSwitchTimer,
     loadChannelInSlot,
     onChannelChange,
+    setSlotMuted,
   ]);
 
   const previewSwitchChannel = useCallback(
@@ -648,11 +684,13 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       if (!next) return;
       if (next.id === channel.id) {
         pendingSwitchChannelRef.current = null;
+        pendingSwitchStartedAtRef.current = 0;
         clearPendingSwitchTimer();
         cancelPrewarm();
         return;
       }
       pendingSwitchChannelRef.current = next;
+      pendingSwitchStartedAtRef.current = Date.now();
       showSwitchOsd(next);
       prewarmChannel(next);
       clearPendingSwitchTimer();
@@ -928,6 +966,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   useEffect(() => {
     pendingSwitchChannelRef.current = null;
+    pendingSwitchStartedAtRef.current = 0;
     clearPendingSwitchTimer();
     cancelPrewarm();
   }, [cancelPrewarm, channel.id, clearPendingSwitchTimer]);
@@ -938,6 +977,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         clearTimeout(channelListAutoHideTimerRef.current);
         channelListAutoHideTimerRef.current = null;
       }
+      pendingSwitchStartedAtRef.current = 0;
       clearPendingSwitchTimer();
       cancelPrewarm();
       neighborWarmInFlightRef.current.forEach((controller) => controller.abort());

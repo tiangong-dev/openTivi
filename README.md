@@ -57,11 +57,24 @@ pnpm install
 pnpm tauri dev
 ```
 
+Or from repository root:
+
+```bash
+make install
+make dev
+```
+
 ### Build
 
 ```bash
 cd apps/desktop
 pnpm tauri build
+```
+
+Or from repository root:
+
+```bash
+make build
 ```
 
 ### Test (Rust)
@@ -70,6 +83,23 @@ pnpm tauri build
 cd apps/desktop/src-tauri
 cargo test
 ```
+
+Or from repository root:
+
+```bash
+make rust-test
+```
+
+## Versioning and Release
+
+- `make version-check` checks version consistency across:
+  - `apps/desktop/package.json`
+  - `apps/desktop/src-tauri/Cargo.toml`
+  - `apps/desktop/src-tauri/tauri.conf.json`
+- `make version-sync VERSION=x.y.z` updates these three files together.
+- Tag push (`v*.*.*`) triggers GitHub Action release build and publishes artifacts to GitHub Release.
+- `workflow_dispatch` on `Desktop Release Build` can build manual test versions (optionally as prerelease).
+- `workflow_dispatch` on `Version Check and Update` can sync version files and auto-commit updates.
 
 ## Architecture
 

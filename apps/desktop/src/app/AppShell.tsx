@@ -53,6 +53,14 @@ export function AppShell() {
     { key: "sources", label: t(locale, "nav.sources") },
     { key: "settings", label: t(locale, "nav.settings") },
   ];
+  const hoveredNavIndex = hoveredNavKey ? navItems.findIndex((item) => item.key === hoveredNavKey) : -1;
+  const activeViewIndex = navItems.findIndex((item) => item.key === activeView);
+  const navVisualActiveIndex =
+    focusZone === "nav"
+      ? hoveredNavIndex >= 0
+        ? hoveredNavIndex
+        : focusedNavIndex
+      : activeViewIndex;
 
   useEffect(() => {
     setFocusedNavIndex((prev) => Math.min(prev, navItems.length - 1));
@@ -73,6 +81,7 @@ export function AppShell() {
   const focusNavByIndex = (nextIndex: number) => {
     if (navItems.length === 0) return;
     const wrapped = ((nextIndex % navItems.length) + navItems.length) % navItems.length;
+    setHoveredNavKey(null);
     setFocusedNavIndex(wrapped);
     navButtonRefs.current[wrapped]?.focus();
   };
@@ -219,7 +228,7 @@ export function AppShell() {
             onMouseLeave={() => setHoveredNavKey((prev) => (prev === item.key ? null : prev))}
             style={{
               ...navBtnStyle,
-              ...(activeView === item.key || hoveredNavKey === item.key || focusedNavIndex === index ? navBtnActiveStyle : null),
+              ...(index === navVisualActiveIndex ? navBtnActiveStyle : null),
             }}
           >
             {item.label}

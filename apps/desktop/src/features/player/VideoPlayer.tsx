@@ -4,6 +4,7 @@ import mpegts from "mpegts.js";
 
 import { t, type Locale } from "../../lib/i18n";
 import { tauriInvoke } from "../../lib/tauri";
+import { createConfirmPressHandler, mapKeyToTvIntent } from "../../lib/tvInput";
 import type { Channel, EpgProgram } from "../../types/api";
 
 interface Props {
@@ -21,6 +22,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const mpegtsRef = useRef<mpegts.Player | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showChannelListPanelRef = useRef(false);
+  const focusedChannelIndexRef = useRef(0);
+  const channelsRef = useRef<Channel[]>(channels);
+  const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [proxyPort, setProxyPort] = useState<number | null>(null);
@@ -184,6 +189,18 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [channel.id, channels]);
 
   useEffect(() => {
+    showChannelListPanelRef.current = showChannelListPanel;
+  }, [showChannelListPanel]);
+
+  useEffect(() => {
+    focusedChannelIndexRef.current = focusedChannelIndex;
+  }, [focusedChannelIndex]);
+
+  useEffect(() => {
+    channelsRef.current = channels;
+  }, [channels]);
+
+  useEffect(() => {
     if (!epgNow) return;
     const interval = setInterval(() => {
       const now = Date.now();
@@ -236,80 +253,144 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     [channels, channel.id, onChannelChange],
   );
 
+  const setChannelListPanel = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    setShowChannelListPanel((prev) => {
+      const resolved = typeof next === "function" ? (next as (value: boolean) => boolean)(prev) : next;
+      showChannelListPanelRef.current = resolved;
+      return resolved;
+    });
+  }, []);
+
+  const setFocusedIndex = useCallback((next: number | ((prev: number) => number)) => {
+    setFocusedChannelIndex((prev) => {
+      const resolved = typeof next === "function" ? (next as (value: number) => number)(prev) : next;
+      focusedChannelIndexRef.current = resolved;
+      return resolved;
+    });
+  }, []);
+
+  const togglePlayPause = useCallback(() => {
+    if (!videoRef.current) return;
+    if (videoRef.current.paused) {
+      videoRef.current.play().catch(() => {});
+      setIsPaused(false);
+      return;
+    }
+    videoRef.current.pause();
+    setIsPaused(true);
+  }, []);
+
+  useEffect(() => {
+    confirmPressRef.current = createConfirmPressHandler({
+      onSingle: () => {
+        const inChannelPanel = showChannelListPanelRef.current;
+        if (inChannelPanel) {
+          const candidate = channelsRef.current[focusedChannelIndexRef.current];
+          if (candidate) {
+            onChannelChange(candidate);
+          }
+          setChannelListPanel(false);
+          showOverlay();
+          return;
+        }
+        setChannelListPanel(true);
+        showOverlay();
+      },
+      onDouble: () => {
+        setShowGuidePanel((v) => !v);
+        showOverlay();
+      },
+      onLong: () => {
+        togglePlayPause();
+        showOverlay();
+      },
+    });
+    return () => {
+      confirmPressRef.current?.clear();
+      confirmPressRef.current = null;
+    };
+  }, [onChannelChange, setChannelListPanel, showOverlay, togglePlayPause]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case "Escape":
-          e.preventDefault();
-          if (showChannelListPanel) {
-            setShowChannelListPanel(false);
-          } else {
-            onClose();
-          }
-          break;
-        case "ArrowLeft":
-          e.preventDefault();
-          setShowChannelListPanel(true);
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          setShowGuidePanel((v) => !v);
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          if (showChannelListPanel) {
-            setFocusedChannelIndex((i) => {
-              if (channels.length === 0) return 0;
-              return (i - 1 + channels.length) % channels.length;
-            });
-          } else {
-            switchChannel(-1);
-          }
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          if (showChannelListPanel) {
-            setFocusedChannelIndex((i) => {
-              if (channels.length === 0) return 0;
-              return (i + 1) % channels.length;
-            });
-          } else {
-            switchChannel(1);
-          }
-          break;
-        case "Enter":
-          if (showChannelListPanel && channels[focusedChannelIndex]) {
-            e.preventDefault();
-            onChannelChange(channels[focusedChannelIndex]);
-            setShowChannelListPanel(false);
-          }
-          break;
-        case " ":
-          e.preventDefault();
-          if (videoRef.current) {
-            if (videoRef.current.paused) {
-              videoRef.current.play().catch(() => {});
-              setIsPaused(false);
-            } else {
-              videoRef.current.pause();
-              setIsPaused(true);
-            }
-          }
-          break;
-        case "f":
-        case "F":
-          e.preventDefault();
-          if (document.fullscreenElement) {
-            void document.exitFullscreen();
-          } else {
-            void containerRef.current?.requestFullscreen();
-          }
-          break;
+      const intent = mapKeyToTvIntent(e.key);
+      if (intent === "Back") {
+        e.preventDefault();
+        if (showChannelListPanelRef.current) {
+          setChannelListPanel(false);
+        } else {
+          onClose();
+        }
+        showOverlay();
+        return;
+      }
+      if (intent === "MoveLeft") {
+        e.preventDefault();
+        setChannelListPanel(true);
+        showOverlay();
+        return;
+      }
+      if (intent === "MoveRight") {
+        e.preventDefault();
+        setShowGuidePanel((v) => !v);
+        showOverlay();
+        return;
+      }
+      if (intent === "MoveUp") {
+        e.preventDefault();
+        if (showChannelListPanelRef.current) {
+          const size = channelsRef.current.length;
+          setFocusedIndex((prev) => {
+            if (size === 0) return 0;
+            return (prev - 1 + size) % size;
+          });
+        } else {
+          switchChannel(-1);
+        }
+        showOverlay();
+        return;
+      }
+      if (intent === "MoveDown") {
+        e.preventDefault();
+        if (showChannelListPanelRef.current) {
+          const size = channelsRef.current.length;
+          setFocusedIndex((prev) => {
+            if (size === 0) return 0;
+            return (prev + 1) % size;
+          });
+        } else {
+          switchChannel(1);
+        }
+        showOverlay();
+        return;
+      }
+      if (intent === "Confirm") {
+        e.preventDefault();
+        confirmPressRef.current?.onKeyDown(e.repeat);
+        return;
+      }
+      if (intent === "SecondaryAction") {
+        e.preventDefault();
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+        } else {
+          void containerRef.current?.requestFullscreen();
+        }
+        showOverlay();
       }
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (mapKeyToTvIntent(e.key) !== "Confirm") return;
+      e.preventDefault();
+      confirmPressRef.current?.onKeyUp();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [channels, focusedChannelIndex, onChannelChange, onClose, showChannelListPanel, switchChannel]);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [onClose, setChannelListPanel, setFocusedIndex, showOverlay, switchChannel]);
 
   return (
     <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>
@@ -345,7 +426,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
-            onClick={() => setShowChannelListPanel((v) => !v)}
+            onClick={() => setChannelListPanel((v) => !v)}
             style={overlayBtnStyle}
             title={t(locale, "player.channelListShortcut")}
           >
@@ -465,9 +546,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
                 <button
                   key={item.id}
                   onClick={() => {
-                    setFocusedChannelIndex(idx);
+                    setFocusedIndex(idx);
                     onChannelChange(item);
-                    setShowChannelListPanel(false);
+                    setChannelListPanel(false);
                   }}
                   style={{
                     ...channelListItemStyle,

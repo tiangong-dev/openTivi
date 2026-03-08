@@ -6,6 +6,7 @@ import {
   GUIDE_WINDOW_MINUTES_SETTING_KEY,
   resolveGuideWindowMinutes,
 } from "../../lib/settings";
+import { createConfirmPressHandler, mapKeyToTvIntent, type TvContentKeyDetail } from "../../lib/tvInput";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel, ChannelEpgSnapshot, Setting } from "../../types/api";
 
@@ -36,7 +37,11 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const pendingPlayTimerRef = useRef<number | null>(null);
-  const lastConfirmAtRef = useRef(0);
+  const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
+  const focusedIndexRef = useRef(0);
+  const itemsRef = useRef<T[]>(items);
+  const onPlayRef = useRef(onPlay);
+  const onToggleFavoriteRef = useRef(onToggleFavorite);
 
   const channelIds = useMemo(() => items.map((c) => c.id), [items]);
   const timelineWindow = useMemo(() => {
@@ -58,6 +63,22 @@ export function ChannelRowsWithGuide<T extends Channel>({
     }
     setFocusedIndex((prev) => Math.min(prev, items.length - 1));
   }, [items.length]);
+
+  useEffect(() => {
+    focusedIndexRef.current = focusedIndex;
+  }, [focusedIndex]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    onPlayRef.current = onPlay;
+  }, [onPlay]);
+
+  useEffect(() => {
+    onToggleFavoriteRef.current = onToggleFavorite;
+  }, [onToggleFavorite]);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +144,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
         window.clearTimeout(pendingPlayTimerRef.current);
         pendingPlayTimerRef.current = null;
       }
+      confirmPressRef.current?.clear();
     };
   }, []);
 
@@ -137,13 +159,13 @@ export function ChannelRowsWithGuide<T extends Channel>({
     clearPendingPlay();
     pendingPlayTimerRef.current = window.setTimeout(() => {
       pendingPlayTimerRef.current = null;
-      onPlay?.(channel, items);
+      onPlayRef.current?.(channel, itemsRef.current);
     }, 220);
   };
 
   const triggerFavorite = (channel: T) => {
     clearPendingPlay();
-    onToggleFavorite?.(channel);
+    onToggleFavoriteRef.current?.(channel);
   };
 
   const focusRowByIndex = (nextIndex: number) => {
@@ -155,16 +177,34 @@ export function ChannelRowsWithGuide<T extends Channel>({
     rowNode?.scrollIntoView({ block: "nearest" });
   };
 
-  const handleConfirm = (channel: T) => {
-    const now = Date.now();
-    if (now - lastConfirmAtRef.current < 280 && onToggleFavorite) {
-      triggerFavorite(channel);
-      lastConfirmAtRef.current = 0;
-      return;
-    }
-    lastConfirmAtRef.current = now;
-    schedulePlay(channel);
-  };
+  useEffect(() => {
+    confirmPressRef.current = createConfirmPressHandler({
+      onSingle: () => {
+        const current = itemsRef.current[focusedIndexRef.current];
+        if (current) {
+          schedulePlay(current);
+        }
+      },
+      onDouble: () => {
+        if (!onToggleFavoriteRef.current) return;
+        const current = itemsRef.current[focusedIndexRef.current];
+        if (current) {
+          triggerFavorite(current);
+        }
+      },
+      onLong: () => {
+        if (!onToggleFavoriteRef.current) return;
+        const current = itemsRef.current[focusedIndexRef.current];
+        if (current) {
+          triggerFavorite(current);
+        }
+      },
+    });
+    return () => {
+      confirmPressRef.current?.clear();
+      confirmPressRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const onZoneChange = (event: Event) => {
@@ -173,6 +213,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
       setIsContentZoneActive(detail?.zone === "content" && inThisView);
       if (detail?.zone === "nav" && inThisView) {
         setDomFocusedIndex(null);
+        confirmPressRef.current?.clear();
       }
     };
     const onFocusContent = (event: Event) => {
@@ -184,18 +225,19 @@ export function ChannelRowsWithGuide<T extends Channel>({
       focusRowByIndex(focusedIndex);
     };
     const onContentKey = (event: Event) => {
-      const detail = (event as CustomEvent<{ key?: string; view?: string }>).detail;
+      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
       if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
         return;
       }
       const key = detail?.key;
-      if (!key || items.length === 0) return;
-      if (key === "ArrowDown") {
+      const intent = detail?.intent ?? (key ? mapKeyToTvIntent(key) : null);
+      if (!intent || items.length === 0) return;
+      if (intent === "MoveDown") {
         event.preventDefault();
         focusRowByIndex(focusedIndex + 1);
         return;
       }
-      if (key === "ArrowUp") {
+      if (intent === "MoveUp") {
         if (focusedIndex === 0 && onMoveBeforeFirst) {
           event.preventDefault();
           onMoveBeforeFirst();
@@ -207,25 +249,38 @@ export function ChannelRowsWithGuide<T extends Channel>({
       }
       const current = items[focusedIndex];
       if (!current) return;
-      if (key === "Enter" || key === " ") {
+      if (intent === "Confirm") {
         event.preventDefault();
-        handleConfirm(current);
+        confirmPressRef.current?.onKeyDown(Boolean(detail?.repeat));
         return;
       }
-      if ((key === "f" || key === "F") && onToggleFavorite) {
+      if (intent === "SecondaryAction" && onToggleFavorite) {
         event.preventDefault();
         triggerFavorite(current);
       }
     };
+    const onContentKeyUp = (event: Event) => {
+      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
+      if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
+        return;
+      }
+      const key = detail?.key;
+      const intent = detail?.intent ?? (key ? mapKeyToTvIntent(key) : null);
+      if (intent !== "Confirm") return;
+      event.preventDefault();
+      confirmPressRef.current?.onKeyUp();
+    };
     window.addEventListener("tv-focus-zone", onZoneChange as EventListener);
     window.addEventListener("tv-focus-content", onFocusContent as EventListener);
     window.addEventListener("tv-content-key", onContentKey as EventListener);
+    window.addEventListener("tv-content-keyup", onContentKeyUp as EventListener);
     return () => {
       window.removeEventListener("tv-focus-zone", onZoneChange as EventListener);
       window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
       window.removeEventListener("tv-content-key", onContentKey as EventListener);
+      window.removeEventListener("tv-content-keyup", onContentKeyUp as EventListener);
     };
-  }, [focusedIndex, items, onPlay, onToggleFavorite]);
+  }, [focusedIndex, items, onMoveBeforeFirst, onToggleFavorite]);
 
   return (
     <>

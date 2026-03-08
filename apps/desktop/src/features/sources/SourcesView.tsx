@@ -61,6 +61,57 @@ export function SourcesView({ locale }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    const onFocusContent = (event: Event) => {
+      const detail = (event as CustomEvent<{ view?: string }>).detail;
+      if (detail?.view && detail.view !== "sources") {
+        return;
+      }
+      if (sources.length === 0) return;
+      focusSourceByIndex(focusedSourceIndex);
+    };
+    const onContentKey = (event: Event) => {
+      const detail = (event as CustomEvent<{ key?: string; view?: string }>).detail;
+      if (detail?.view && detail.view !== "sources") {
+        return;
+      }
+      const key = detail?.key;
+      if (!key || sources.length === 0) return;
+      const current = sources[focusedSourceIndex];
+      if (!current) return;
+      if (key === "ArrowDown") {
+        event.preventDefault();
+        focusSourceByIndex(focusedSourceIndex + 1);
+        return;
+      }
+      if (key === "ArrowUp") {
+        event.preventDefault();
+        focusSourceByIndex(focusedSourceIndex - 1);
+        return;
+      }
+      if (key === "Enter" || key === " ") {
+        event.preventDefault();
+        openEdit(current);
+        return;
+      }
+      if (key === "Delete" || key === "Backspace") {
+        event.preventDefault();
+        void handleDelete(current.id);
+        return;
+      }
+      if (key === "r" || key === "R") {
+        event.preventDefault();
+        void handleRefresh(current.id);
+      }
+    };
+    window.addEventListener("tv-focus-content", onFocusContent as EventListener);
+    window.addEventListener("tv-content-key", onContentKey as EventListener);
+    return () => {
+      window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
+      window.removeEventListener("tv-content-key", onContentKey as EventListener);
+    };
+  }, [focusedSourceIndex, sources]);
+
   const handleImportDone = (summary: ImportSummary, auto = false) => {
     setMessage({
       type: "ok",
@@ -326,32 +377,6 @@ export function SourcesView({ locale }: Props) {
                   onMouseEnter={() => setHoveredSourceId(s.id)}
                   onMouseLeave={() => setHoveredSourceId((prev) => (prev === s.id ? null : prev))}
                   onDoubleClick={() => openEdit(s)}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowDown") {
-                      event.preventDefault();
-                      focusSourceByIndex(index + 1);
-                      return;
-                    }
-                    if (event.key === "ArrowUp") {
-                      event.preventDefault();
-                      focusSourceByIndex(index - 1);
-                      return;
-                    }
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openEdit(s);
-                      return;
-                    }
-                    if (event.key === "Delete" || event.key === "Backspace") {
-                      event.preventDefault();
-                      void handleDelete(s.id);
-                      return;
-                    }
-                    if (event.key === "r" || event.key === "R") {
-                      event.preventDefault();
-                      void handleRefresh(s.id);
-                    }
-                  }}
                 >
                   <td style={tdStyle}>{s.name}</td>
                   <td style={tdStyle}>{s.kind.toUpperCase()}</td>

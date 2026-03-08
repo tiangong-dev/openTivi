@@ -106,6 +106,9 @@ export function AppShell() {
     const isTypingTarget = () => {
       const element = document.activeElement as HTMLElement | null;
       if (!element) return false;
+      if (element.dataset.tvNavigationPriority === "true") {
+        return false;
+      }
       const tagName = element.tagName;
       return (
         tagName === "INPUT" ||
@@ -113,6 +116,14 @@ export function AppShell() {
         tagName === "SELECT" ||
         element.isContentEditable
       );
+    };
+    const dispatchContentKey = (key: string): boolean => {
+      const contentEvent = new CustomEvent("tv-content-key", {
+        detail: { key, view: activeView },
+        cancelable: true,
+      });
+      // dispatchEvent returns false when preventDefault() is called by listeners.
+      return !window.dispatchEvent(contentEvent);
     };
     const onWindowKeyDown = (event: KeyboardEvent) => {
       // Avoid handling the same key twice when a focused component already handled it.
@@ -145,13 +156,17 @@ export function AppShell() {
       }
       if (event.key === "ArrowLeft") {
         event.preventDefault();
-        (document.activeElement as HTMLElement | null)?.blur();
-        setFocusZone("nav");
+        const handledByContent = dispatchContentKey(event.key);
+        if (!handledByContent) {
+          (document.activeElement as HTMLElement | null)?.blur();
+          setFocusZone("nav");
+        }
         return;
       }
       if (
         event.key === "ArrowUp" ||
         event.key === "ArrowDown" ||
+        event.key === "ArrowRight" ||
         event.key === "Enter" ||
         event.key === " " ||
         event.key === "f" ||
@@ -162,7 +177,7 @@ export function AppShell() {
         event.key === "R"
       ) {
         event.preventDefault();
-        window.dispatchEvent(new CustomEvent("tv-content-key", { detail: { key: event.key } }));
+        void dispatchContentKey(event.key);
       }
     };
     window.addEventListener("keydown", onWindowKeyDown);
@@ -202,22 +217,6 @@ export function AppShell() {
             }}
             onMouseEnter={() => setHoveredNavKey(item.key)}
             onMouseLeave={() => setHoveredNavKey((prev) => (prev === item.key ? null : prev))}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                focusNavByIndex(index + 1);
-                return;
-              }
-              if (event.key === "ArrowUp") {
-                event.preventDefault();
-                focusNavByIndex(index - 1);
-                return;
-              }
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                activateView(item.key);
-              }
-            }}
             style={{
               ...navBtnStyle,
               ...(activeView === item.key || hoveredNavKey === item.key || focusedNavIndex === index ? navBtnActiveStyle : null),

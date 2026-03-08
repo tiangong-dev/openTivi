@@ -182,23 +182,31 @@ export function ChannelRowsWithGuide<T extends Channel>({
       focusRowByIndex(focusedIndex);
     };
     const onContentKey = (event: Event) => {
-      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      const detail = (event as CustomEvent<{ key?: string; view?: string }>).detail;
+      if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
+        return;
+      }
+      const key = detail?.key;
       if (!key || items.length === 0) return;
       if (key === "ArrowDown") {
+        event.preventDefault();
         focusRowByIndex(focusedIndex + 1);
         return;
       }
       if (key === "ArrowUp") {
+        event.preventDefault();
         focusRowByIndex(focusedIndex - 1);
         return;
       }
       const current = items[focusedIndex];
       if (!current) return;
       if (key === "Enter" || key === " ") {
+        event.preventDefault();
         handleConfirm(current);
         return;
       }
       if ((key === "f" || key === "F") && onToggleFavorite) {
+        event.preventDefault();
         triggerFavorite(current);
       }
     };
@@ -243,27 +251,6 @@ export function ChannelRowsWithGuide<T extends Channel>({
               }}
               onMouseEnter={() => setHoveredChannelId(ch.id)}
               onMouseLeave={() => setHoveredChannelId((prev) => (prev === ch.id ? null : prev))}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  focusRowByIndex(index + 1);
-                  return;
-                }
-                if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  focusRowByIndex(index - 1);
-                  return;
-                }
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  handleConfirm(ch);
-                  return;
-                }
-                if ((event.key === "f" || event.key === "F") && onToggleFavorite) {
-                  event.preventDefault();
-                  triggerFavorite(ch);
-                }
-              }}
             >
               {ch.logoUrl && (
                 <img

@@ -93,6 +93,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
       {/* Channel list */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <input
+          data-tv-navigation-priority="true"
           style={searchStyle}
           placeholder={t(locale, "channels.searchPlaceholder")}
           value={search}

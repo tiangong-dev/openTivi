@@ -127,6 +127,64 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    const onFocusContent = (event: Event) => {
+      const detail = (event as CustomEvent<{ view?: string }>).detail;
+      if (detail?.view && detail.view !== "settings") {
+        return;
+      }
+      if (orderedSettings.length === 0) return;
+      const currentIndex = focusedSettingKey
+        ? orderedSettings.findIndex((item) => item.key === focusedSettingKey)
+        : 0;
+      focusSettingByIndex(currentIndex >= 0 ? currentIndex : 0);
+    };
+    const onContentKey = (event: Event) => {
+      const detail = (event as CustomEvent<{ key?: string; view?: string }>).detail;
+      if (detail?.view && detail.view !== "settings") {
+        return;
+      }
+      const key = detail?.key;
+      if (!key || orderedSettings.length === 0) return;
+      const currentIndex = focusedSettingKey
+        ? orderedSettings.findIndex((item) => item.key === focusedSettingKey)
+        : 0;
+      const normalizedIndex = currentIndex >= 0 ? currentIndex : 0;
+      const current = orderedSettings[normalizedIndex];
+      if (!current) return;
+      if (key === "ArrowDown") {
+        event.preventDefault();
+        focusSettingByIndex(normalizedIndex + 1);
+        return;
+      }
+      if (key === "ArrowUp") {
+        event.preventDefault();
+        focusSettingByIndex(normalizedIndex - 1);
+        return;
+      }
+      if (key === "ArrowRight") {
+        event.preventDefault();
+        triggerSetting(current, 1);
+        return;
+      }
+      if (key === "ArrowLeft") {
+        event.preventDefault();
+        triggerSetting(current, -1);
+        return;
+      }
+      if (key === "Enter" || key === " ") {
+        event.preventDefault();
+        triggerSetting(current, 1);
+      }
+    };
+    window.addEventListener("tv-focus-content", onFocusContent as EventListener);
+    window.addEventListener("tv-content-key", onContentKey as EventListener);
+    return () => {
+      window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
+      window.removeEventListener("tv-content-key", onContentKey as EventListener);
+    };
+  }, [focusedSettingKey, orderedSettings]);
+
   const getValue = (def: SettingDef): unknown => {
     return values[def.key] ?? def.defaultValue;
   };
@@ -282,33 +340,6 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
               }}
               onMouseEnter={() => setHoveredSettingKey(def.key)}
               onMouseLeave={() => setHoveredSettingKey((prev) => (prev === def.key ? null : prev))}
-              onKeyDown={(event) => {
-                const currentIndex = orderedSettings.findIndex((item) => item.key === def.key);
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  focusSettingByIndex(currentIndex + 1);
-                  return;
-                }
-                if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  focusSettingByIndex(currentIndex - 1);
-                  return;
-                }
-                if (event.key === "ArrowRight") {
-                  event.preventDefault();
-                  triggerSetting(def, 1);
-                  return;
-                }
-                if (event.key === "ArrowLeft") {
-                  event.preventDefault();
-                  triggerSetting(def, -1);
-                  return;
-                }
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  triggerSetting(def, 1);
-                }
-              }}
             >
               <span style={{ fontSize: 14 }}>{t(locale, def.labelKey)}</span>
               {renderControl(def)}

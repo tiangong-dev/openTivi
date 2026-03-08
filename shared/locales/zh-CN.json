@@ -44,6 +44,8 @@
   "player.rightKeyToHide": "按右键隐藏",
   "player.loadingEpg": "正在加载节目单...",
   "player.noGuideForChannel": "当前频道暂无节目单数据。",
+  "player.networkSpeed": "网络速度",
+  "player.networkSpeedUnavailable": "--",
   "player.channelsPanelTitle": "频道列表",
   "player.enterToPlay": "回车播放",
   "sources.title": "源",

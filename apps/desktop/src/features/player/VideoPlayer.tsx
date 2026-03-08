@@ -35,6 +35,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const channelsRef = useRef<Channel[]>(channels);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
   const channelListItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const pendingSwitchChannelRef = useRef<Channel | null>(null);
+  const pendingSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prewarmAbortRef = useRef<AbortController | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [proxyPort, setProxyPort] = useState<number | null>(null);
@@ -57,6 +60,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   const GUIDE_AUTO_HIDE_MS = 3500;
   const CHANNEL_LIST_AUTO_HIDE_MS = 5000;
+  const CHANNEL_SWITCH_COMMIT_DELAY_MS = 120;
 
   useEffect(() => {
     playerFocusZoneRef.current = playerFocusZone;
@@ -458,21 +462,107 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     if (error) setOverlayVisible(true);
   }, [error]);
 
+  const clearPendingSwitchTimer = useCallback(() => {
+    if (pendingSwitchTimerRef.current) {
+      clearTimeout(pendingSwitchTimerRef.current);
+      pendingSwitchTimerRef.current = null;
+    }
+  }, []);
+
+  const cancelPrewarm = useCallback(() => {
+    if (prewarmAbortRef.current) {
+      prewarmAbortRef.current.abort();
+      prewarmAbortRef.current = null;
+    }
+  }, []);
+
+  const showSwitchOsd = useCallback((next: Channel) => {
+    setOsdChannel(next);
+    if (osdTimerRef.current) clearTimeout(osdTimerRef.current);
+    osdTimerRef.current = setTimeout(() => setOsdChannel(null), 2000);
+  }, []);
+
+  const getAdjacentChannel = useCallback(
+    (baseChannelId: number, direction: -1 | 1): Channel | null => {
+      if (channels.length === 0) return null;
+      const idx = channels.findIndex((c) => c.id === baseChannelId);
+      if (idx === -1) return null;
+      const nextIdx = (idx + direction + channels.length) % channels.length;
+      return channels[nextIdx] ?? null;
+    },
+    [channels],
+  );
+
+  const prewarmChannel = useCallback(
+    (next: Channel) => {
+      if (proxyPort === null) return;
+      cancelPrewarm();
+      const controller = new AbortController();
+      prewarmAbortRef.current = controller;
+      const proxiedUrl = toProxyUrl(next.streamUrl, proxyPort);
+      void fetch(proxiedUrl, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const reader = response.body?.getReader();
+          if (!reader) return;
+          await reader.read().catch(() => undefined);
+          await reader.cancel().catch(() => undefined);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (prewarmAbortRef.current === controller) {
+            prewarmAbortRef.current = null;
+          }
+        });
+    },
+    [cancelPrewarm, proxyPort],
+  );
+
+  const commitPendingSwitch = useCallback(() => {
+    const next = pendingSwitchChannelRef.current;
+    clearPendingSwitchTimer();
+    pendingSwitchChannelRef.current = null;
+    cancelPrewarm();
+    if (!next || next.id === channel.id) return;
+    onChannelChange(next);
+  }, [cancelPrewarm, channel.id, clearPendingSwitchTimer, onChannelChange]);
+
+  const previewSwitchChannel = useCallback(
+    (direction: -1 | 1) => {
+      const baseChannelId = pendingSwitchChannelRef.current?.id ?? channel.id;
+      const next = getAdjacentChannel(baseChannelId, direction);
+      if (!next) return;
+      pendingSwitchChannelRef.current = next;
+      showSwitchOsd(next);
+      prewarmChannel(next);
+      clearPendingSwitchTimer();
+      pendingSwitchTimerRef.current = setTimeout(() => {
+        commitPendingSwitch();
+      }, CHANNEL_SWITCH_COMMIT_DELAY_MS);
+    },
+    [
+      CHANNEL_SWITCH_COMMIT_DELAY_MS,
+      channel.id,
+      clearPendingSwitchTimer,
+      commitPendingSwitch,
+      getAdjacentChannel,
+      prewarmChannel,
+      showSwitchOsd,
+    ],
+  );
+
   const switchChannel = useCallback(
     (direction: -1 | 1) => {
-      if (channels.length === 0) return;
-      const idx = channels.findIndex((c) => c.id === channel.id);
-      if (idx === -1) return;
-      const nextIdx = (idx + direction + channels.length) % channels.length;
-      const next = channels[nextIdx];
-
-      setOsdChannel(next);
-      if (osdTimerRef.current) clearTimeout(osdTimerRef.current);
-      osdTimerRef.current = setTimeout(() => setOsdChannel(null), 2000);
-
+      const next = getAdjacentChannel(channel.id, direction);
+      if (!next) return;
+      showSwitchOsd(next);
       onChannelChange(next);
     },
-    [channels, channel.id, onChannelChange],
+    [channel.id, getAdjacentChannel, onChannelChange, showSwitchOsd],
   );
 
   const setChannelListPanel = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
@@ -639,7 +729,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
             return (prev - 1 + size) % size;
           });
         } else {
-          switchChannel(-1);
+          previewSwitchChannel(-1);
         }
         showOverlay();
         return;
@@ -653,7 +743,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
             return (prev + 1) % size;
           });
         } else {
-          switchChannel(1);
+          previewSwitchChannel(1);
         }
         showOverlay();
         return;
@@ -674,10 +764,20 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (mapKeyToTvIntent(e.key) !== "Confirm") return;
+      const intent = mapKeyToTvIntent(e.key);
       if (playerFocusZoneRef.current === "nav") return;
-      e.preventDefault();
-      confirmPressRef.current?.onKeyUp();
+      if (intent === "Confirm") {
+        e.preventDefault();
+        confirmPressRef.current?.onKeyUp();
+        return;
+      }
+      if (
+        (intent === "MoveUp" || intent === "MoveDown") &&
+        !showChannelListPanelRef.current
+      ) {
+        e.preventDefault();
+        commitPendingSwitch();
+      }
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
@@ -693,9 +793,17 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     setChannelListPanel,
     setFocusedIndex,
     showOverlay,
+    previewSwitchChannel,
+    commitPendingSwitch,
     switchChannel,
     touchChannelListAutoHide,
   ]);
+
+  useEffect(() => {
+    pendingSwitchChannelRef.current = null;
+    clearPendingSwitchTimer();
+    cancelPrewarm();
+  }, [cancelPrewarm, channel.id, clearPendingSwitchTimer]);
 
   useEffect(() => {
     return () => {
@@ -703,8 +811,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         clearTimeout(channelListAutoHideTimerRef.current);
         channelListAutoHideTimerRef.current = null;
       }
+      clearPendingSwitchTimer();
+      cancelPrewarm();
     };
-  }, []);
+  }, [cancelPrewarm, clearPendingSwitchTimer]);
 
   return (
     <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>
@@ -765,46 +875,48 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         </div>
       </div>
 
-      {epgNow && (
-        <div
-          style={{
-            ...bottomBarStyle,
-            opacity: overlayVisible ? 1 : 0,
-            pointerEvents: overlayVisible ? "auto" : "none",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14 }}>
-            <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.now")}</span>
-            <span style={{ fontWeight: 600 }}>{epgNow.title}</span>
-            <span style={{ opacity: 0.5, fontSize: 12 }}>
-              {formatTime(epgNow.startAt)} - {formatTime(epgNow.endAt)}
-            </span>
-          </div>
-          <div style={progressTrackStyle}>
-            <div style={{ ...progressBarStyle, width: `${Math.max(0, Math.min(100, epgProgress))}%` }} />
-          </div>
-          <div style={networkSpeedStyle}>
-            {t(locale, "player.networkSpeed")}:{" "}
-            {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}
-          </div>
-          {epgNext && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                fontSize: 13,
-                opacity: 0.7,
-                marginTop: 4,
-              }}
-            >
-              <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.next")}</span>
-              <span>{epgNext.title}</span>
-              <span style={{ opacity: 0.5, fontSize: 12 }}>{formatTime(epgNext.startAt)}</span>
+      <div
+        style={{
+          ...bottomBarStyle,
+          opacity: overlayVisible ? 1 : 0,
+          pointerEvents: overlayVisible ? "auto" : "none",
+        }}
+      >
+        {epgNow && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14 }}>
+              <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.now")}</span>
+              <span style={{ fontWeight: 600 }}>{epgNow.title}</span>
+              <span style={{ opacity: 0.5, fontSize: 12 }}>
+                {formatTime(epgNow.startAt)} - {formatTime(epgNow.endAt)}
+              </span>
             </div>
-          )}
+            <div style={progressTrackStyle}>
+              <div style={{ ...progressBarStyle, width: `${Math.max(0, Math.min(100, epgProgress))}%` }} />
+            </div>
+          </>
+        )}
+        <div style={networkSpeedStyle}>
+          {t(locale, "player.networkSpeed")}:{" "}
+          {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}
         </div>
-      )}
+        {epgNow && epgNext && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              fontSize: 13,
+              opacity: 0.7,
+              marginTop: 4,
+            }}
+          >
+            <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.next")}</span>
+            <span>{epgNext.title}</span>
+            <span style={{ opacity: 0.5, fontSize: 12 }}>{formatTime(epgNext.startAt)}</span>
+          </div>
+        )}
+      </div>
 
       {showGuidePanel && (
         <div style={guidePanelStyle}>

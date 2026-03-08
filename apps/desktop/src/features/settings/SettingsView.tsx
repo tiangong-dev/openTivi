@@ -147,8 +147,8 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
 
   const focusSettingByIndex = (index: number) => {
     if (orderedSettings.length === 0) return;
-    const clamped = Math.max(0, Math.min(index, orderedSettings.length - 1));
-    const target = orderedSettings[clamped];
+    const wrapped = ((index % orderedSettings.length) + orderedSettings.length) % orderedSettings.length;
+    const target = orderedSettings[wrapped];
     setFocusedSettingKey(target.key);
     const node = rowRefs.current[target.key];
     node?.focus();

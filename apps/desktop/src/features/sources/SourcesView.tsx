@@ -176,9 +176,9 @@ export function SourcesView({ locale }: Props) {
 
   const focusSourceByIndex = (index: number) => {
     if (sources.length === 0) return;
-    const clamped = Math.max(0, Math.min(index, sources.length - 1));
-    setFocusedSourceIndex(clamped);
-    const source = sources[clamped];
+    const wrapped = ((index % sources.length) + sources.length) % sources.length;
+    setFocusedSourceIndex(wrapped);
+    const source = sources[wrapped];
     const rowNode = source ? sourceRowRefs.current[source.id] : null;
     rowNode?.focus();
     rowNode?.scrollIntoView({ block: "nearest" });

@@ -146,9 +146,9 @@ export function ChannelRowsWithGuide<T extends Channel>({
 
   const focusRowByIndex = (nextIndex: number) => {
     if (items.length === 0) return;
-    const clamped = Math.max(0, Math.min(nextIndex, items.length - 1));
-    setFocusedIndex(clamped);
-    const rowNode = rowRefs.current[clamped];
+    const wrapped = ((nextIndex % items.length) + items.length) % items.length;
+    setFocusedIndex(wrapped);
+    const rowNode = rowRefs.current[wrapped];
     rowNode?.focus();
     rowNode?.scrollIntoView({ block: "nearest" });
   };

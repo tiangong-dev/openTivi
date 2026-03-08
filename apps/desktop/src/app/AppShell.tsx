@@ -71,9 +71,10 @@ export function AppShell() {
   };
 
   const focusNavByIndex = (nextIndex: number) => {
-    const clamped = Math.max(0, Math.min(nextIndex, navItems.length - 1));
-    setFocusedNavIndex(clamped);
-    navButtonRefs.current[clamped]?.focus();
+    if (navItems.length === 0) return;
+    const wrapped = ((nextIndex % navItems.length) + navItems.length) % navItems.length;
+    setFocusedNavIndex(wrapped);
+    navButtonRefs.current[wrapped]?.focus();
   };
 
   const focusContent = () => {

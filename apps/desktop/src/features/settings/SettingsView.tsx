@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getErrorMessage } from "../../lib/errors";
 import { LOCALE_SETTING_KEY, t, type Locale, type TranslationKey } from "../../lib/i18n";
@@ -81,6 +81,10 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
+  const [focusedSettingKey, setFocusedSettingKey] = useState<string | null>(null);
+  const [hoveredSettingKey, setHoveredSettingKey] = useState<string | null>(null);
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const orderedSettings = useMemo(() => settingCategories.flatMap((cat) => cat.settings), []);
 
   const loadSettings = async () => {
     try {
@@ -100,6 +104,12 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
     void loadSettings();
   }, []);
 
+  useEffect(() => {
+    if (!focusedSettingKey && orderedSettings.length > 0) {
+      setFocusedSettingKey(orderedSettings[0].key);
+    }
+  }, [focusedSettingKey, orderedSettings]);
+
   const getValue = (def: SettingDef): unknown => {
     return values[def.key] ?? def.defaultValue;
   };
@@ -118,6 +128,48 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
     }
   };
 
+  const focusSettingByIndex = (index: number) => {
+    if (orderedSettings.length === 0) return;
+    const clamped = Math.max(0, Math.min(index, orderedSettings.length - 1));
+    const target = orderedSettings[clamped];
+    setFocusedSettingKey(target.key);
+    const node = rowRefs.current[target.key];
+    node?.focus();
+    node?.scrollIntoView({ block: "nearest" });
+  };
+
+  const cycleSelect = (def: SettingDef, direction: 1 | -1) => {
+    const options = def.options ?? [];
+    if (options.length === 0) return;
+    const currentValue = String(getValue(def));
+    const currentIndex = Math.max(0, options.findIndex((option) => option.value === currentValue));
+    const nextIndex = (currentIndex + direction + options.length) % options.length;
+    void saveSetting(def.key, options[nextIndex].value);
+  };
+
+  const adjustRange = (def: SettingDef, direction: 1 | -1) => {
+    const min = def.min ?? 0;
+    const max = def.max ?? 100;
+    const step = 5;
+    const current = Number(getValue(def));
+    const fallback = Number(def.defaultValue);
+    const base = Number.isFinite(current) ? current : Number.isFinite(fallback) ? fallback : min;
+    const next = Math.max(min, Math.min(max, base + direction * step));
+    void saveSetting(def.key, next);
+  };
+
+  const triggerSetting = (def: SettingDef, direction: 1 | -1 = 1) => {
+    if (def.type === "toggle") {
+      void saveSetting(def.key, !Boolean(getValue(def)));
+      return;
+    }
+    if (def.type === "select") {
+      cycleSelect(def, direction);
+      return;
+    }
+    adjustRange(def, direction);
+  };
+
   const renderControl = (def: SettingDef) => {
     const val = getValue(def);
 
@@ -128,6 +180,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
             type="checkbox"
             checked={Boolean(val)}
             onChange={(e) => void saveSetting(def.key, e.target.checked)}
+            tabIndex={-1}
             style={{ accentColor: "var(--accent)" }}
           />
         </label>
@@ -139,6 +192,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
         <select
           value={String(val)}
           onChange={(e) => void saveSetting(def.key, e.target.value)}
+          tabIndex={-1}
           style={selectStyle}
         >
           {def.options?.map((o) => (
@@ -159,6 +213,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
             max={def.max}
             value={Number(val)}
             onChange={(e) => void saveSetting(def.key, Number(e.target.value))}
+            tabIndex={-1}
             style={{ accentColor: "var(--accent)", width: 120 }}
           />
           <span style={{ fontSize: 12, color: "var(--text-secondary)", minWidth: 28 }}>{Number(val)}</span>
@@ -189,7 +244,48 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
             {t(locale, cat.titleKey)}
           </div>
           {cat.settings.map((def) => (
-            <div key={def.key} style={rowStyle}>
+            <div
+              key={def.key}
+              ref={(node) => {
+                rowRefs.current[def.key] = node;
+              }}
+              role="button"
+              tabIndex={0}
+              style={{
+                ...rowStyle,
+                ...(focusedSettingKey === def.key || hoveredSettingKey === def.key ? rowActiveStyle : null),
+              }}
+              onFocus={() => setFocusedSettingKey(def.key)}
+              onMouseEnter={() => setHoveredSettingKey(def.key)}
+              onMouseLeave={() => setHoveredSettingKey((prev) => (prev === def.key ? null : prev))}
+              onKeyDown={(event) => {
+                const currentIndex = orderedSettings.findIndex((item) => item.key === def.key);
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  focusSettingByIndex(currentIndex + 1);
+                  return;
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  focusSettingByIndex(currentIndex - 1);
+                  return;
+                }
+                if (event.key === "ArrowRight") {
+                  event.preventDefault();
+                  triggerSetting(def, 1);
+                  return;
+                }
+                if (event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  triggerSetting(def, -1);
+                  return;
+                }
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  triggerSetting(def, 1);
+                }
+              }}
+            >
               <span style={{ fontSize: 14 }}>{t(locale, def.labelKey)}</span>
               {renderControl(def)}
             </div>
@@ -206,6 +302,14 @@ const rowStyle: React.CSSProperties = {
   justifyContent: "space-between",
   padding: "8px 10px",
   borderBottom: "1px solid var(--border)",
+  borderRadius: 4,
+  outline: "none",
+  cursor: "pointer",
+};
+
+const rowActiveStyle: React.CSSProperties = {
+  backgroundColor: "var(--bg-tertiary)",
+  boxShadow: "inset 0 0 0 1px var(--accent)",
 };
 
 const selectStyle: React.CSSProperties = {

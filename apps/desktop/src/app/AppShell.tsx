@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SourcesView } from "../features/sources/SourcesView";
 import { ChannelsView } from "../features/channels/ChannelsView";
 import { FavoritesView } from "../features/favorites/FavoritesView";
@@ -16,6 +16,9 @@ export function AppShell() {
   const [playingChannel, setPlayingChannel] = useState<Channel | null>(null);
   const [channelList, setChannelList] = useState<Channel[]>([]);
   const [locale, setLocale] = useState<Locale>(detectDefaultLocale());
+  const [focusedNavIndex, setFocusedNavIndex] = useState(0);
+  const [hoveredNavKey, setHoveredNavKey] = useState<View | null>(null);
+  const navButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     const loadLocale = async () => {
@@ -48,6 +51,21 @@ export function AppShell() {
     { key: "settings", label: t(locale, "nav.settings") },
   ];
 
+  useEffect(() => {
+    setFocusedNavIndex((prev) => Math.min(prev, navItems.length - 1));
+  }, [navItems.length]);
+
+  const activateView = (view: View) => {
+    setActiveView(view);
+    setPlayingChannel(null);
+  };
+
+  const focusNavByIndex = (nextIndex: number) => {
+    const clamped = Math.max(0, Math.min(nextIndex, navItems.length - 1));
+    setFocusedNavIndex(clamped);
+    navButtonRefs.current[clamped]?.focus();
+  };
+
   const renderView = () => {
     switch (activeView) {
       case "sources":
@@ -66,14 +84,35 @@ export function AppShell() {
   return (
     <>
       <nav style={sidebarStyle}>
-        {navItems.map((item) => (
+        {navItems.map((item, index) => (
           <button
             key={item.key}
-            onClick={() => { setActiveView(item.key); setPlayingChannel(null); }}
+            ref={(node) => {
+              navButtonRefs.current[index] = node;
+            }}
+            onClick={() => activateView(item.key)}
+            onFocus={() => setFocusedNavIndex(index)}
+            onMouseEnter={() => setHoveredNavKey(item.key)}
+            onMouseLeave={() => setHoveredNavKey((prev) => (prev === item.key ? null : prev))}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                focusNavByIndex(index + 1);
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                focusNavByIndex(index - 1);
+                return;
+              }
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                activateView(item.key);
+              }
+            }}
             style={{
               ...navBtnStyle,
-              backgroundColor:
-                activeView === item.key ? "var(--bg-tertiary)" : "transparent",
+              ...(activeView === item.key || hoveredNavKey === item.key || focusedNavIndex === index ? navBtnActiveStyle : null),
             }}
           >
             {item.label}
@@ -119,6 +158,12 @@ const navBtnStyle: React.CSSProperties = {
   fontSize: 14,
   cursor: "pointer",
   textAlign: "left",
+  outline: "none",
+};
+
+const navBtnActiveStyle: React.CSSProperties = {
+  backgroundColor: "var(--bg-tertiary)",
+  boxShadow: "inset 2px 0 0 0 var(--accent)",
 };
 
 const mainStyle: React.CSSProperties = {

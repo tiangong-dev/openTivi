@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { t, type Locale } from "../../lib/i18n";
 import {
@@ -28,6 +28,11 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const [loading, setLoading] = useState(false);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [guideWindowMinutes, setGuideWindowMinutes] = useState(DEFAULT_GUIDE_WINDOW_MINUTES);
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const [hoveredChannelId, setHoveredChannelId] = useState<number | null>(null);
+  const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const pendingPlayTimerRef = useRef<number | null>(null);
+  const lastConfirmAtRef = useRef(0);
 
   const channelIds = useMemo(() => items.map((c) => c.id), [items]);
   const timelineWindow = useMemo(() => {
@@ -40,6 +45,14 @@ export function ChannelRowsWithGuide<T extends Channel>({
     const timer = window.setInterval(() => setNowTs(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setFocusedIndex(0);
+      return;
+    }
+    setFocusedIndex((prev) => Math.min(prev, items.length - 1));
+  }, [items.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,13 +112,100 @@ export function ChannelRowsWithGuide<T extends Channel>({
     };
   }, [channelIds, timelineWindow.start, timelineWindow.end]);
 
+  useEffect(() => {
+    return () => {
+      if (pendingPlayTimerRef.current !== null) {
+        window.clearTimeout(pendingPlayTimerRef.current);
+        pendingPlayTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const clearPendingPlay = () => {
+    if (pendingPlayTimerRef.current !== null) {
+      window.clearTimeout(pendingPlayTimerRef.current);
+      pendingPlayTimerRef.current = null;
+    }
+  };
+
+  const schedulePlay = (channel: T) => {
+    clearPendingPlay();
+    pendingPlayTimerRef.current = window.setTimeout(() => {
+      pendingPlayTimerRef.current = null;
+      onPlay?.(channel, items);
+    }, 220);
+  };
+
+  const triggerFavorite = (channel: T) => {
+    clearPendingPlay();
+    onToggleFavorite?.(channel);
+  };
+
+  const focusRowByIndex = (nextIndex: number) => {
+    if (items.length === 0) return;
+    const clamped = Math.max(0, Math.min(nextIndex, items.length - 1));
+    setFocusedIndex(clamped);
+    const rowNode = rowRefs.current[clamped];
+    rowNode?.focus();
+    rowNode?.scrollIntoView({ block: "nearest" });
+  };
+
+  const handleConfirm = (channel: T) => {
+    const now = Date.now();
+    if (now - lastConfirmAtRef.current < 280 && onToggleFavorite) {
+      triggerFavorite(channel);
+      lastConfirmAtRef.current = 0;
+      return;
+    }
+    lastConfirmAtRef.current = now;
+    schedulePlay(channel);
+  };
+
   return (
     <>
-      {items.map((ch) => {
+      {items.map((ch, index) => {
         const snapshot = snapshots[ch.id];
+        const isActive = focusedIndex === index || hoveredChannelId === ch.id;
         return (
           <div key={ch.id} style={{ borderBottom: "1px solid var(--border)" }}>
-            <div style={rowStyle} onDoubleClick={() => onPlay?.(ch, items)}>
+            <div
+              ref={(node) => {
+                rowRefs.current[index] = node;
+              }}
+              role="button"
+              tabIndex={0}
+              style={{ ...rowStyle, ...(isActive ? rowActiveStyle : null) }}
+              onClick={() => schedulePlay(ch)}
+              onDoubleClick={() => {
+                if (onToggleFavorite) {
+                  triggerFavorite(ch);
+                }
+              }}
+              onFocus={() => setFocusedIndex(index)}
+              onMouseEnter={() => setHoveredChannelId(ch.id)}
+              onMouseLeave={() => setHoveredChannelId((prev) => (prev === ch.id ? null : prev))}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  focusRowByIndex(index + 1);
+                  return;
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  focusRowByIndex(index - 1);
+                  return;
+                }
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  handleConfirm(ch);
+                  return;
+                }
+                if ((event.key === "f" || event.key === "F") && onToggleFavorite) {
+                  event.preventDefault();
+                  triggerFavorite(ch);
+                }
+              }}
+            >
               {ch.logoUrl && (
                 <img
                   src={ch.logoUrl}
@@ -116,6 +216,18 @@ export function ChannelRowsWithGuide<T extends Channel>({
                   }}
                 />
               )}
+              {onToggleFavorite ? (
+                <span
+                  style={{
+                    fontSize: 16,
+                    color: ch.isFavorite ? "#f59e0b" : "var(--text-secondary)",
+                    width: 20,
+                    textAlign: "center",
+                  }}
+                >
+                  {ch.isFavorite ? "★" : "☆"}
+                </span>
+              ) : null}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {ch.channelNumber && <span style={{ color: "var(--text-secondary)", marginRight: 8 }}>{ch.channelNumber}</span>}
@@ -126,20 +238,9 @@ export function ChannelRowsWithGuide<T extends Channel>({
                   {renderMeta ? <span style={{ marginLeft: 8 }}>{renderMeta(ch)}</span> : null}
                 </div>
               </div>
-              {onToggleFavorite ? (
-                <button
-                  onClick={() => onToggleFavorite(ch)}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: ch.isFavorite ? "#f59e0b" : "var(--text-secondary)" }}
-                >
-                  {ch.isFavorite ? "★" : "☆"}
-                </button>
-              ) : null}
-              <button
-                onClick={() => onPlay?.(ch, items)}
-                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--accent)" }}
-              >
+              <span style={{ fontSize: 13, color: "var(--accent)" }}>
                 ▶
-              </button>
+              </span>
             </div>
 
             <div style={guideInlineStyle}>
@@ -309,6 +410,14 @@ const rowStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 10,
   padding: "6px 8px",
+  borderRadius: 4,
+  cursor: "pointer",
+  outline: "none",
+};
+
+const rowActiveStyle: React.CSSProperties = {
+  backgroundColor: "var(--bg-tertiary)",
+  boxShadow: "inset 0 0 0 1px var(--accent)",
 };
 
 const guideInlineStyle: React.CSSProperties = {

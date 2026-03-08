@@ -17,7 +17,10 @@ export function SourcesView({ locale }: Props) {
   const [savingEdit, setSavingEdit] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [editing, setEditing] = useState<EditSourceDraft | null>(null);
+  const [focusedSourceIndex, setFocusedSourceIndex] = useState(0);
+  const [hoveredSourceId, setHoveredSourceId] = useState<number | null>(null);
   const refreshingSourceIds = useRef<Set<number>>(new Set());
+  const sourceRowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
 
   const loadSources = async () => {
     try {
@@ -31,6 +34,14 @@ export function SourcesView({ locale }: Props) {
   useEffect(() => {
     void loadSources();
   }, []);
+
+  useEffect(() => {
+    if (sources.length === 0) {
+      setFocusedSourceIndex(0);
+      return;
+    }
+    setFocusedSourceIndex((prev) => Math.min(prev, sources.length - 1));
+  }, [sources.length]);
 
   const handleImportDone = (summary: ImportSummary, auto = false) => {
     setMessage({
@@ -143,6 +154,16 @@ export function SourcesView({ locale }: Props) {
         setLoading(false);
       }
     }
+  };
+
+  const focusSourceByIndex = (index: number) => {
+    if (sources.length === 0) return;
+    const clamped = Math.max(0, Math.min(index, sources.length - 1));
+    setFocusedSourceIndex(clamped);
+    const source = sources[clamped];
+    const rowNode = source ? sourceRowRefs.current[source.id] : null;
+    rowNode?.focus();
+    rowNode?.scrollIntoView({ block: "nearest" });
   };
 
   const m3uSources = useMemo(
@@ -263,8 +284,50 @@ export function SourcesView({ locale }: Props) {
               </tr>
             </thead>
             <tbody>
-              {sources.map((s) => (
-                <tr key={s.id} style={{ borderBottom: "1px solid var(--border)" }}>
+              {sources.map((s, index) => (
+                <tr
+                  key={s.id}
+                  ref={(node) => {
+                    sourceRowRefs.current[s.id] = node;
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    borderBottom: "1px solid var(--border)",
+                    outline: "none",
+                    ...(focusedSourceIndex === index || hoveredSourceId === s.id ? sourceRowActiveStyle : null),
+                  }}
+                  onFocus={() => setFocusedSourceIndex(index)}
+                  onMouseEnter={() => setHoveredSourceId(s.id)}
+                  onMouseLeave={() => setHoveredSourceId((prev) => (prev === s.id ? null : prev))}
+                  onDoubleClick={() => openEdit(s)}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      focusSourceByIndex(index + 1);
+                      return;
+                    }
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      focusSourceByIndex(index - 1);
+                      return;
+                    }
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openEdit(s);
+                      return;
+                    }
+                    if (event.key === "Delete" || event.key === "Backspace") {
+                      event.preventDefault();
+                      void handleDelete(s.id);
+                      return;
+                    }
+                    if (event.key === "r" || event.key === "R") {
+                      event.preventDefault();
+                      void handleRefresh(s.id);
+                    }
+                  }}
+                >
                   <td style={tdStyle}>{s.name}</td>
                   <td style={tdStyle}>{s.kind.toUpperCase()}</td>
                   <td style={{ ...tdStyle, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -282,13 +345,35 @@ export function SourcesView({ locale }: Props) {
                   </td>
                   <td style={tdStyle}>{s.lastImportedAt ?? "—"}</td>
                   <td style={tdStyle}>
-                    <button onClick={() => handleRefresh(s.id)} disabled={loading} style={actionBtnStyle}>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleRefresh(s.id);
+                      }}
+                      disabled={loading}
+                      tabIndex={-1}
+                      style={actionBtnStyle}
+                    >
                       {t(locale, "sources.action.refresh")}
                     </button>
-                    <button onClick={() => openEdit(s)} style={actionBtnStyle}>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openEdit(s);
+                      }}
+                      tabIndex={-1}
+                      style={actionBtnStyle}
+                    >
                       {t(locale, "sources.action.edit")}
                     </button>
-                    <button onClick={() => handleDelete(s.id)} style={{ ...actionBtnStyle, color: "var(--danger)" }}>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleDelete(s.id);
+                      }}
+                      tabIndex={-1}
+                      style={{ ...actionBtnStyle, color: "var(--danger)" }}
+                    >
                       {t(locale, "sources.action.delete")}
                     </button>
                   </td>
@@ -628,6 +713,11 @@ const actionBtnStyle: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 13,
   marginRight: 8,
+};
+
+const sourceRowActiveStyle: React.CSSProperties = {
+  backgroundColor: "var(--bg-tertiary)",
+  boxShadow: "inset 0 0 0 1px var(--accent)",
 };
 
 const modalOverlayStyle: React.CSSProperties = {

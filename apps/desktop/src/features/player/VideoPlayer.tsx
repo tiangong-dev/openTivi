@@ -44,6 +44,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [epgNext, setEpgNext] = useState<EpgProgram | null>(null);
   const [epgProgress, setEpgProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [networkSpeedBps, setNetworkSpeedBps] = useState<number | null>(null);
   const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [channelEpgLoading, setChannelEpgLoading] = useState(false);
 
@@ -61,6 +62,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
     cleanup();
     setError(null);
+    setNetworkSpeedBps(null);
 
     const proxiedUrl = toProxyUrl(channel.streamUrl, proxyPort);
 
@@ -88,6 +90,23 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+      hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
+        const fragData = data as unknown as {
+          stats?: {
+            total?: number;
+            loaded?: number;
+            loading?: { start?: number; end?: number };
+          };
+        };
+        const loadedBytes = fragData.stats?.total ?? fragData.stats?.loaded ?? 0;
+        const loadingStart = fragData.stats?.loading?.start ?? 0;
+        const loadingEnd = fragData.stats?.loading?.end ?? 0;
+        const durationMs = loadingEnd - loadingStart;
+        if (loadedBytes > 0 && durationMs > 0) {
+          const bitsPerSecond = (loadedBytes * 8 * 1000) / durationMs;
+          setNetworkSpeedBps(bitsPerSecond);
+        }
+      });
       hls.on(Hls.Events.ERROR, (_e, data) => {
         if (data.fatal) {
           setError(t(locale, "player.playbackErrorDetails", { details: data.details }));
@@ -112,6 +131,13 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       player.attachMediaElement(video);
       player.load();
       player.play();
+      player.on(mpegts.Events.STATISTICS_INFO, (stats) => {
+        const speedKiloBytesPerSec = Number((stats as { speed?: number })?.speed);
+        if (Number.isFinite(speedKiloBytesPerSec) && speedKiloBytesPerSec > 0) {
+          const bitsPerSecond = speedKiloBytesPerSec * 1024 * 8;
+          setNetworkSpeedBps(bitsPerSecond);
+        }
+      });
       player.on(mpegts.Events.ERROR, () => {
         setError(t(locale, "player.mpegtsPlaybackError"));
       });
@@ -563,6 +589,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           <div style={progressTrackStyle}>
             <div style={{ ...progressBarStyle, width: `${Math.max(0, Math.min(100, epgProgress))}%` }} />
           </div>
+          <div style={networkSpeedStyle}>
+            {t(locale, "player.networkSpeed")}:{" "}
+            {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}
+          </div>
           {epgNext && (
             <div
               style={{
@@ -722,6 +752,13 @@ function formatTime(value: string): string {
   const ts = parseXmltvDate(value);
   if (ts === null) return value;
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatNetworkSpeed(bitsPerSecond: number): string {
+  if (bitsPerSecond >= 1_000_000) {
+    return `${(bitsPerSecond / 1_000_000).toFixed(2)} Mbps`;
+  }
+  return `${(bitsPerSecond / 1_000).toFixed(1)} Kbps`;
 }
 
 function getGuidePrograms(programs: EpgProgram[]): EpgProgram[] {
@@ -907,6 +944,12 @@ const progressBarStyle: React.CSSProperties = {
   backgroundColor: "#3b82f6",
   borderRadius: 2,
   transition: "width 0.5s ease",
+};
+
+const networkSpeedStyle: React.CSSProperties = {
+  marginTop: 6,
+  fontSize: 12,
+  color: "rgba(255,255,255,0.75)",
 };
 
 const errorOverlayStyle: React.CSSProperties = {

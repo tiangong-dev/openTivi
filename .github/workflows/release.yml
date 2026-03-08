@@ -67,23 +67,13 @@ jobs:
           elif [[ -n "${{ inputs.version }}" ]]; then
             TARGET_VERSION="${{ inputs.version }}"
           else
-            TARGET_VERSION="$(python3 - <<'PY'
-import json
-from pathlib import Path
-print(json.loads(Path("apps/desktop/package.json").read_text(encoding="utf-8"))["version"])
-PY
-)"
+            TARGET_VERSION="$(bash scripts/version_manager.sh current)"
           fi
 
-          python3 scripts/version_manager.py sync --version "${TARGET_VERSION}"
-          python3 scripts/version_manager.py check
+          bash scripts/version_manager.sh sync --version "${TARGET_VERSION}"
+          bash scripts/version_manager.sh check
 
-          NORMALIZED_VERSION="$(python3 - <<'PY'
-import json
-from pathlib import Path
-print(json.loads(Path("apps/desktop/package.json").read_text(encoding="utf-8"))["version"])
-PY
-)"
+          NORMALIZED_VERSION="$(bash scripts/version_manager.sh current)"
           echo "value=${NORMALIZED_VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Install dependencies

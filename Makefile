@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 APP_DIR := apps/desktop
 TAURI_DIR := $(APP_DIR)/src-tauri
-VERSION_SCRIPT := scripts/version_manager.py
+VERSION_SCRIPT := scripts/version_manager.sh
 
 .PHONY: help install dev build web-build desktop-build rust-test version-check version-sync test-build
 
@@ -35,15 +35,15 @@ rust-test:
 	cargo test --manifest-path $(TAURI_DIR)/Cargo.toml
 
 version-check:
-	python3 $(VERSION_SCRIPT) check
+	bash $(VERSION_SCRIPT) check
 
 version-sync:
 	@if [ -z "$(VERSION)" ]; then \
 		echo "VERSION is required. Example: make version-sync VERSION=0.1.1"; \
 		exit 1; \
 	fi
-	python3 $(VERSION_SCRIPT) sync --version "$(VERSION)"
-	python3 $(VERSION_SCRIPT) check
+	bash $(VERSION_SCRIPT) sync --version "$(VERSION)"
+	bash $(VERSION_SCRIPT) check
 
 test-build:
 	@if [ -z "$(VERSION)" ]; then \

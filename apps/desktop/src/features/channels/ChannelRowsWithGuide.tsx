@@ -71,7 +71,11 @@ export function ChannelRowsWithGuide<T extends Channel>({
       setLoading(true);
       try {
         const list = await tauriInvoke<ChannelEpgSnapshot[]>("get_channels_epg_snapshots", {
-          query: { channelIds },
+          query: {
+            channelIds,
+            windowStartTs: timelineWindow.start,
+            windowEndTs: timelineWindow.end,
+          },
         });
         if (cancelled) return;
         const map: Record<number, ChannelEpgSnapshot> = {};
@@ -93,7 +97,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
     return () => {
       cancelled = true;
     };
-  }, [channelIds]);
+  }, [channelIds, timelineWindow.start, timelineWindow.end]);
 
   return (
     <>
@@ -139,7 +143,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
             </div>
 
             <div style={guideInlineStyle}>
-              {snapshot?.now || snapshot?.next ? (
+              {snapshot && ((snapshot.timelinePrograms?.length ?? 0) > 0 || snapshot.now || snapshot.next) ? (
                 <GuideTimeline
                   snapshot={snapshot}
                   locale={locale}
@@ -175,60 +179,75 @@ function GuideTimeline({
   windowStart: number;
   windowEnd: number;
 }) {
-  const nowStart = parseXmltvDate(snapshot.now?.startAt ?? "");
-  const nowEnd = parseXmltvDate(snapshot.now?.endAt ?? "");
-  const nextStart = parseXmltvDate(snapshot.next?.startAt ?? "");
-  const nextEnd = parseXmltvDate(snapshot.next?.endAt ?? "");
-
   const range = windowEnd - windowStart;
   const currentRatio = range > 0 ? clamp((currentTs - windowStart) / range, 0, 1) : 0;
-
-  const nowBlock = calcBlock(nowStart, nowEnd, windowStart, windowEnd);
-  const nextBlock = calcBlock(nextStart, nextEnd, windowStart, windowEnd);
-  const progressBlock = calcBlock(nowStart, currentTs, windowStart, windowEnd);
-  const splitMarker =
-    nextStart !== null && range > 0 ? clamp((nextStart - windowStart) / range, 0, 1) : null;
+  const timelinePrograms =
+    (snapshot.timelinePrograms?.length ?? 0) > 0
+      ? snapshot.timelinePrograms
+      : [snapshot.now, snapshot.next].filter((program): program is NonNullable<typeof program> => Boolean(program));
+  const segments = timelinePrograms
+    .map((program, index) => {
+      const start = parseXmltvDate(program.startAt);
+      const end = parseXmltvDate(program.endAt);
+      const block = calcBlock(start, end, windowStart, windowEnd);
+      if (!block) return null;
+      const isCurrent = start !== null && end !== null && start <= currentTs && currentTs < end;
+      return { key: `${program.startAt}-${program.endAt}-${index}`, program, block, isCurrent };
+    })
+    .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment));
+  const currentProgram = timelinePrograms.find((program) => {
+    const start = parseXmltvDate(program.startAt);
+    const end = parseXmltvDate(program.endAt);
+    return start !== null && end !== null && start <= currentTs && currentTs < end;
+  });
+  const splitPoints = timelinePrograms
+    .map((program, index) => {
+      if (range <= 0) return null;
+      const start = parseXmltvDate(program.startAt);
+      if (start === null) return null;
+      const ratio = clamp((start - windowStart) / range, 0, 1);
+      if (ratio <= 0 || ratio >= 1) return null;
+      return {
+        key: `${program.startAt}-${index}`,
+        ratio,
+        label: formatTime(program.startAt),
+      };
+    })
+    .filter((point): point is NonNullable<typeof point> => Boolean(point))
+    .sort((a, b) => a.ratio - b.ratio)
+    .filter((point, index, list) => index === 0 || Math.abs(point.ratio - list[index - 1].ratio) > 0.003);
+  const progressBlock = currentProgram
+    ? calcBlock(parseXmltvDate(currentProgram.startAt), currentTs, windowStart, windowEnd)
+    : null;
 
   return (
     <div style={timelineWrapStyle}>
-      {splitMarker !== null && splitMarker > 0 && splitMarker < 1 && snapshot.next?.startAt ? (
-        <div style={{ ...timelineSplitLabelStyle, left: `${(splitMarker * 100).toFixed(2)}%` }}>
-          {formatTime(snapshot.next.startAt)}
+      {splitPoints.map((point) => (
+        <div key={`label-${point.key}`} style={{ ...timelineSplitLabelStyle, left: `${(point.ratio * 100).toFixed(2)}%` }}>
+          {point.label}
         </div>
-      ) : null}
+      ))}
       <div style={timelineStyle}>
-        {nowBlock ? (
+        {segments.map((segment) => (
           <div
+            key={segment.key}
             style={{
               ...timelineSegmentStyle,
-              left: `${(nowBlock.left * 100).toFixed(2)}%`,
-              width: `${(nowBlock.width * 100).toFixed(2)}%`,
-              background:
-                "linear-gradient(180deg, #1d4ed855 0%, #1d4ed822 100%)",
-            }}
-            title={snapshot.now?.title ?? ""}
-          >
-            <div style={timelineTextStyle}>
-              {tr(locale, "Now", "当前")} · {snapshot.now?.title ?? tr(locale, "No guide", "暂无节目")}
-            </div>
-          </div>
-        ) : null}
-        {nextBlock ? (
-          <div
-            style={{
-              ...timelineSegmentStyle,
-              left: `${(nextBlock.left * 100).toFixed(2)}%`,
-              width: `${(nextBlock.width * 100).toFixed(2)}%`,
-              backgroundColor: "#111827aa",
+              left: `${(segment.block.left * 100).toFixed(2)}%`,
+              width: `${(segment.block.width * 100).toFixed(2)}%`,
+              background: segment.isCurrent ? "linear-gradient(180deg, #1d4ed855 0%, #1d4ed822 100%)" : "#111827aa",
               borderLeft: "1px solid #1f2937",
             }}
-            title={snapshot.next?.title ?? ""}
+            title={segment.program.title ?? ""}
           >
             <div style={timelineTextStyle}>
-              {tr(locale, "Next", "下一档")} · {snapshot.next?.title ?? tr(locale, "No guide", "暂无节目")}
+              {segment.program.title || tr(locale, "No guide", "暂无节目")}
             </div>
           </div>
-        ) : null}
+        ))}
+        {splitPoints.map((point) => (
+          <div key={`line-${point.key}`} style={{ ...timelineSplitStyle, left: `${(point.ratio * 100).toFixed(2)}%` }} />
+        ))}
         {progressBlock ? (
           <div
             style={{
@@ -237,9 +256,6 @@ function GuideTimeline({
               width: `${(progressBlock.width * 100).toFixed(2)}%`,
             }}
           />
-        ) : null}
-        {splitMarker !== null && splitMarker > 0 && splitMarker < 1 ? (
-          <div style={{ ...timelineSplitStyle, left: `${(splitMarker * 100).toFixed(2)}%` }} />
         ) : null}
         <div style={{ ...timelineCursorStyle, left: `${(currentRatio * 100).toFixed(2)}%` }} />
       </div>

@@ -167,11 +167,6 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
         triggerSetting(current, 1);
         return;
       }
-      if (key === "ArrowLeft") {
-        event.preventDefault();
-        triggerSetting(current, -1);
-        return;
-      }
       if (key === "Enter" || key === " ") {
         event.preventDefault();
         triggerSetting(current, 1);
@@ -245,58 +240,16 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
     adjustRange(def, direction);
   };
 
-  const renderControl = (def: SettingDef) => {
-    const val = getValue(def);
-
+  const displaySettingValue = (def: SettingDef): string => {
+    const value = getValue(def);
     if (def.type === "toggle") {
-      return (
-        <label style={toggleLabelStyle}>
-          <input
-            type="checkbox"
-            checked={Boolean(val)}
-            onChange={(e) => void saveSetting(def.key, e.target.checked)}
-            tabIndex={-1}
-            style={{ accentColor: "var(--accent)" }}
-          />
-        </label>
-      );
+      return Boolean(value) ? t(locale, "settings.value.on") : t(locale, "settings.value.off");
     }
-
-    if (def.type === "select") {
-      return (
-        <select
-          value={String(val)}
-          onChange={(e) => void saveSetting(def.key, e.target.value)}
-          tabIndex={-1}
-          style={selectStyle}
-        >
-          {def.options?.map((o) => (
-            <option key={o.value} value={o.value}>
-              {t(locale, o.labelKey, o.labelParams)}
-            </option>
-          ))}
-        </select>
-      );
-    }
-
     if (def.type === "range") {
-      return (
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="range"
-            min={def.min}
-            max={def.max}
-            value={Number(val)}
-            onChange={(e) => void saveSetting(def.key, Number(e.target.value))}
-            tabIndex={-1}
-            style={{ accentColor: "var(--accent)", width: 120 }}
-          />
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", minWidth: 28 }}>{Number(val)}</span>
-        </div>
-      );
+      return String(Number(value));
     }
-
-    return null;
+    const option = def.options?.find((item) => item.value === String(value));
+    return option ? t(locale, option.labelKey, option.labelParams) : String(value);
   };
 
   return (
@@ -304,6 +257,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       {flash && <div style={flashStyle}>{t(locale, "settings.flash.saved")}</div>}
 
       {error && <div style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div>}
+      <div style={hintStyle}>{t(locale, "settings.hint.tv")}</div>
 
       {settingCategories.map((cat) => (
         <div key={cat.titleKey} style={{ marginBottom: 24 }}>
@@ -341,8 +295,11 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
               onMouseEnter={() => setHoveredSettingKey(def.key)}
               onMouseLeave={() => setHoveredSettingKey((prev) => (prev === def.key ? null : prev))}
             >
-              <span style={{ fontSize: 14 }}>{t(locale, def.labelKey)}</span>
-              {renderControl(def)}
+              <span style={rowLabelStyle}>{t(locale, def.labelKey)}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={rowValueStyle}>{displaySettingValue(def)}</span>
+                <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>{">"}</span>
+              </div>
             </div>
           ))}
         </div>
@@ -355,7 +312,7 @@ const rowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  padding: "8px 10px",
+  padding: "12px 12px",
   borderBottom: "1px solid var(--border)",
   borderRadius: 4,
   outline: "none",
@@ -367,17 +324,21 @@ const rowActiveStyle: React.CSSProperties = {
   boxShadow: "inset 0 0 0 1px var(--accent)",
 };
 
-const selectStyle: React.CSSProperties = {
-  padding: "4px 8px",
-  backgroundColor: "var(--bg-tertiary)",
-  border: "1px solid var(--border)",
-  borderRadius: 4,
-  color: "var(--text-primary)",
-  fontSize: 13,
+const rowLabelStyle: React.CSSProperties = {
+  fontSize: 14,
 };
 
-const toggleLabelStyle: React.CSSProperties = {
-  cursor: "pointer",
+const rowValueStyle: React.CSSProperties = {
+  color: "var(--accent)",
+  fontSize: 13,
+  minWidth: 110,
+  textAlign: "right",
+};
+
+const hintStyle: React.CSSProperties = {
+  color: "var(--text-secondary)",
+  fontSize: 12,
+  marginBottom: 12,
 };
 
 const flashStyle: React.CSSProperties = {

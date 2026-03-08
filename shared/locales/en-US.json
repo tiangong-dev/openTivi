@@ -62,9 +62,12 @@
   "sources.table.lastImport": "Last Import",
   "sources.table.actions": "Actions",
   "sources.autoRefreshEveryMinutes": "Every {minutes} min",
+  "sources.action.add": "Add Source",
   "sources.action.refresh": "Refresh",
   "sources.action.edit": "Edit",
   "sources.action.delete": "Delete",
+  "sources.add.title": "Add Source",
+  "sources.empty": "No sources yet. Press \"Add Source\" to import one.",
   "sources.edit.title": "Edit Source",
   "sources.edit.name": "Name",
   "sources.edit.location": "Location",
@@ -108,5 +111,8 @@
   "settings.player.volume": "Volume",
   "settings.epg.autoRefresh": "Auto Refresh EPG",
   "settings.epg.guideTimelineWindow": "Guide Timeline Window",
-  "settings.option.minutes": "{minutes} min"
+  "settings.option.minutes": "{minutes} min",
+  "settings.value.on": "On",
+  "settings.value.off": "Off",
+  "settings.hint.tv": "Use Up/Down to select, Enter/Right to change, Left to return."
 }

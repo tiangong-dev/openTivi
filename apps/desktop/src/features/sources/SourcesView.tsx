@@ -5,6 +5,7 @@ import { t, type Locale } from "../../lib/i18n";
 import type { Source, ImportSummary } from "../../types/api";
 
 type ImportTab = "m3u" | "xtream" | "xmltv";
+type SourceFocusTarget = "add" | "list";
 
 interface Props {
   locale: Locale;
@@ -13,15 +14,18 @@ interface Props {
 export function SourcesView({ locale }: Props) {
   const [sources, setSources] = useState<Source[]>([]);
   const [activeTab, setActiveTab] = useState<ImportTab>("m3u");
+  const [showAddModal, setShowAddModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [editing, setEditing] = useState<EditSourceDraft | null>(null);
   const [focusedSourceIndex, setFocusedSourceIndex] = useState(0);
+  const [focusTarget, setFocusTarget] = useState<SourceFocusTarget>("add");
   const [domFocusedSourceId, setDomFocusedSourceId] = useState<number | null>(null);
   const [hoveredSourceId, setHoveredSourceId] = useState<number | null>(null);
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const refreshingSourceIds = useRef<Set<number>>(new Set());
+  const addButtonRef = useRef<HTMLButtonElement | null>(null);
   const sourceRowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
 
   const loadSources = async () => {
@@ -41,10 +45,30 @@ export function SourcesView({ locale }: Props) {
     if (sources.length === 0) {
       setFocusedSourceIndex(0);
       setDomFocusedSourceId(null);
+      setFocusTarget("add");
       return;
     }
     setFocusedSourceIndex((prev) => Math.min(prev, sources.length - 1));
   }, [sources.length]);
+
+  const focusAddButton = () => {
+    setFocusTarget("add");
+    addButtonRef.current?.focus();
+  };
+
+  const focusSourceByIndex = (index: number) => {
+    if (sources.length === 0) {
+      focusAddButton();
+      return;
+    }
+    const wrapped = ((index % sources.length) + sources.length) % sources.length;
+    setFocusTarget("list");
+    setFocusedSourceIndex(wrapped);
+    const source = sources[wrapped];
+    const rowNode = source ? sourceRowRefs.current[source.id] : null;
+    rowNode?.focus();
+    rowNode?.scrollIntoView({ block: "nearest" });
+  };
 
   useEffect(() => {
     const onZoneChange = (event: Event) => {
@@ -67,33 +91,71 @@ export function SourcesView({ locale }: Props) {
       if (detail?.view && detail.view !== "sources") {
         return;
       }
-      if (sources.length === 0) return;
-      focusSourceByIndex(focusedSourceIndex);
+      if (focusTarget === "list" && sources.length > 0) {
+        focusSourceByIndex(focusedSourceIndex);
+        return;
+      }
+      focusAddButton();
     };
+
     const onContentKey = (event: Event) => {
       const detail = (event as CustomEvent<{ key?: string; view?: string }>).detail;
       if (detail?.view && detail.view !== "sources") {
         return;
       }
+      if (showAddModal || editing) return;
       const key = detail?.key;
-      if (!key || sources.length === 0) return;
-      const current = sources[focusedSourceIndex];
-      if (!current) return;
+      if (!key) return;
+
       if (key === "ArrowDown") {
         event.preventDefault();
-        focusSourceByIndex(focusedSourceIndex + 1);
+        if (focusTarget === "add") {
+          if (sources.length > 0) {
+            focusSourceByIndex(0);
+          }
+          return;
+        }
+        if (focusedSourceIndex === sources.length - 1) {
+          focusAddButton();
+        } else {
+          focusSourceByIndex(focusedSourceIndex + 1);
+        }
         return;
       }
+
       if (key === "ArrowUp") {
         event.preventDefault();
-        focusSourceByIndex(focusedSourceIndex - 1);
+        if (focusTarget === "add") {
+          if (sources.length > 0) {
+            focusSourceByIndex(sources.length - 1);
+          }
+          return;
+        }
+        if (focusedSourceIndex === 0) {
+          focusAddButton();
+        } else {
+          focusSourceByIndex(focusedSourceIndex - 1);
+        }
         return;
       }
+
       if (key === "Enter" || key === " ") {
         event.preventDefault();
-        openEdit(current);
+        if (focusTarget === "add") {
+          setShowAddModal(true);
+          return;
+        }
+        const current = sources[focusedSourceIndex];
+        if (current) {
+          openEdit(current);
+        }
         return;
       }
+
+      if (focusTarget !== "list") return;
+      const current = sources[focusedSourceIndex];
+      if (!current) return;
+
       if (key === "Delete" || key === "Backspace") {
         event.preventDefault();
         void handleDelete(current.id);
@@ -104,13 +166,32 @@ export function SourcesView({ locale }: Props) {
         void handleRefresh(current.id);
       }
     };
+
     window.addEventListener("tv-focus-content", onFocusContent as EventListener);
     window.addEventListener("tv-content-key", onContentKey as EventListener);
     return () => {
       window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
       window.removeEventListener("tv-content-key", onContentKey as EventListener);
     };
-  }, [focusedSourceIndex, sources]);
+  }, [editing, focusTarget, focusedSourceIndex, showAddModal, sources]);
+
+  useEffect(() => {
+    if (!showAddModal && !editing) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (editing) {
+        setEditing(null);
+      } else {
+        setShowAddModal(false);
+        window.setTimeout(() => focusAddButton(), 0);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [editing, showAddModal]);
 
   const handleImportDone = (summary: ImportSummary, auto = false) => {
     setMessage({
@@ -225,16 +306,6 @@ export function SourcesView({ locale }: Props) {
     }
   };
 
-  const focusSourceByIndex = (index: number) => {
-    if (sources.length === 0) return;
-    const wrapped = ((index % sources.length) + sources.length) % sources.length;
-    setFocusedSourceIndex(wrapped);
-    const source = sources[wrapped];
-    const rowNode = source ? sourceRowRefs.current[source.id] : null;
-    rowNode?.focus();
-    rowNode?.scrollIntoView({ block: "nearest" });
-  };
-
   const m3uSources = useMemo(
     () => sources.filter((s) => s.kind === "m3u" && (s.autoRefreshMinutes ?? 0) > 0),
     [sources],
@@ -267,7 +338,23 @@ export function SourcesView({ locale }: Props) {
 
   return (
     <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 16 }}>{t(locale, "sources.title")}</h2>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>{t(locale, "sources.title")}</h2>
+        <button
+          ref={addButtonRef}
+          type="button"
+          data-tv-focusable={focusTarget === "add" ? "true" : undefined}
+          onFocus={() => setFocusTarget("add")}
+          onClick={() => setShowAddModal(true)}
+          style={{
+            ...submitBtnStyle,
+            alignSelf: "auto",
+            backgroundColor: focusTarget === "add" && isContentZoneActive ? "var(--accent-hover)" : "var(--accent)",
+          }}
+        >
+          + {t(locale, "sources.action.add")}
+        </button>
+      </div>
 
       {message && (
         <div
@@ -283,62 +370,8 @@ export function SourcesView({ locale }: Props) {
         </div>
       )}
 
-      {/* Import tabs */}
-      <div style={{ display: "flex", gap: 0, marginBottom: 16 }}>
-        {(["m3u", "xtream", "xmltv"] as ImportTab[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            style={{
-              padding: "8px 16px",
-              border: "1px solid var(--border)",
-              backgroundColor: activeTab === tab ? "var(--accent)" : "var(--bg-tertiary)",
-              color: "var(--text-primary)",
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
-            {tab === "m3u"
-              ? "M3U"
-              : tab === "xtream"
-                ? t(locale, "sources.tab.xtream")
-                : "XMLTV EPG"}
-          </button>
-        ))}
-      </div>
-
-      {/* Import forms */}
-      {activeTab === "m3u" && (
-        <M3uForm
-          locale={locale}
-          loading={loading}
-          setLoading={setLoading}
-          onDone={(summary) => handleImportDone(summary, false)}
-          onError={(e) => setMessage({ type: "err", text: e })}
-        />
-      )}
-      {activeTab === "xtream" && (
-        <XtreamForm
-          locale={locale}
-          loading={loading}
-          setLoading={setLoading}
-          onDone={(summary) => handleImportDone(summary, false)}
-          onError={(e) => setMessage({ type: "err", text: e })}
-        />
-      )}
-      {activeTab === "xmltv" && (
-        <XmltvForm
-          locale={locale}
-          loading={loading}
-          setLoading={setLoading}
-          onDone={(summary) => handleImportDone(summary, false)}
-          onError={(e) => setMessage({ type: "err", text: e })}
-        />
-      )}
-
-      {/* Source list */}
-      {sources.length > 0 && (
-        <div style={{ marginTop: 24 }}>
+      {sources.length > 0 ? (
+        <div style={{ marginTop: 8 }}>
           <h3 style={{ marginBottom: 12 }}>{t(locale, "sources.section.importedSources")}</h3>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -361,13 +394,14 @@ export function SourcesView({ locale }: Props) {
                   }}
                   role="button"
                   tabIndex={0}
-                  data-tv-focusable={focusedSourceIndex === index ? "true" : undefined}
+                  data-tv-focusable={focusTarget === "list" && focusedSourceIndex === index ? "true" : undefined}
                   style={{
                     borderBottom: "1px solid var(--border)",
                     outline: "none",
                     ...(hoveredSourceId === s.id || (isContentZoneActive && domFocusedSourceId === s.id) ? sourceRowActiveStyle : null),
                   }}
                   onFocus={() => {
+                    setFocusTarget("list");
                     setFocusedSourceIndex(index);
                     setDomFocusedSourceId(s.id);
                   }}
@@ -431,6 +465,86 @@ export function SourcesView({ locale }: Props) {
               ))}
             </tbody>
           </table>
+        </div>
+      ) : (
+        <div style={{ color: "var(--text-secondary)", marginTop: 24 }}>
+          {t(locale, "sources.empty")}
+        </div>
+      )}
+
+      {showAddModal && (
+        <div style={modalOverlayStyle}>
+          <div style={modalCardStyle}>
+            <h3 style={{ marginTop: 0, marginBottom: 12 }}>{t(locale, "sources.add.title")}</h3>
+            <div style={{ display: "flex", gap: 0, marginBottom: 16 }}>
+              {(["m3u", "xtream", "xmltv"] as ImportTab[]).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  style={{
+                    padding: "8px 16px",
+                    border: "1px solid var(--border)",
+                    backgroundColor: activeTab === tab ? "var(--accent)" : "var(--bg-tertiary)",
+                    color: "var(--text-primary)",
+                    cursor: "pointer",
+                    fontSize: 13,
+                  }}
+                >
+                  {tab === "m3u" ? "M3U" : tab === "xtream" ? t(locale, "sources.tab.xtream") : "XMLTV EPG"}
+                </button>
+              ))}
+            </div>
+            {activeTab === "m3u" && (
+              <M3uForm
+                locale={locale}
+                loading={loading}
+                setLoading={setLoading}
+                onDone={(summary) => {
+                  handleImportDone(summary, false);
+                  setShowAddModal(false);
+                  focusAddButton();
+                }}
+                onError={(e) => setMessage({ type: "err", text: e })}
+              />
+            )}
+            {activeTab === "xtream" && (
+              <XtreamForm
+                locale={locale}
+                loading={loading}
+                setLoading={setLoading}
+                onDone={(summary) => {
+                  handleImportDone(summary, false);
+                  setShowAddModal(false);
+                  focusAddButton();
+                }}
+                onError={(e) => setMessage({ type: "err", text: e })}
+              />
+            )}
+            {activeTab === "xmltv" && (
+              <XmltvForm
+                locale={locale}
+                loading={loading}
+                setLoading={setLoading}
+                onDone={(summary) => {
+                  handleImportDone(summary, false);
+                  setShowAddModal(false);
+                  focusAddButton();
+                }}
+                onError={(e) => setMessage({ type: "err", text: e })}
+              />
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  focusAddButton();
+                }}
+                style={{ ...submitBtnStyle, backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)" }}
+              >
+                {t(locale, "sources.edit.cancel")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

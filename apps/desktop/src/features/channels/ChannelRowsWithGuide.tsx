@@ -19,6 +19,14 @@ interface Props<T extends Channel = Channel> {
   onMoveBeforeFirst?: () => void;
 }
 
+interface PrewarmIntentInput {
+  channelId: number;
+  streamUrl: string;
+  reason: "list_focus";
+  source: "channel_list_outer";
+  ttlMs?: number;
+}
+
 export function ChannelRowsWithGuide<T extends Channel>({
   items,
   locale,
@@ -66,6 +74,28 @@ export function ChannelRowsWithGuide<T extends Channel>({
   useEffect(() => {
     focusedIndexRef.current = focusedIndex;
   }, [focusedIndex]);
+
+  useEffect(() => {
+    if (items.length === 0) return;
+    const focused = items[focusedIndex];
+    if (!focused) return;
+    const prev = items[(focusedIndex - 1 + items.length) % items.length];
+    const next = items[(focusedIndex + 1) % items.length];
+    const intents = new Map<number, PrewarmIntentInput>();
+    for (const item of [focused, prev, next]) {
+      if (!item) continue;
+      intents.set(item.id, {
+        channelId: item.id,
+        streamUrl: item.streamUrl,
+        reason: "list_focus",
+        source: "channel_list_outer",
+        ttlMs: 1200,
+      });
+    }
+    void tauriInvoke("prewarm_submit_intents", {
+      input: { intents: Array.from(intents.values()), decoderSlots: 0 },
+    }).catch(() => undefined);
+  }, [focusedIndex, items]);
 
   useEffect(() => {
     itemsRef.current = items;
@@ -251,6 +281,14 @@ export function ChannelRowsWithGuide<T extends Channel>({
       window.removeEventListener("tv-content-keyup", onContentKeyUp as EventListener);
     };
   }, [focusedIndex, items, onMoveBeforeFirst, onToggleFavorite]);
+
+  useEffect(() => {
+    return () => {
+      void tauriInvoke("prewarm_clear_source", { source: "channel_list_outer" }).catch(
+        () => undefined,
+      );
+    };
+  }, []);
 
   return (
     <>

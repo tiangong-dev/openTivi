@@ -3,6 +3,7 @@ pub mod dto;
 pub mod favorites;
 pub mod health;
 pub mod playback;
+pub mod prewarm;
 pub mod recents;
 pub mod remote;
 pub mod settings;

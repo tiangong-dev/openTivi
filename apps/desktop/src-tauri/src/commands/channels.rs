@@ -48,5 +48,10 @@ pub fn get_channels_epg_snapshots(
     query: GetChannelsEpgSnapshotsQuery,
 ) -> AppResult<Vec<ChannelEpgSnapshotDto>> {
     let conn = state.db.lock().unwrap();
-    crate::core::services::epg_service::get_channels_epg_snapshots(&conn, &query.channel_ids)
+    crate::core::services::epg_service::get_channels_epg_snapshots(
+        &conn,
+        &query.channel_ids,
+        query.window_start_ts,
+        query.window_end_ts,
+    )
 }

@@ -59,6 +59,8 @@ pub struct GetChannelEpgQuery {
 #[serde(rename_all = "camelCase")]
 pub struct GetChannelsEpgSnapshotsQuery {
     pub channel_ids: Vec<i64>,
+    pub window_start_ts: Option<i64>,
+    pub window_end_ts: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,6 +137,7 @@ pub struct ChannelEpgSnapshotDto {
     pub channel_id: i64,
     pub now: Option<EpgProgramMiniDto>,
     pub next: Option<EpgProgramMiniDto>,
+    pub timeline_programs: Vec<EpgProgramMiniDto>,
 }
 
 #[derive(Debug, Serialize)]

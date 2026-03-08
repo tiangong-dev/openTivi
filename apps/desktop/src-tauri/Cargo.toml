@@ -18,7 +18,7 @@ serde_json = "1"
 thiserror = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 quick-xml = "0.37"
-reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "rustls-tls", "blocking"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "rustls-tls", "blocking", "stream"] }
 chrono = { version = "0.4", features = ["serde"] }
 url = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net"] }

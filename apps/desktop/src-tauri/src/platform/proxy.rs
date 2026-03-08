@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::net::TcpListener;
 
-use warp::Filter;
+use warp::{Filter, Reply};
 
 /// Start a local HTTP proxy server for streaming.
 /// Returns the port it's listening on.
@@ -10,8 +11,14 @@ pub fn start_proxy_server() -> u16 {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
 
+    let client = reqwest::Client::builder()
+        .pool_max_idle_per_host(8)
+        .build()
+        .expect("Failed to create proxy HTTP client");
+
     let route = warp::path("stream")
         .and(warp::query::<HashMap<String, String>>())
+        .and(with_http_client(client))
         .and_then(handle_proxy);
 
     std::thread::spawn(move || {
@@ -26,29 +33,32 @@ pub fn start_proxy_server() -> u16 {
 
 async fn handle_proxy(
     params: HashMap<String, String>,
-) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
+    client: reqwest::Client,
+) -> Result<warp::reply::Response, warp::Rejection> {
     let url = match params.get("url") {
         Some(u) => u.clone(),
         None => {
-            return Ok(Box::new(warp::reply::with_status(
+            return Ok(warp::reply::with_status(
                 "Missing 'url' parameter",
                 warp::http::StatusCode::BAD_REQUEST,
-            )))
+            )
+            .into_response())
         }
     };
 
-    let client = reqwest::Client::new();
     let response = match client.get(&url).send().await {
         Ok(r) => r,
         Err(e) => {
-            return Ok(Box::new(warp::reply::with_status(
+            return Ok(warp::reply::with_status(
                 format!("Fetch error: {}", e),
                 warp::http::StatusCode::BAD_GATEWAY,
-            )));
+            )
+            .into_response());
         }
     };
 
-    let status = response.status().as_u16();
+    let status = warp::http::StatusCode::from_u16(response.status().as_u16())
+        .unwrap_or(warp::http::StatusCode::BAD_GATEWAY);
     let content_type = response
         .headers()
         .get("content-type")
@@ -56,33 +66,47 @@ async fn handle_proxy(
         .unwrap_or("application/octet-stream")
         .to_string();
 
-    let body = match response.bytes().await {
-        Ok(b) => b,
-        Err(e) => {
-            return Ok(Box::new(warp::reply::with_status(
-                format!("Body read error: {}", e),
-                warp::http::StatusCode::BAD_GATEWAY,
-            )));
-        }
-    };
+    if content_type.contains("mpegurl") || content_type.contains("m3u") {
+        let body = match response.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                return Ok(warp::reply::with_status(
+                    format!("Body read error: {}", e),
+                    warp::http::StatusCode::BAD_GATEWAY,
+                )
+                .into_response());
+            }
+        };
 
-    // For m3u8 playlists, rewrite absolute URLs to go through proxy
-    let body_bytes = if content_type.contains("mpegurl") || content_type.contains("m3u") {
         let text = String::from_utf8_lossy(&body);
         let rewritten = rewrite_m3u8(&text, &url);
-        rewritten.into_bytes()
-    } else {
-        body.to_vec()
-    };
+        let mut reply = warp::reply::Response::new(warp::hyper::Body::from(rewritten.into_bytes()));
+        *reply.status_mut() = status;
+        insert_common_headers(reply.headers_mut(), &content_type);
+        return Ok(reply);
+    }
 
-    let reply = warp::http::Response::builder()
-        .status(status)
-        .header("content-type", &content_type)
-        .header("access-control-allow-origin", "*")
-        .body(body_bytes)
-        .unwrap();
+    let mut reply =
+        warp::reply::Response::new(warp::hyper::Body::wrap_stream(response.bytes_stream()));
+    *reply.status_mut() = status;
+    insert_common_headers(reply.headers_mut(), &content_type);
+    Ok(reply)
+}
 
-    Ok(Box::new(reply))
+fn with_http_client(
+    client: reqwest::Client,
+) -> impl Filter<Extract = (reqwest::Client,), Error = Infallible> + Clone {
+    warp::any().map(move || client.clone())
+}
+
+fn insert_common_headers(headers: &mut warp::http::HeaderMap, content_type: &str) {
+    if let Ok(value) = warp::http::HeaderValue::from_str(content_type) {
+        headers.insert(warp::http::header::CONTENT_TYPE, value);
+    }
+    headers.insert(
+        warp::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        warp::http::HeaderValue::from_static("*"),
+    );
 }
 
 /// Rewrite URLs inside m3u8 playlists to go through the proxy.

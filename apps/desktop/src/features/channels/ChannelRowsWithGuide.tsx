@@ -36,7 +36,6 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const [hoveredChannelId, setHoveredChannelId] = useState<number | null>(null);
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const pendingPlayTimerRef = useRef<number | null>(null);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
   const focusedIndexRef = useRef(0);
   const itemsRef = useRef<T[]>(items);
@@ -138,33 +137,11 @@ export function ChannelRowsWithGuide<T extends Channel>({
     };
   }, [channelIds, timelineWindow.start, timelineWindow.end]);
 
-  useEffect(() => {
-    return () => {
-      if (pendingPlayTimerRef.current !== null) {
-        window.clearTimeout(pendingPlayTimerRef.current);
-        pendingPlayTimerRef.current = null;
-      }
-      confirmPressRef.current?.clear();
-    };
-  }, []);
-
-  const clearPendingPlay = () => {
-    if (pendingPlayTimerRef.current !== null) {
-      window.clearTimeout(pendingPlayTimerRef.current);
-      pendingPlayTimerRef.current = null;
-    }
-  };
-
   const schedulePlay = (channel: T) => {
-    clearPendingPlay();
-    pendingPlayTimerRef.current = window.setTimeout(() => {
-      pendingPlayTimerRef.current = null;
-      onPlayRef.current?.(channel, itemsRef.current);
-    }, 220);
+    onPlayRef.current?.(channel, itemsRef.current);
   };
 
   const triggerFavorite = (channel: T) => {
-    clearPendingPlay();
     onToggleFavoriteRef.current?.(channel);
   };
 
@@ -183,13 +160,6 @@ export function ChannelRowsWithGuide<T extends Channel>({
         const current = itemsRef.current[focusedIndexRef.current];
         if (current) {
           schedulePlay(current);
-        }
-      },
-      onDouble: () => {
-        if (!onToggleFavoriteRef.current) return;
-        const current = itemsRef.current[focusedIndexRef.current];
-        if (current) {
-          triggerFavorite(current);
         }
       },
       onLong: () => {
@@ -299,11 +269,6 @@ export function ChannelRowsWithGuide<T extends Channel>({
               data-tv-focusable={focusedIndex === index ? "true" : undefined}
               style={{ ...rowStyle, ...(isActive ? rowActiveStyle : null) }}
               onClick={() => schedulePlay(ch)}
-              onDoubleClick={() => {
-                if (onToggleFavorite) {
-                  triggerFavorite(ch);
-                }
-              }}
               onFocus={() => {
                 setFocusedIndex(index);
                 setDomFocusedIndex(index);

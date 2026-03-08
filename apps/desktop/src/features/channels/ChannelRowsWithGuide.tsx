@@ -21,8 +21,19 @@ export function ChannelRowsWithGuide<T extends Channel>({
 }: Props<T>) {
   const [snapshots, setSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [loading, setLoading] = useState(false);
+  const [nowTs, setNowTs] = useState(() => Date.now());
 
   const channelIds = useMemo(() => items.map((c) => c.id), [items]);
+  const timelineWindow = useMemo(() => {
+    const step = 30 * 60 * 1000;
+    const start = Math.floor(nowTs / step) * step;
+    return { start, end: start + 2 * 60 * 60 * 1000 };
+  }, [nowTs]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (channelIds.length === 0) {
@@ -103,7 +114,13 @@ export function ChannelRowsWithGuide<T extends Channel>({
 
             <div style={guideInlineStyle}>
               {snapshot?.now || snapshot?.next ? (
-                <GuideTimeline snapshot={snapshot} locale={locale} />
+                <GuideTimeline
+                  snapshot={snapshot}
+                  locale={locale}
+                  currentTs={nowTs}
+                  windowStart={timelineWindow.start}
+                  windowEnd={timelineWindow.end}
+                />
               ) : (
                 <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
                   {loading
@@ -119,72 +136,84 @@ export function ChannelRowsWithGuide<T extends Channel>({
   );
 }
 
-function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; locale: Locale }) {
+function GuideTimeline({
+  snapshot,
+  locale,
+  currentTs,
+  windowStart,
+  windowEnd,
+}: {
+  snapshot: ChannelEpgSnapshot;
+  locale: Locale;
+  currentTs: number;
+  windowStart: number;
+  windowEnd: number;
+}) {
   const nowStart = parseXmltvDate(snapshot.now?.startAt ?? "");
   const nowEnd = parseXmltvDate(snapshot.now?.endAt ?? "");
   const nextStart = parseXmltvDate(snapshot.next?.startAt ?? "");
   const nextEnd = parseXmltvDate(snapshot.next?.endAt ?? "");
 
-  const nowDuration = durationMs(nowStart, nowEnd);
-  const nextDuration = durationMs(nextStart, nextEnd);
-  const totalDuration = nowDuration + nextDuration;
+  const range = windowEnd - windowStart;
+  const currentRatio = range > 0 ? clamp((currentTs - windowStart) / range, 0, 1) : 0;
 
-  const fallbackNow = snapshot.now ? 0.62 : 0.5;
-  const rawNowRatio = totalDuration > 0 ? nowDuration / totalDuration : fallbackNow;
-  const nowRatio = snapshot.next ? rawNowRatio : 1;
-  const nowWidth = `${Math.round(nowRatio * 100)}%`;
-  const nextWidth = `${100 - Math.round(nowRatio * 100)}%`;
-
-  let progress = 0;
-  if (nowStart !== null && nowEnd !== null && nowEnd > nowStart) {
-    progress = clamp((Date.now() - nowStart) / (nowEnd - nowStart), 0, 1);
-  }
-  const currentMarker = clamp(nowRatio * progress, 0, 1);
-  const splitMarker = snapshot.next ? clamp(nowRatio, 0, 1) : null;
+  const nowBlock = calcBlock(nowStart, nowEnd, windowStart, windowEnd);
+  const nextBlock = calcBlock(nextStart, nextEnd, windowStart, windowEnd);
+  const progressBlock = calcBlock(nowStart, currentTs, windowStart, windowEnd);
+  const splitMarker =
+    nextStart !== null && range > 0 ? clamp((nextStart - windowStart) / range, 0, 1) : null;
 
   return (
     <div style={timelineStyle}>
-      <div
-        style={{
-          ...timelineSegmentStyle,
-          width: nowWidth,
-          background: "linear-gradient(180deg, #1d4ed855 0%, #1d4ed822 100%)",
-          borderRight: snapshot.next ? "1px solid #1f2937" : "none",
-        }}
-        title={snapshot.now?.title ?? ""}
-      >
-        <div
-          style={{
-            ...timelineProgressStyle,
-            width: `${Math.round(progress * 100)}%`,
-          }}
-        />
-        <div style={timelineTextStyle}>
-          {tr(locale, "Now", "当前")} · {snapshot.now?.title ?? tr(locale, "No guide", "暂无节目")}
-        </div>
-      </div>
-      {snapshot.next ? (
+      {nowBlock ? (
         <div
           style={{
             ...timelineSegmentStyle,
-            width: nextWidth,
-            backgroundColor: "#111827aa",
+            left: `${(nowBlock.left * 100).toFixed(2)}%`,
+            width: `${(nowBlock.width * 100).toFixed(2)}%`,
+            background:
+              "linear-gradient(180deg, #1d4ed855 0%, #1d4ed822 100%)",
           }}
-          title={snapshot.next.title}
+          title={snapshot.now?.title ?? ""}
         >
           <div style={timelineTextStyle}>
-            {tr(locale, "Next", "下一档")} · {snapshot.next.title}
+            {tr(locale, "Now", "当前")} · {snapshot.now?.title ?? tr(locale, "No guide", "暂无节目")}
           </div>
         </div>
       ) : null}
-      {splitMarker !== null ? (
+      {nextBlock ? (
+        <div
+          style={{
+            ...timelineSegmentStyle,
+            left: `${(nextBlock.left * 100).toFixed(2)}%`,
+            width: `${(nextBlock.width * 100).toFixed(2)}%`,
+            backgroundColor: "#111827aa",
+            borderLeft: "1px solid #1f2937",
+          }}
+          title={snapshot.next?.title ?? ""}
+        >
+          <div style={timelineTextStyle}>
+            {tr(locale, "Next", "下一档")} · {snapshot.next?.title ?? tr(locale, "No guide", "暂无节目")}
+          </div>
+        </div>
+      ) : null}
+      {progressBlock ? (
+        <div
+          style={{
+            ...timelineProgressStyle,
+            left: `${(progressBlock.left * 100).toFixed(2)}%`,
+            width: `${(progressBlock.width * 100).toFixed(2)}%`,
+          }}
+        />
+      ) : null}
+      {splitMarker !== null && splitMarker > 0 && splitMarker < 1 ? (
         <div style={{ ...timelineSplitStyle, left: `${(splitMarker * 100).toFixed(2)}%` }}>
           {snapshot.next?.startAt ? (
             <div style={timelineSplitLabelStyle}>{formatTime(snapshot.next.startAt)}</div>
           ) : null}
         </div>
       ) : null}
-      {snapshot.now ? <div style={{ ...timelineCursorStyle, left: `${(currentMarker * 100).toFixed(2)}%` }} /> : null}
+      <div style={{ ...timelineCursorStyle, left: `${(currentRatio * 100).toFixed(2)}%` }} />
     </div>
   );
 }
@@ -208,13 +237,26 @@ function parseXmltvDate(raw: string): number | null {
   return Number.isNaN(ts) ? null : ts;
 }
 
-function durationMs(start: number | null, end: number | null): number {
-  if (start === null || end === null || end <= start) return 0;
-  return end - start;
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function calcBlock(
+  start: number | null,
+  end: number | null,
+  windowStart: number,
+  windowEnd: number,
+): { left: number; width: number } | null {
+  if (start === null || end === null || end <= start) return null;
+  const clippedStart = Math.max(start, windowStart);
+  const clippedEnd = Math.min(end, windowEnd);
+  if (clippedEnd <= clippedStart) return null;
+  const range = windowEnd - windowStart;
+  if (range <= 0) return null;
+  return {
+    left: clamp((clippedStart - windowStart) / range, 0, 1),
+    width: clamp((clippedEnd - clippedStart) / range, 0, 1),
+  };
 }
 
 const rowStyle: React.CSSProperties = {
@@ -240,12 +282,15 @@ const timelineStyle: React.CSSProperties = {
 };
 
 const timelineSegmentStyle: React.CSSProperties = {
-  position: "relative",
-  minWidth: 0,
+  position: "absolute",
+  top: 0,
+  bottom: 0,
+  padding: "0 8px 4px 8px",
   display: "flex",
   alignItems: "center",
-  padding: "0 8px 4px 8px",
+  minWidth: 0,
   overflow: "hidden",
+  zIndex: 1,
 };
 
 const timelineTextStyle: React.CSSProperties = {
@@ -261,10 +306,11 @@ const timelineTextStyle: React.CSSProperties = {
 
 const timelineProgressStyle: React.CSSProperties = {
   position: "absolute",
-  left: 0,
   top: 0,
   bottom: 0,
   backgroundColor: "#2563eb2f",
+  pointerEvents: "none",
+  zIndex: 0,
 };
 
 const timelineSplitStyle: React.CSSProperties = {

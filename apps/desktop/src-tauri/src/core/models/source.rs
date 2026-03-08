@@ -24,6 +24,7 @@ impl SourceKind {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Source {
     pub id: i64,

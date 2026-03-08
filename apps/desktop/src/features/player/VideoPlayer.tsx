@@ -4,7 +4,8 @@ import mpegts from "mpegts.js";
 
 import { t, type Locale } from "../../lib/i18n";
 import { tauriInvoke } from "../../lib/tauri";
-import type { Channel, EpgProgram } from "../../types/api";
+import { createConfirmPressHandler, mapKeyToTvIntent } from "../../lib/tvInput";
+import type { Channel, ChannelEpgSnapshot, EpgProgram } from "../../types/api";
 
 interface Props {
   channel: Channel;
@@ -21,6 +22,16 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const mpegtsRef = useRef<mpegts.Player | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const guideAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const channelListAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speedObserverRef = useRef<PerformanceObserver | null>(null);
+  const speedFallbackTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const playerFocusZoneRef = useRef<"player" | "nav">("player");
+  const showChannelListPanelRef = useRef(false);
+  const focusedChannelIndexRef = useRef(0);
+  const channelsRef = useRef<Channel[]>(channels);
+  const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
+  const channelListItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const [error, setError] = useState<string | null>(null);
   const [proxyPort, setProxyPort] = useState<number | null>(null);
@@ -36,6 +47,17 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [epgNext, setEpgNext] = useState<EpgProgram | null>(null);
   const [epgProgress, setEpgProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [playerFocusZone, setPlayerFocusZone] = useState<"player" | "nav">("player");
+  const [networkSpeedBps, setNetworkSpeedBps] = useState<number | null>(null);
+  const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
+  const [channelEpgLoading, setChannelEpgLoading] = useState(false);
+
+  const GUIDE_AUTO_HIDE_MS = 3500;
+  const CHANNEL_LIST_AUTO_HIDE_MS = 5000;
+
+  useEffect(() => {
+    playerFocusZoneRef.current = playerFocusZone;
+  }, [playerFocusZone]);
 
   useEffect(() => {
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
@@ -48,6 +70,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
     cleanup();
     setError(null);
+    setNetworkSpeedBps(null);
 
     const proxiedUrl = toProxyUrl(channel.streamUrl, proxyPort);
 
@@ -75,6 +98,23 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+      hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
+        const fragData = data as unknown as {
+          stats?: {
+            total?: number;
+            loaded?: number;
+            loading?: { start?: number; end?: number };
+          };
+        };
+        const loadedBytes = fragData.stats?.total ?? fragData.stats?.loaded ?? 0;
+        const loadingStart = fragData.stats?.loading?.start ?? 0;
+        const loadingEnd = fragData.stats?.loading?.end ?? 0;
+        const durationMs = loadingEnd - loadingStart;
+        if (loadedBytes > 0 && durationMs > 0) {
+          const bitsPerSecond = (loadedBytes * 8 * 1000) / durationMs;
+          setNetworkSpeedBps(bitsPerSecond);
+        }
+      });
       hls.on(Hls.Events.ERROR, (_e, data) => {
         if (data.fatal) {
           setError(t(locale, "player.playbackErrorDetails", { details: data.details }));
@@ -99,6 +139,13 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       player.attachMediaElement(video);
       player.load();
       player.play();
+      player.on(mpegts.Events.STATISTICS_INFO, (stats) => {
+        const speedKiloBytesPerSec = Number((stats as { speed?: number })?.speed);
+        if (Number.isFinite(speedKiloBytesPerSec) && speedKiloBytesPerSec > 0) {
+          const bitsPerSecond = speedKiloBytesPerSec * 1024 * 8;
+          setNetworkSpeedBps(bitsPerSecond);
+        }
+      });
       player.on(mpegts.Events.ERROR, () => {
         setError(t(locale, "player.mpegtsPlaybackError"));
       });
@@ -184,6 +231,62 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [channel.id, channels]);
 
   useEffect(() => {
+    showChannelListPanelRef.current = showChannelListPanel;
+  }, [showChannelListPanel]);
+
+  useEffect(() => {
+    focusedChannelIndexRef.current = focusedChannelIndex;
+  }, [focusedChannelIndex]);
+
+  useEffect(() => {
+    channelsRef.current = channels;
+  }, [channels]);
+
+  useEffect(() => {
+    if (!showChannelListPanel || channels.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    const now = Date.now();
+    setChannelEpgLoading(true);
+    tauriInvoke<ChannelEpgSnapshot[]>("get_channels_epg_snapshots", {
+      query: {
+        channelIds: channels.map((item) => item.id),
+        windowStartTs: now - 15 * 60 * 1000,
+        windowEndTs: now + 3 * 60 * 60 * 1000,
+      },
+    })
+      .then((list) => {
+        if (cancelled) return;
+        const map: Record<number, ChannelEpgSnapshot> = {};
+        for (const item of list) {
+          map[item.channelId] = item;
+        }
+        setChannelEpgSnapshots(map);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setChannelEpgSnapshots({});
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setChannelEpgLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [channels, showChannelListPanel]);
+
+  useEffect(() => {
+    if (!showChannelListPanel) {
+      return;
+    }
+    const target = channelListItemRefs.current[focusedChannelIndex];
+    target?.scrollIntoView({ block: "nearest" });
+  }, [focusedChannelIndex, showChannelListPanel]);
+
+  useEffect(() => {
     if (!epgNow) return;
     const interval = setInterval(() => {
       const now = Date.now();
@@ -200,6 +303,90 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     return () => clearInterval(interval);
   }, [epgNow]);
 
+  useEffect(() => {
+    if (proxyPort === null) {
+      return;
+    }
+    if (typeof PerformanceObserver === "undefined") {
+      return;
+    }
+    const proxyPrefix = `http://127.0.0.1:${proxyPort}/stream?`;
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (entry.entryType !== "resource") {
+          continue;
+        }
+        const resource = entry as PerformanceResourceTiming;
+        if (!resource.name.startsWith(proxyPrefix)) {
+          continue;
+        }
+        const bytes = resource.transferSize > 0 ? resource.transferSize : resource.encodedBodySize;
+        const durationMs = resource.duration;
+        if (bytes <= 0 || durationMs <= 0) {
+          continue;
+        }
+        const bitsPerSecond = (bytes * 8 * 1000) / durationMs;
+        setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.65 + bitsPerSecond * 0.35));
+      }
+    });
+    observer.observe({ type: "resource", buffered: false });
+    speedObserverRef.current = observer;
+    return () => {
+      observer.disconnect();
+      if (speedObserverRef.current === observer) {
+        speedObserverRef.current = null;
+      }
+    };
+  }, [proxyPort]);
+
+  useEffect(() => {
+    const readDecodedBytes = () => {
+      const video = videoRef.current as (HTMLVideoElement & {
+        webkitVideoDecodedByteCount?: number;
+        webkitAudioDecodedByteCount?: number;
+      }) | null;
+      if (!video) return null;
+      const videoBytes = Number(video.webkitVideoDecodedByteCount ?? 0);
+      const audioBytes = Number(video.webkitAudioDecodedByteCount ?? 0);
+      const total = videoBytes + audioBytes;
+      return Number.isFinite(total) && total > 0 ? total : null;
+    };
+
+    let lastBytes = readDecodedBytes();
+    let lastTs = Date.now();
+    speedFallbackTimerRef.current = setInterval(() => {
+      const hlsEstimate = Number((hlsRef.current as unknown as { bandwidthEstimate?: number } | null)?.bandwidthEstimate ?? 0);
+      if (Number.isFinite(hlsEstimate) && hlsEstimate > 0) {
+        setNetworkSpeedBps((prev) => (prev === null ? hlsEstimate : prev * 0.65 + hlsEstimate * 0.35));
+        return;
+      }
+
+      const currentBytes = readDecodedBytes();
+      const nowTs = Date.now();
+      if (currentBytes === null || lastBytes === null) {
+        lastBytes = currentBytes;
+        lastTs = nowTs;
+        return;
+      }
+      const deltaBytes = currentBytes - lastBytes;
+      const deltaMs = nowTs - lastTs;
+      lastBytes = currentBytes;
+      lastTs = nowTs;
+      if (deltaBytes <= 0 || deltaMs <= 0) {
+        return;
+      }
+      const bitsPerSecond = (deltaBytes * 8 * 1000) / deltaMs;
+      setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.65 + bitsPerSecond * 0.35));
+    }, 1000);
+
+    return () => {
+      if (speedFallbackTimerRef.current) {
+        clearInterval(speedFallbackTimerRef.current);
+        speedFallbackTimerRef.current = null;
+      }
+    };
+  }, [channel.id]);
+
   const showOverlay = useCallback(() => {
     setOverlayVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -210,10 +397,18 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   useEffect(() => {
     showOverlay();
+    setShowGuidePanel(true);
+    if (guideAutoHideTimerRef.current) {
+      clearTimeout(guideAutoHideTimerRef.current);
+    }
+    guideAutoHideTimerRef.current = setTimeout(() => {
+      setShowGuidePanel(false);
+    }, GUIDE_AUTO_HIDE_MS);
     return () => {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      if (guideAutoHideTimerRef.current) clearTimeout(guideAutoHideTimerRef.current);
     };
-  }, [channel.id, showOverlay]);
+  }, [GUIDE_AUTO_HIDE_MS, channel.id, showOverlay]);
 
   useEffect(() => {
     if (error) setOverlayVisible(true);
@@ -236,80 +431,236 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     [channels, channel.id, onChannelChange],
   );
 
+  const setChannelListPanel = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    setShowChannelListPanel((prev) => {
+      const resolved = typeof next === "function" ? (next as (value: boolean) => boolean)(prev) : next;
+      showChannelListPanelRef.current = resolved;
+      if (!resolved && channelListAutoHideTimerRef.current) {
+        clearTimeout(channelListAutoHideTimerRef.current);
+        channelListAutoHideTimerRef.current = null;
+      }
+      return resolved;
+    });
+  }, []);
+
+  const startChannelListAutoHide = useCallback(() => {
+    if (channelListAutoHideTimerRef.current) {
+      clearTimeout(channelListAutoHideTimerRef.current);
+    }
+    channelListAutoHideTimerRef.current = setTimeout(() => {
+      setChannelListPanel(false);
+      channelListAutoHideTimerRef.current = null;
+    }, CHANNEL_LIST_AUTO_HIDE_MS);
+  }, [CHANNEL_LIST_AUTO_HIDE_MS, setChannelListPanel]);
+
+  const touchChannelListAutoHide = useCallback(() => {
+    if (!channelListAutoHideTimerRef.current) {
+      return;
+    }
+    startChannelListAutoHide();
+  }, [startChannelListAutoHide]);
+
+  const setFocusedIndex = useCallback((next: number | ((prev: number) => number)) => {
+    setFocusedChannelIndex((prev) => {
+      const resolved = typeof next === "function" ? (next as (value: number) => number)(prev) : next;
+      focusedChannelIndexRef.current = resolved;
+      return resolved;
+    });
+  }, []);
+
+  const getNavButtons = useCallback((): HTMLButtonElement[] => {
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('button[data-tv-nav-button="true"]'));
+  }, []);
+
+  const focusActiveNavButton = useCallback(() => {
+    const active = document.querySelector<HTMLButtonElement>('button[data-tv-nav-button="true"][data-tv-nav-active="true"]');
+    if (active) {
+      active.focus();
+      return;
+    }
+    const buttons = getNavButtons();
+    buttons[0]?.focus();
+  }, [getNavButtons]);
+
+  const focusChannelListItem = useCallback((index: number) => {
+    const itemNode = channelListItemRefs.current[index];
+    itemNode?.focus();
+    itemNode?.scrollIntoView({ block: "nearest" });
+  }, []);
+
+  const togglePlayPause = useCallback(() => {
+    if (!videoRef.current) return;
+    if (videoRef.current.paused) {
+      videoRef.current.play().catch(() => {});
+      setIsPaused(false);
+      return;
+    }
+    videoRef.current.pause();
+    setIsPaused(true);
+  }, []);
+
+  useEffect(() => {
+    confirmPressRef.current = createConfirmPressHandler({
+      onSingle: () => {
+        const inChannelPanel = showChannelListPanelRef.current;
+        if (inChannelPanel) {
+          const candidate = channelsRef.current[focusedChannelIndexRef.current];
+          if (candidate) {
+            onChannelChange(candidate);
+          }
+          setChannelListPanel(false);
+          showOverlay();
+          return;
+        }
+        setChannelListPanel(true);
+        startChannelListAutoHide();
+        showOverlay();
+      },
+      onDouble: () => {
+        setShowGuidePanel((v) => !v);
+        showOverlay();
+      },
+      onLong: () => {
+        togglePlayPause();
+        showOverlay();
+      },
+    });
+    return () => {
+      confirmPressRef.current?.clear();
+      confirmPressRef.current = null;
+    };
+  }, [onChannelChange, setChannelListPanel, showOverlay, startChannelListAutoHide, togglePlayPause]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case "Escape":
+      const intent = mapKeyToTvIntent(e.key);
+      const inNavZone = playerFocusZoneRef.current === "nav";
+      if (showChannelListPanelRef.current) {
+        touchChannelListAutoHide();
+      }
+      if (inNavZone) {
+        if (intent === "MoveUp" || intent === "MoveDown") {
           e.preventDefault();
-          if (showChannelListPanel) {
-            setShowChannelListPanel(false);
-          } else {
-            onClose();
+          const buttons = getNavButtons();
+          if (buttons.length === 0) return;
+          const currentIndex = Math.max(0, buttons.findIndex((item) => item === document.activeElement));
+          const offset = intent === "MoveDown" ? 1 : -1;
+          const nextIndex = (currentIndex + offset + buttons.length) % buttons.length;
+          buttons[nextIndex]?.focus();
+          showOverlay();
+          return;
+        }
+        if (intent === "MoveRight") {
+          e.preventDefault();
+          setPlayerFocusZone("player");
+          if (showChannelListPanelRef.current) {
+            focusChannelListItem(focusedChannelIndexRef.current);
           }
-          break;
-        case "ArrowLeft":
-          e.preventDefault();
-          setShowChannelListPanel(true);
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          setShowGuidePanel((v) => !v);
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          if (showChannelListPanel) {
-            setFocusedChannelIndex((i) => {
-              if (channels.length === 0) return 0;
-              return (i - 1 + channels.length) % channels.length;
-            });
-          } else {
-            switchChannel(-1);
-          }
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          if (showChannelListPanel) {
-            setFocusedChannelIndex((i) => {
-              if (channels.length === 0) return 0;
-              return (i + 1) % channels.length;
-            });
-          } else {
-            switchChannel(1);
-          }
-          break;
-        case "Enter":
-          if (showChannelListPanel && channels[focusedChannelIndex]) {
-            e.preventDefault();
-            onChannelChange(channels[focusedChannelIndex]);
-            setShowChannelListPanel(false);
-          }
-          break;
-        case " ":
-          e.preventDefault();
-          if (videoRef.current) {
-            if (videoRef.current.paused) {
-              videoRef.current.play().catch(() => {});
-              setIsPaused(false);
-            } else {
-              videoRef.current.pause();
-              setIsPaused(true);
-            }
-          }
-          break;
-        case "f":
-        case "F":
-          e.preventDefault();
-          if (document.fullscreenElement) {
-            void document.exitFullscreen();
-          } else {
-            void containerRef.current?.requestFullscreen();
-          }
-          break;
+          showOverlay();
+          return;
+        }
+        if (intent === "Confirm") {
+          return;
+        }
+      }
+      if (intent === "Back") {
+        e.preventDefault();
+        if (showChannelListPanelRef.current) {
+          setChannelListPanel(false);
+        } else {
+          onClose();
+        }
+        showOverlay();
+        return;
+      }
+      if (intent === "MoveLeft") {
+        e.preventDefault();
+        setPlayerFocusZone("nav");
+        focusActiveNavButton();
+        showOverlay();
+        return;
+      }
+      if (intent === "MoveRight") {
+        e.preventDefault();
+        setShowGuidePanel((v) => !v);
+        showOverlay();
+        return;
+      }
+      if (intent === "MoveUp") {
+        e.preventDefault();
+        if (showChannelListPanelRef.current) {
+          const size = channelsRef.current.length;
+          setFocusedIndex((prev) => {
+            if (size === 0) return 0;
+            return (prev - 1 + size) % size;
+          });
+        } else {
+          switchChannel(-1);
+        }
+        showOverlay();
+        return;
+      }
+      if (intent === "MoveDown") {
+        e.preventDefault();
+        if (showChannelListPanelRef.current) {
+          const size = channelsRef.current.length;
+          setFocusedIndex((prev) => {
+            if (size === 0) return 0;
+            return (prev + 1) % size;
+          });
+        } else {
+          switchChannel(1);
+        }
+        showOverlay();
+        return;
+      }
+      if (intent === "Confirm") {
+        e.preventDefault();
+        confirmPressRef.current?.onKeyDown(e.repeat);
+        return;
+      }
+      if (intent === "SecondaryAction") {
+        e.preventDefault();
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+        } else {
+          void containerRef.current?.requestFullscreen();
+        }
+        showOverlay();
       }
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (mapKeyToTvIntent(e.key) !== "Confirm") return;
+      if (playerFocusZoneRef.current === "nav") return;
+      e.preventDefault();
+      confirmPressRef.current?.onKeyUp();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [channels, focusedChannelIndex, onChannelChange, onClose, showChannelListPanel, switchChannel]);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [
+    focusActiveNavButton,
+    focusChannelListItem,
+    getNavButtons,
+    onClose,
+    setChannelListPanel,
+    setFocusedIndex,
+    showOverlay,
+    switchChannel,
+    touchChannelListAutoHide,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (channelListAutoHideTimerRef.current) {
+        clearTimeout(channelListAutoHideTimerRef.current);
+        channelListAutoHideTimerRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>
@@ -345,7 +696,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
-            onClick={() => setShowChannelListPanel((v) => !v)}
+            onClick={() => setChannelListPanel((v) => !v)}
             style={overlayBtnStyle}
             title={t(locale, "player.channelListShortcut")}
           >
@@ -387,6 +738,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           </div>
           <div style={progressTrackStyle}>
             <div style={{ ...progressBarStyle, width: `${Math.max(0, Math.min(100, epgProgress))}%` }} />
+          </div>
+          <div style={networkSpeedStyle}>
+            {t(locale, "player.networkSpeed")}:{" "}
+            {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}
           </div>
           {epgNext && (
             <div
@@ -461,13 +816,27 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
             {channels.map((item, idx) => {
               const isCurrent = item.id === channel.id;
               const isFocused = idx === focusedChannelIndex;
+              const snapshot = channelEpgSnapshots[item.id];
+              const nowProgram = snapshot?.now;
+              const nextProgram = snapshot?.next;
+              const nowLine = nowProgram
+                ? nowProgram.title
+                : channelEpgLoading
+                  ? t(locale, "player.loadingEpg")
+                  : t(locale, "player.noGuideForChannel");
+              const nextLine = nextProgram
+                ? `${formatTime(nextProgram.startAt)} ${nextProgram.title}`
+                : "—";
               return (
                 <button
                   key={item.id}
+                  ref={(node) => {
+                    channelListItemRefs.current[idx] = node;
+                  }}
                   onClick={() => {
-                    setFocusedChannelIndex(idx);
+                    setFocusedIndex(idx);
                     onChannelChange(item);
-                    setShowChannelListPanel(false);
+                    setChannelListPanel(false);
                   }}
                   style={{
                     ...channelListItemStyle,
@@ -475,12 +844,20 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
                     backgroundColor: isCurrent ? "#2563eb33" : "rgba(255,255,255,0.02)",
                   }}
                 >
-                  <span style={{ opacity: 0.8, marginRight: 8, minWidth: 36, textAlign: "right" }}>
+                  <span style={{ opacity: 0.8, marginRight: 8, minWidth: 36, textAlign: "right", flexShrink: 0 }}>
                     {item.channelNumber ?? idx + 1}
                   </span>
-                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "left" }}>
-                    {item.name}
-                  </span>
+                  <div style={{ minWidth: 0, textAlign: "left", display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
+                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {item.name}
+                    </span>
+                    <span style={channelProgramNowStyle}>
+                      {t(locale, "player.now")}: {nowLine}
+                    </span>
+                    <span style={channelProgramNextStyle}>
+                      {t(locale, "player.next")}: {nextLine}
+                    </span>
+                  </div>
                 </button>
               );
             })}
@@ -525,6 +902,13 @@ function formatTime(value: string): string {
   const ts = parseXmltvDate(value);
   if (ts === null) return value;
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatNetworkSpeed(bitsPerSecond: number): string {
+  if (bitsPerSecond >= 1_000_000) {
+    return `${(bitsPerSecond / 1_000_000).toFixed(2)} Mbps`;
+  }
+  return `${(bitsPerSecond / 1_000).toFixed(1)} Kbps`;
 }
 
 function getGuidePrograms(programs: EpgProgram[]): EpgProgram[] {
@@ -604,7 +988,7 @@ const guidePanelStyle: React.CSSProperties = {
   maxWidth: "40vw",
   borderRadius: 8,
   border: "1px solid var(--border)",
-  backgroundColor: "rgba(20,20,20,0.78)",
+  backgroundColor: "rgba(10,10,10,0.92)",
   backdropFilter: "blur(8px)",
   color: "var(--text-primary)",
   display: "flex",
@@ -654,15 +1038,31 @@ const guideItemStyle: React.CSSProperties = {
 
 const channelListItemStyle: React.CSSProperties = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   width: "100%",
   border: "1px solid var(--border)",
   borderRadius: 6,
   background: "transparent",
   color: "var(--text-primary)",
-  padding: "6px 8px",
+  padding: "7px 8px",
   fontSize: 13,
   cursor: "pointer",
+};
+
+const channelProgramNowStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "#cbd5e1",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const channelProgramNextStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "var(--text-secondary)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
 };
 
 const overlayBtnStyle: React.CSSProperties = {
@@ -694,6 +1094,12 @@ const progressBarStyle: React.CSSProperties = {
   backgroundColor: "#3b82f6",
   borderRadius: 2,
   transition: "width 0.5s ease",
+};
+
+const networkSpeedStyle: React.CSSProperties = {
+  marginTop: 6,
+  fontSize: 12,
+  color: "rgba(255,255,255,0.75)",
 };
 
 const errorOverlayStyle: React.CSSProperties = {

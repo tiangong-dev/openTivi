@@ -44,6 +44,8 @@
   "player.rightKeyToHide": "Right key to hide",
   "player.loadingEpg": "Loading EPG...",
   "player.noGuideForChannel": "No guide data for this channel.",
+  "player.networkSpeed": "Network",
+  "player.networkSpeedUnavailable": "--",
   "player.channelsPanelTitle": "Channels",
   "player.enterToPlay": "Enter to play",
   "sources.title": "Sources",

@@ -6,6 +6,7 @@ import { RecentsView } from "../features/recents/RecentsView";
 import { SettingsView } from "../features/settings/SettingsView";
 import { VideoPlayer } from "../features/player/VideoPlayer";
 import { tauriInvoke } from "../lib/tauri";
+import { mapKeyToTvIntent, type TvContentKeyDetail } from "../lib/tvInput";
 import { detectDefaultLocale, LOCALE_SETTING_KEY, resolveLocale, t, type Locale } from "../lib/i18n";
 import type { Channel, Setting } from "../types/api";
 
@@ -126,30 +127,46 @@ export function AppShell() {
         element.isContentEditable
       );
     };
-    const dispatchContentKey = (key: string): boolean => {
+    const dispatchContentKey = (key: string, repeat: boolean): boolean => {
+      const detail: TvContentKeyDetail = {
+        key,
+        view: activeView,
+        repeat,
+        intent: mapKeyToTvIntent(key),
+      };
       const contentEvent = new CustomEvent("tv-content-key", {
-        detail: { key, view: activeView },
+        detail,
         cancelable: true,
       });
       // dispatchEvent returns false when preventDefault() is called by listeners.
       return !window.dispatchEvent(contentEvent);
     };
+    const dispatchContentKeyUp = (key: string) => {
+      const detail: TvContentKeyDetail = {
+        key,
+        view: activeView,
+        repeat: false,
+        intent: mapKeyToTvIntent(key),
+      };
+      window.dispatchEvent(new CustomEvent("tv-content-keyup", { detail }));
+    };
     const onWindowKeyDown = (event: KeyboardEvent) => {
       // Avoid handling the same key twice when a focused component already handled it.
       if (event.defaultPrevented) return;
       if (isTypingTarget()) return;
+      const intent = mapKeyToTvIntent(event.key);
       if (focusZone === "nav") {
-        if (event.key === "ArrowDown") {
+        if (intent === "MoveDown") {
           event.preventDefault();
           focusNavByIndex(focusedNavIndex + 1);
           return;
         }
-        if (event.key === "ArrowUp") {
+        if (intent === "MoveUp") {
           event.preventDefault();
           focusNavByIndex(focusedNavIndex - 1);
           return;
         }
-        if (event.key === "Enter" || event.key === " ") {
+        if (intent === "Confirm") {
           event.preventDefault();
           const selected = navItems[focusedNavIndex];
           if (selected) {
@@ -157,15 +174,15 @@ export function AppShell() {
           }
           return;
         }
-        if (event.key === "ArrowRight") {
+        if (intent === "MoveRight") {
           event.preventDefault();
           setFocusZone("content");
         }
         return;
       }
-      if (event.key === "ArrowLeft") {
+      if (intent === "MoveLeft") {
         event.preventDefault();
-        const handledByContent = dispatchContentKey(event.key);
+        const handledByContent = dispatchContentKey(event.key, event.repeat);
         if (!handledByContent) {
           (document.activeElement as HTMLElement | null)?.blur();
           setFocusZone("nav");
@@ -173,25 +190,33 @@ export function AppShell() {
         return;
       }
       if (
-        event.key === "ArrowUp" ||
-        event.key === "ArrowDown" ||
-        event.key === "ArrowRight" ||
-        event.key === "Enter" ||
-        event.key === " " ||
-        event.key === "f" ||
-        event.key === "F" ||
+        intent === "MoveUp" ||
+        intent === "MoveDown" ||
+        intent === "MoveRight" ||
+        intent === "Confirm" ||
+        intent === "SecondaryAction" ||
+        intent === "Back" ||
         event.key === "Delete" ||
-        event.key === "Backspace" ||
         event.key === "r" ||
         event.key === "R"
       ) {
         event.preventDefault();
-        void dispatchContentKey(event.key);
+        void dispatchContentKey(event.key, event.repeat);
       }
     };
+    const onWindowKeyUp = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (isTypingTarget()) return;
+      if (focusZone !== "content") return;
+      if (mapKeyToTvIntent(event.key) !== "Confirm") return;
+      event.preventDefault();
+      dispatchContentKeyUp(event.key);
+    };
     window.addEventListener("keydown", onWindowKeyDown);
+    window.addEventListener("keyup", onWindowKeyUp);
     return () => {
       window.removeEventListener("keydown", onWindowKeyDown);
+      window.removeEventListener("keyup", onWindowKeyUp);
     };
   }, [activeView, focusZone, focusedNavIndex, navItems, playingChannel]);
 
@@ -216,6 +241,9 @@ export function AppShell() {
         {navItems.map((item, index) => (
           <button
             key={item.key}
+            data-tv-nav-button="true"
+            data-tv-nav-view={item.key}
+            data-tv-nav-active={item.key === activeView ? "true" : undefined}
             ref={(node) => {
               navButtonRefs.current[index] = node;
             }}

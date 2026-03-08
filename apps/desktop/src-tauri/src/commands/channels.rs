@@ -41,3 +41,12 @@ pub fn get_channel_epg(
         query.to.as_deref(),
     )
 }
+
+#[tauri::command]
+pub fn get_channels_epg_snapshots(
+    state: State<AppState>,
+    query: GetChannelsEpgSnapshotsQuery,
+) -> AppResult<Vec<ChannelEpgSnapshotDto>> {
+    let conn = state.db.lock().unwrap();
+    crate::core::services::epg_service::get_channels_epg_snapshots(&conn, &query.channel_ids)
+}

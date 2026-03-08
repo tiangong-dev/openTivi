@@ -6,6 +6,11 @@ export interface Source {
   username?: string;
   password?: string;
   enabled: boolean;
+  autoRefreshMinutes?: number;
+  channelCount: number;
+  groupCount: number;
+  channelsWithTvgId: number;
+  epgProgramCount: number;
   lastImportedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -31,6 +36,18 @@ export interface EpgProgram {
   title: string;
   description?: string;
   category?: string;
+}
+
+export interface EpgProgramMini {
+  title: string;
+  startAt: string;
+  endAt: string;
+}
+
+export interface ChannelEpgSnapshot {
+  channelId: number;
+  now?: EpgProgramMini;
+  next?: EpgProgramMini;
 }
 
 export interface ImportSummary {

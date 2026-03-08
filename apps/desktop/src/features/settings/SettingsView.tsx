@@ -4,7 +4,7 @@ import { getErrorMessage } from "../../lib/errors";
 import { LOCALE_SETTING_KEY, t, type Locale, type TranslationKey } from "../../lib/i18n";
 import { DEFAULT_GUIDE_WINDOW_MINUTES, GUIDE_WINDOW_MINUTES_SETTING_KEY } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
-import type { Setting } from "../../types/api";
+import type { AppUpdateInfo, Setting } from "../../types/api";
 
 interface Props {
   locale: Locale;
@@ -80,6 +80,10 @@ const settingCategories: { titleKey: TranslationKey; settings: SettingDef[] }[] 
 export function SettingsView({ locale, onLocaleChange }: Props) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [copiedReleaseUrl, setCopiedReleaseUrl] = useState(false);
   const [flash, setFlash] = useState(false);
   const [focusedSettingKey, setFocusedSettingKey] = useState<string | null>(null);
   const [editingSettingKey, setEditingSettingKey] = useState<string | null>(null);
@@ -105,8 +109,34 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
     }
   };
 
+  const checkAppUpdate = async () => {
+    setCheckingUpdate(true);
+    setUpdateError(null);
+    setCopiedReleaseUrl(false);
+    try {
+      const info = await tauriInvoke<AppUpdateInfo>("check_app_update");
+      setUpdateInfo(info);
+    } catch (e) {
+      setUpdateError(getErrorMessage(e));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const copyReleaseUrl = async () => {
+    if (!updateInfo?.releaseUrl) return;
+    try {
+      await navigator.clipboard.writeText(updateInfo.releaseUrl);
+      setCopiedReleaseUrl(true);
+      setTimeout(() => setCopiedReleaseUrl(false), 2000);
+    } catch (e) {
+      setUpdateError(getErrorMessage(e));
+    }
+  };
+
   useEffect(() => {
     void loadSettings();
+    void checkAppUpdate();
   }, []);
 
   useEffect(() => {
@@ -298,6 +328,40 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       {error && <div style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div>}
       <div style={hintStyle}>{t(locale, "settings.hint.tv")}</div>
 
+      <div style={updateCardStyle}>
+        <div style={updateHeaderStyle}>
+          <div style={updateTitleStyle}>{t(locale, "settings.update.title")}</div>
+          <button type="button" onClick={() => void checkAppUpdate()} style={updateActionBtnStyle} disabled={checkingUpdate}>
+            {checkingUpdate ? t(locale, "settings.update.checking") : t(locale, "settings.update.checkNow")}
+          </button>
+        </div>
+        <div style={updateLineStyle}>
+          {t(locale, "settings.update.currentVersion", { version: updateInfo?.currentVersion ?? "-" })}
+        </div>
+        <div style={updateLineStyle}>
+          {t(locale, "settings.update.latestVersion", { version: updateInfo?.latestVersion ?? "-" })}
+        </div>
+        {updateInfo && (
+          <div style={{ ...updateLineStyle, color: updateInfo.hasUpdate ? "var(--accent)" : "var(--text-secondary)" }}>
+            {updateInfo.hasUpdate
+              ? t(locale, "settings.update.available", { version: updateInfo.latestVersion })
+              : t(locale, "settings.update.upToDate")}
+          </div>
+        )}
+        {updateInfo?.publishedAt && (
+          <div style={updateLineStyle}>{t(locale, "settings.update.publishedAt", { value: updateInfo.publishedAt })}</div>
+        )}
+        {updateInfo?.hasUpdate && (
+          <div style={{ marginTop: 8 }}>
+            <div style={releaseUrlStyle}>{updateInfo.releaseUrl}</div>
+            <button type="button" onClick={() => void copyReleaseUrl()} style={{ ...updateActionBtnStyle, marginTop: 8 }}>
+              {copiedReleaseUrl ? t(locale, "settings.update.copied") : t(locale, "settings.update.copyLink")}
+            </button>
+          </div>
+        )}
+        {updateError && <div style={{ color: "var(--danger)", marginTop: 8 }}>{updateError}</div>}
+      </div>
+
       {settingCategories.map((cat) => (
         <div key={cat.titleKey} style={{ marginBottom: 24 }}>
           <div
@@ -467,4 +531,48 @@ const flashStyle: React.CSSProperties = {
   fontSize: 13,
   marginBottom: 12,
   textAlign: "center",
+};
+
+const updateCardStyle: React.CSSProperties = {
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: 12,
+  marginBottom: 18,
+  backgroundColor: "var(--bg-secondary)",
+};
+
+const updateHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  marginBottom: 8,
+};
+
+const updateTitleStyle: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 600,
+};
+
+const updateLineStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "var(--text-secondary)",
+  marginBottom: 4,
+  wordBreak: "break-word",
+};
+
+const releaseUrlStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "var(--accent)",
+  wordBreak: "break-all",
+  fontFamily: "monospace",
+};
+
+const updateActionBtnStyle: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 4,
+  border: "1px solid var(--border)",
+  backgroundColor: "var(--bg-tertiary)",
+  color: "var(--text-primary)",
+  cursor: "pointer",
 };

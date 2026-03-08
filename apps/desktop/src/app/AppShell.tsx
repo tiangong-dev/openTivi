@@ -10,6 +10,7 @@ import { detectDefaultLocale, LOCALE_SETTING_KEY, resolveLocale, t, type Locale 
 import type { Channel, Setting } from "../types/api";
 
 type View = "channels" | "favorites" | "recents" | "sources" | "settings";
+type FocusZone = "nav" | "content";
 
 export function AppShell() {
   const [activeView, setActiveView] = useState<View>("sources");
@@ -18,7 +19,9 @@ export function AppShell() {
   const [locale, setLocale] = useState<Locale>(detectDefaultLocale());
   const [focusedNavIndex, setFocusedNavIndex] = useState(0);
   const [hoveredNavKey, setHoveredNavKey] = useState<View | null>(null);
+  const [focusZone, setFocusZone] = useState<FocusZone>("nav");
   const navButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const mainRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const loadLocale = async () => {
@@ -55,6 +58,13 @@ export function AppShell() {
     setFocusedNavIndex((prev) => Math.min(prev, navItems.length - 1));
   }, [navItems.length]);
 
+  useEffect(() => {
+    const currentIndex = navItems.findIndex((item) => item.key === activeView);
+    if (currentIndex >= 0) {
+      setFocusedNavIndex(currentIndex);
+    }
+  }, [activeView, navItems]);
+
   const activateView = (view: View) => {
     setActiveView(view);
     setPlayingChannel(null);
@@ -65,6 +75,96 @@ export function AppShell() {
     setFocusedNavIndex(clamped);
     navButtonRefs.current[clamped]?.focus();
   };
+
+  const focusContent = () => {
+    window.dispatchEvent(new CustomEvent("tv-focus-content", { detail: { view: activeView } }));
+    window.setTimeout(() => {
+      const target = mainRef.current?.querySelector<HTMLElement>(
+        '[data-tv-focusable="true"], [role="button"][tabindex="0"], button, input, select, textarea',
+      );
+      target?.focus();
+    }, 0);
+  };
+
+  useEffect(() => {
+    if (playingChannel) {
+      return;
+    }
+    if (focusZone === "nav") {
+      navButtonRefs.current[focusedNavIndex]?.focus();
+      return;
+    }
+    focusContent();
+  }, [focusZone, focusedNavIndex, activeView, playingChannel]);
+
+  useEffect(() => {
+    if (playingChannel) {
+      return;
+    }
+    const isTypingTarget = () => {
+      const element = document.activeElement as HTMLElement | null;
+      if (!element) return false;
+      const tagName = element.tagName;
+      return (
+        tagName === "INPUT" ||
+        tagName === "TEXTAREA" ||
+        tagName === "SELECT" ||
+        element.isContentEditable
+      );
+    };
+    const onWindowKeyDown = (event: KeyboardEvent) => {
+      if (isTypingTarget()) return;
+      if (focusZone === "nav") {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          focusNavByIndex(focusedNavIndex + 1);
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          focusNavByIndex(focusedNavIndex - 1);
+          return;
+        }
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          const selected = navItems[focusedNavIndex];
+          if (selected) {
+            activateView(selected.key);
+          }
+          return;
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          setFocusZone("content");
+        }
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setFocusZone("nav");
+        return;
+      }
+      if (
+        event.key === "ArrowUp" ||
+        event.key === "ArrowDown" ||
+        event.key === "Enter" ||
+        event.key === " " ||
+        event.key === "f" ||
+        event.key === "F" ||
+        event.key === "Delete" ||
+        event.key === "Backspace" ||
+        event.key === "r" ||
+        event.key === "R"
+      ) {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent("tv-content-key", { detail: { key: event.key } }));
+      }
+    };
+    window.addEventListener("keydown", onWindowKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onWindowKeyDown);
+    };
+  }, [activeView, focusZone, focusedNavIndex, navItems, playingChannel]);
 
   const renderView = () => {
     switch (activeView) {
@@ -91,7 +191,10 @@ export function AppShell() {
               navButtonRefs.current[index] = node;
             }}
             onClick={() => activateView(item.key)}
-            onFocus={() => setFocusedNavIndex(index)}
+            onFocus={() => {
+              setFocusedNavIndex(index);
+              setFocusZone("nav");
+            }}
             onMouseEnter={() => setHoveredNavKey(item.key)}
             onMouseLeave={() => setHoveredNavKey((prev) => (prev === item.key ? null : prev))}
             onKeyDown={(event) => {
@@ -119,7 +222,7 @@ export function AppShell() {
           </button>
         ))}
       </nav>
-      <main style={mainStyle}>
+      <main ref={mainRef} style={mainStyle}>
         {playingChannel ? (
           <VideoPlayer
             channel={playingChannel}

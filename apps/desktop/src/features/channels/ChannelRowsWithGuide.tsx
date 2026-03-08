@@ -161,6 +161,44 @@ export function ChannelRowsWithGuide<T extends Channel>({
     schedulePlay(channel);
   };
 
+  useEffect(() => {
+    const onFocusContent = (event: Event) => {
+      const detail = (event as CustomEvent<{ view?: string }>).detail;
+      if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
+        return;
+      }
+      if (items.length === 0) return;
+      focusRowByIndex(focusedIndex);
+    };
+    const onContentKey = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (!key || items.length === 0) return;
+      if (key === "ArrowDown") {
+        focusRowByIndex(focusedIndex + 1);
+        return;
+      }
+      if (key === "ArrowUp") {
+        focusRowByIndex(focusedIndex - 1);
+        return;
+      }
+      const current = items[focusedIndex];
+      if (!current) return;
+      if (key === "Enter" || key === " ") {
+        handleConfirm(current);
+        return;
+      }
+      if ((key === "f" || key === "F") && onToggleFavorite) {
+        triggerFavorite(current);
+      }
+    };
+    window.addEventListener("tv-focus-content", onFocusContent as EventListener);
+    window.addEventListener("tv-content-key", onContentKey as EventListener);
+    return () => {
+      window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
+      window.removeEventListener("tv-content-key", onContentKey as EventListener);
+    };
+  }, [focusedIndex, items, onPlay, onToggleFavorite]);
+
   return (
     <>
       {items.map((ch, index) => {
@@ -174,6 +212,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
               }}
               role="button"
               tabIndex={0}
+              data-tv-focusable={focusedIndex === index ? "true" : undefined}
               style={{ ...rowStyle, ...(isActive ? rowActiveStyle : null) }}
               onClick={() => schedulePlay(ch)}
               onDoubleClick={() => {

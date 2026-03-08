@@ -258,7 +258,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         case "ArrowUp":
           e.preventDefault();
           if (showChannelListPanel) {
-            setFocusedChannelIndex((i) => Math.max(0, i - 1));
+            setFocusedChannelIndex((i) => {
+              if (channels.length === 0) return 0;
+              return (i - 1 + channels.length) % channels.length;
+            });
           } else {
             switchChannel(-1);
           }
@@ -266,7 +269,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         case "ArrowDown":
           e.preventDefault();
           if (showChannelListPanel) {
-            setFocusedChannelIndex((i) => Math.min(channels.length - 1, i + 1));
+            setFocusedChannelIndex((i) => {
+              if (channels.length === 0) return 0;
+              return (i + 1) % channels.length;
+            });
           } else {
             switchChannel(1);
           }

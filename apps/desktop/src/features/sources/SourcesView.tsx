@@ -5,6 +5,7 @@ import { t, type Locale } from "../../lib/i18n";
 import type { Source, ImportSummary } from "../../types/api";
 
 type ImportTab = "m3u" | "xtream" | "xmltv";
+type SourceFocusTarget = "add" | "list";
 
 interface Props {
   locale: Locale;
@@ -13,11 +14,29 @@ interface Props {
 export function SourcesView({ locale }: Props) {
   const [sources, setSources] = useState<Source[]>([]);
   const [activeTab, setActiveTab] = useState<ImportTab>("m3u");
+  const [showAddModal, setShowAddModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [editing, setEditing] = useState<EditSourceDraft | null>(null);
+  const [deleteConfirmSource, setDeleteConfirmSource] = useState<Source | null>(null);
+  const [deleteConfirmAction, setDeleteConfirmAction] = useState<"cancel" | "delete">("cancel");
+  const [focusedSourceIndex, setFocusedSourceIndex] = useState(0);
+  const [focusTarget, setFocusTarget] = useState<SourceFocusTarget>("add");
+  const [domFocusedSourceId, setDomFocusedSourceId] = useState<number | null>(null);
+  const [hoveredSourceId, setHoveredSourceId] = useState<number | null>(null);
+  const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const refreshingSourceIds = useRef<Set<number>>(new Set());
+  const addButtonRef = useRef<HTMLButtonElement | null>(null);
+  const addTabRefs = useRef<Record<ImportTab, HTMLButtonElement | null>>({
+    m3u: null,
+    xtream: null,
+    xmltv: null,
+  });
+  const addModalFirstInputRef = useRef<HTMLInputElement | null>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
+  const deleteConfirmRef = useRef<HTMLButtonElement | null>(null);
+  const sourceRowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
 
   const loadSources = async () => {
     try {
@@ -31,6 +50,233 @@ export function SourcesView({ locale }: Props) {
   useEffect(() => {
     void loadSources();
   }, []);
+
+  useEffect(() => {
+    if (sources.length === 0) {
+      setFocusedSourceIndex(0);
+      setDomFocusedSourceId(null);
+      setFocusTarget("add");
+      return;
+    }
+    setFocusedSourceIndex((prev) => Math.min(prev, sources.length - 1));
+  }, [sources.length]);
+
+  const focusAddButton = () => {
+    setFocusTarget("add");
+    addButtonRef.current?.focus();
+  };
+
+  const focusSourceByIndex = (index: number) => {
+    if (sources.length === 0) {
+      focusAddButton();
+      return;
+    }
+    const wrapped = ((index % sources.length) + sources.length) % sources.length;
+    setFocusTarget("list");
+    setFocusedSourceIndex(wrapped);
+    const source = sources[wrapped];
+    const rowNode = source ? sourceRowRefs.current[source.id] : null;
+    rowNode?.focus();
+    rowNode?.scrollIntoView({ block: "nearest" });
+  };
+
+  const openDeleteConfirm = (source: Source) => {
+    setDeleteConfirmSource(source);
+    setDeleteConfirmAction("cancel");
+  };
+
+  const executeDeleteConfirmed = async () => {
+    if (!deleteConfirmSource) return;
+    const targetId = deleteConfirmSource.id;
+    setDeleteConfirmSource(null);
+    await handleDelete(targetId);
+    focusAddButton();
+  };
+
+  useEffect(() => {
+    const onZoneChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
+      const inThisView = !detail?.view || detail.view === "sources";
+      setIsContentZoneActive(detail?.zone === "content" && inThisView);
+      if (detail?.zone === "nav" && inThisView) {
+        setDomFocusedSourceId(null);
+      }
+    };
+    window.addEventListener("tv-focus-zone", onZoneChange as EventListener);
+    return () => {
+      window.removeEventListener("tv-focus-zone", onZoneChange as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onFocusContent = (event: Event) => {
+      const detail = (event as CustomEvent<{ view?: string }>).detail;
+      if (detail?.view && detail.view !== "sources") {
+        return;
+      }
+      if (focusTarget === "list" && sources.length > 0) {
+        focusSourceByIndex(focusedSourceIndex);
+        return;
+      }
+      focusAddButton();
+    };
+
+    const onContentKey = (event: Event) => {
+      const detail = (event as CustomEvent<{ key?: string; view?: string }>).detail;
+      if (detail?.view && detail.view !== "sources") {
+        return;
+      }
+      const key = detail?.key;
+      if (!key) return;
+      if (deleteConfirmSource) {
+        if (key === "ArrowLeft" || key === "ArrowRight") {
+          event.preventDefault();
+          setDeleteConfirmAction((prev) => (prev === "cancel" ? "delete" : "cancel"));
+          return;
+        }
+        if (key === "Enter" || key === " ") {
+          event.preventDefault();
+          if (deleteConfirmAction === "delete") {
+            void executeDeleteConfirmed();
+          } else {
+            setDeleteConfirmSource(null);
+            focusAddButton();
+          }
+          return;
+        }
+        return;
+      }
+
+      if (showAddModal) {
+        if (key === "ArrowLeft" || key === "ArrowRight") {
+          event.preventDefault();
+          const tabs: ImportTab[] = ["m3u", "xtream", "xmltv"];
+          const currentIndex = tabs.findIndex((tab) => tab === activeTab);
+          const direction = key === "ArrowRight" ? 1 : -1;
+          const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
+          const nextTab = tabs[nextIndex];
+          setActiveTab(nextTab);
+          window.setTimeout(() => addTabRefs.current[nextTab]?.focus(), 0);
+          return;
+        }
+        if (key === "ArrowDown" || key === "Enter" || key === " ") {
+          event.preventDefault();
+          addModalFirstInputRef.current?.focus();
+          return;
+        }
+        if (key === "ArrowUp") {
+          event.preventDefault();
+          addTabRefs.current[activeTab]?.focus();
+        }
+        return;
+      }
+
+      if (editing) return;
+
+      if (key === "ArrowDown") {
+        event.preventDefault();
+        if (focusTarget === "add") {
+          if (sources.length > 0) {
+            focusSourceByIndex(0);
+          }
+          return;
+        }
+        if (focusedSourceIndex === sources.length - 1) {
+          focusAddButton();
+        } else {
+          focusSourceByIndex(focusedSourceIndex + 1);
+        }
+        return;
+      }
+
+      if (key === "ArrowUp") {
+        event.preventDefault();
+        if (focusTarget === "add") {
+          if (sources.length > 0) {
+            focusSourceByIndex(sources.length - 1);
+          }
+          return;
+        }
+        if (focusedSourceIndex === 0) {
+          focusAddButton();
+        } else {
+          focusSourceByIndex(focusedSourceIndex - 1);
+        }
+        return;
+      }
+
+      if (key === "Enter" || key === " ") {
+        event.preventDefault();
+        if (focusTarget === "add") {
+          setShowAddModal(true);
+          return;
+        }
+        const current = sources[focusedSourceIndex];
+        if (current) {
+          openEdit(current);
+        }
+        return;
+      }
+
+      if (focusTarget !== "list") return;
+      const current = sources[focusedSourceIndex];
+      if (!current) return;
+
+      if (key === "Delete" || key === "Backspace") {
+        event.preventDefault();
+        openDeleteConfirm(current);
+        return;
+      }
+      if (key === "r" || key === "R") {
+        event.preventDefault();
+        void handleRefresh(current.id);
+      }
+    };
+
+    window.addEventListener("tv-focus-content", onFocusContent as EventListener);
+    window.addEventListener("tv-content-key", onContentKey as EventListener);
+    return () => {
+      window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
+      window.removeEventListener("tv-content-key", onContentKey as EventListener);
+    };
+  }, [activeTab, deleteConfirmAction, deleteConfirmSource, editing, focusTarget, focusedSourceIndex, showAddModal, sources]);
+
+  useEffect(() => {
+    if (!showAddModal && !editing && !deleteConfirmSource) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (deleteConfirmSource) {
+        setDeleteConfirmSource(null);
+        focusAddButton();
+      } else if (editing) {
+        setEditing(null);
+      } else {
+        setShowAddModal(false);
+        window.setTimeout(() => focusAddButton(), 0);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [deleteConfirmSource, editing, showAddModal]);
+
+  useEffect(() => {
+    if (!showAddModal) return;
+    window.setTimeout(() => addTabRefs.current[activeTab]?.focus(), 0);
+  }, [showAddModal, activeTab]);
+
+  useEffect(() => {
+    if (!deleteConfirmSource) return;
+    window.setTimeout(() => {
+      if (deleteConfirmAction === "delete") {
+        deleteConfirmRef.current?.focus();
+      } else {
+        deleteCancelRef.current?.focus();
+      }
+    }, 0);
+  }, [deleteConfirmAction, deleteConfirmSource]);
 
   const handleImportDone = (summary: ImportSummary, auto = false) => {
     setMessage({
@@ -177,7 +423,23 @@ export function SourcesView({ locale }: Props) {
 
   return (
     <div style={{ padding: 24 }}>
-      <h2 style={{ marginBottom: 16 }}>{t(locale, "sources.title")}</h2>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>{t(locale, "sources.title")}</h2>
+        <button
+          ref={addButtonRef}
+          type="button"
+          data-tv-focusable={focusTarget === "add" ? "true" : undefined}
+          onFocus={() => setFocusTarget("add")}
+          onClick={() => setShowAddModal(true)}
+          style={{
+            ...submitBtnStyle,
+            alignSelf: "auto",
+            backgroundColor: focusTarget === "add" && isContentZoneActive ? "var(--accent-hover)" : "var(--accent)",
+          }}
+        >
+          + {t(locale, "sources.action.add")}
+        </button>
+      </div>
 
       {message && (
         <div
@@ -193,62 +455,8 @@ export function SourcesView({ locale }: Props) {
         </div>
       )}
 
-      {/* Import tabs */}
-      <div style={{ display: "flex", gap: 0, marginBottom: 16 }}>
-        {(["m3u", "xtream", "xmltv"] as ImportTab[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            style={{
-              padding: "8px 16px",
-              border: "1px solid var(--border)",
-              backgroundColor: activeTab === tab ? "var(--accent)" : "var(--bg-tertiary)",
-              color: "var(--text-primary)",
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
-            {tab === "m3u"
-              ? "M3U"
-              : tab === "xtream"
-                ? t(locale, "sources.tab.xtream")
-                : "XMLTV EPG"}
-          </button>
-        ))}
-      </div>
-
-      {/* Import forms */}
-      {activeTab === "m3u" && (
-        <M3uForm
-          locale={locale}
-          loading={loading}
-          setLoading={setLoading}
-          onDone={(summary) => handleImportDone(summary, false)}
-          onError={(e) => setMessage({ type: "err", text: e })}
-        />
-      )}
-      {activeTab === "xtream" && (
-        <XtreamForm
-          locale={locale}
-          loading={loading}
-          setLoading={setLoading}
-          onDone={(summary) => handleImportDone(summary, false)}
-          onError={(e) => setMessage({ type: "err", text: e })}
-        />
-      )}
-      {activeTab === "xmltv" && (
-        <XmltvForm
-          locale={locale}
-          loading={loading}
-          setLoading={setLoading}
-          onDone={(summary) => handleImportDone(summary, false)}
-          onError={(e) => setMessage({ type: "err", text: e })}
-        />
-      )}
-
-      {/* Source list */}
-      {sources.length > 0 && (
-        <div style={{ marginTop: 24 }}>
+      {sources.length > 0 ? (
+        <div style={{ marginTop: 8 }}>
           <h3 style={{ marginBottom: 12 }}>{t(locale, "sources.section.importedSources")}</h3>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -263,8 +471,32 @@ export function SourcesView({ locale }: Props) {
               </tr>
             </thead>
             <tbody>
-              {sources.map((s) => (
-                <tr key={s.id} style={{ borderBottom: "1px solid var(--border)" }}>
+              {sources.map((s, index) => (
+                <tr
+                  key={s.id}
+                  ref={(node) => {
+                    sourceRowRefs.current[s.id] = node;
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  data-tv-focusable={focusTarget === "list" && focusedSourceIndex === index ? "true" : undefined}
+                  style={{
+                    borderBottom: "1px solid var(--border)",
+                    outline: "none",
+                    ...(hoveredSourceId === s.id || (isContentZoneActive && domFocusedSourceId === s.id) ? sourceRowActiveStyle : null),
+                  }}
+                  onFocus={() => {
+                    setFocusTarget("list");
+                    setFocusedSourceIndex(index);
+                    setDomFocusedSourceId(s.id);
+                  }}
+                  onBlur={() => {
+                    setDomFocusedSourceId((prev) => (prev === s.id ? null : prev));
+                  }}
+                  onMouseEnter={() => setHoveredSourceId(s.id)}
+                  onMouseLeave={() => setHoveredSourceId((prev) => (prev === s.id ? null : prev))}
+                  onDoubleClick={() => openEdit(s)}
+                >
                   <td style={tdStyle}>{s.name}</td>
                   <td style={tdStyle}>{s.kind.toUpperCase()}</td>
                   <td style={{ ...tdStyle, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -282,13 +514,35 @@ export function SourcesView({ locale }: Props) {
                   </td>
                   <td style={tdStyle}>{s.lastImportedAt ?? "—"}</td>
                   <td style={tdStyle}>
-                    <button onClick={() => handleRefresh(s.id)} disabled={loading} style={actionBtnStyle}>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleRefresh(s.id);
+                      }}
+                      disabled={loading}
+                      tabIndex={-1}
+                      style={actionBtnStyle}
+                    >
                       {t(locale, "sources.action.refresh")}
                     </button>
-                    <button onClick={() => openEdit(s)} style={actionBtnStyle}>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openEdit(s);
+                      }}
+                      tabIndex={-1}
+                      style={actionBtnStyle}
+                    >
                       {t(locale, "sources.action.edit")}
                     </button>
-                    <button onClick={() => handleDelete(s.id)} style={{ ...actionBtnStyle, color: "var(--danger)" }}>
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openDeleteConfirm(s);
+                      }}
+                      tabIndex={-1}
+                      style={{ ...actionBtnStyle, color: "var(--danger)" }}
+                    >
                       {t(locale, "sources.action.delete")}
                     </button>
                   </td>
@@ -296,6 +550,134 @@ export function SourcesView({ locale }: Props) {
               ))}
             </tbody>
           </table>
+        </div>
+      ) : (
+        <div style={{ color: "var(--text-secondary)", marginTop: 24 }}>
+          {t(locale, "sources.empty")}
+        </div>
+      )}
+
+      {showAddModal && (
+        <div style={modalOverlayStyle}>
+          <div style={modalCardStyle}>
+            <h3 style={{ marginTop: 0, marginBottom: 12 }}>{t(locale, "sources.add.title")}</h3>
+            <div style={{ display: "flex", gap: 0, marginBottom: 16 }}>
+              {(["m3u", "xtream", "xmltv"] as ImportTab[]).map((tab) => (
+                <button
+                  key={tab}
+                  ref={(node) => {
+                    addTabRefs.current[tab] = node;
+                  }}
+                  onClick={() => setActiveTab(tab)}
+                  style={{
+                    padding: "8px 16px",
+                    border: "1px solid var(--border)",
+                    backgroundColor: activeTab === tab ? "var(--accent)" : "var(--bg-tertiary)",
+                    color: "var(--text-primary)",
+                    cursor: "pointer",
+                    fontSize: 13,
+                  }}
+                >
+                  {tab === "m3u" ? "M3U" : tab === "xtream" ? t(locale, "sources.tab.xtream") : "XMLTV EPG"}
+                </button>
+              ))}
+            </div>
+            {activeTab === "m3u" && (
+              <M3uForm
+                locale={locale}
+                loading={loading}
+                setLoading={setLoading}
+                  firstInputRef={addModalFirstInputRef}
+                onDone={(summary) => {
+                  handleImportDone(summary, false);
+                  setShowAddModal(false);
+                  focusAddButton();
+                }}
+                onError={(e) => setMessage({ type: "err", text: e })}
+              />
+            )}
+            {activeTab === "xtream" && (
+              <XtreamForm
+                locale={locale}
+                loading={loading}
+                setLoading={setLoading}
+                  firstInputRef={addModalFirstInputRef}
+                onDone={(summary) => {
+                  handleImportDone(summary, false);
+                  setShowAddModal(false);
+                  focusAddButton();
+                }}
+                onError={(e) => setMessage({ type: "err", text: e })}
+              />
+            )}
+            {activeTab === "xmltv" && (
+              <XmltvForm
+                locale={locale}
+                loading={loading}
+                setLoading={setLoading}
+                  firstInputRef={addModalFirstInputRef}
+                onDone={(summary) => {
+                  handleImportDone(summary, false);
+                  setShowAddModal(false);
+                  focusAddButton();
+                }}
+                onError={(e) => setMessage({ type: "err", text: e })}
+              />
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  focusAddButton();
+                }}
+                style={{ ...submitBtnStyle, backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)" }}
+              >
+                {t(locale, "sources.edit.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmSource && (
+        <div style={modalOverlayStyle}>
+          <div style={modalCardStyle}>
+            <h3 style={{ marginTop: 0 }}>{t(locale, "sources.deleteConfirm.title")}</h3>
+            <p style={{ marginTop: 0, color: "var(--text-secondary)" }}>
+              {t(locale, "sources.deleteConfirm.message", { name: deleteConfirmSource.name })}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button
+                ref={deleteCancelRef}
+                onClick={() => {
+                  setDeleteConfirmSource(null);
+                  focusAddButton();
+                }}
+                style={{
+                  ...submitBtnStyle,
+                  backgroundColor:
+                    deleteConfirmAction === "cancel" ? "var(--bg-tertiary)" : "transparent",
+                  color: "var(--text-primary)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {t(locale, "sources.deleteConfirm.cancel")}
+              </button>
+              <button
+                ref={deleteConfirmRef}
+                onClick={() => {
+                  void executeDeleteConfirmed();
+                }}
+                style={{
+                  ...submitBtnStyle,
+                  backgroundColor:
+                    deleteConfirmAction === "delete" ? "var(--danger)" : "#7f1d1d",
+                }}
+              >
+                {t(locale, "sources.deleteConfirm.confirm")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -396,9 +778,10 @@ interface FormProps {
   setLoading: (v: boolean) => void;
   onDone: (s: ImportSummary) => void;
   onError: (msg: string) => void;
+  firstInputRef: { current: HTMLInputElement | null };
 }
 
-function M3uForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
+function M3uForm({ locale, loading, setLoading, onDone, onError, firstInputRef }: FormProps) {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [autoRefreshMinutes, setAutoRefreshMinutes] = useState("");
@@ -432,6 +815,7 @@ function M3uForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
       <label style={labelStyle}>
         {t(locale, "sources.form.name")}
         <input
+          ref={firstInputRef}
           style={inputStyle}
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -460,7 +844,7 @@ function M3uForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
   );
 }
 
-function XtreamForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
+function XtreamForm({ locale, loading, setLoading, onDone, onError, firstInputRef }: FormProps) {
   const [name, setName] = useState("");
   const [serverUrl, setServerUrl] = useState("");
   const [username, setUsername] = useState("");
@@ -491,6 +875,7 @@ function XtreamForm({ locale, loading, setLoading, onDone, onError }: FormProps)
       <label style={labelStyle}>
         {t(locale, "sources.form.name")}
         <input
+          ref={firstInputRef}
           style={inputStyle}
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -516,7 +901,7 @@ function XtreamForm({ locale, loading, setLoading, onDone, onError }: FormProps)
   );
 }
 
-function XmltvForm({ locale, loading, setLoading, onDone, onError }: FormProps) {
+function XmltvForm({ locale, loading, setLoading, onDone, onError, firstInputRef }: FormProps) {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
 
@@ -541,6 +926,7 @@ function XmltvForm({ locale, loading, setLoading, onDone, onError }: FormProps) 
       <label style={labelStyle}>
         {t(locale, "sources.form.name")}
         <input
+          ref={firstInputRef}
           style={inputStyle}
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -628,6 +1014,11 @@ const actionBtnStyle: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 13,
   marginRight: 8,
+};
+
+const sourceRowActiveStyle: React.CSSProperties = {
+  backgroundColor: "var(--bg-tertiary)",
+  boxShadow: "inset 0 0 0 1px var(--accent)",
 };
 
 const modalOverlayStyle: React.CSSProperties = {

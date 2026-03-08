@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { getErrorMessage } from "../../lib/errors";
 import { LOCALE_SETTING_KEY, tr, type Locale } from "../../lib/i18n";
+import { DEFAULT_GUIDE_WINDOW_MINUTES, GUIDE_WINDOW_MINUTES_SETTING_KEY } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Setting } from "../../types/api";
 
@@ -59,6 +60,17 @@ const settingCategories: { title: string; settings: SettingDef[] }[] = [
     title: "EPG",
     settings: [
       { key: "epg.autoRefresh", label: "Auto Refresh EPG", type: "toggle", defaultValue: false },
+      {
+        key: GUIDE_WINDOW_MINUTES_SETTING_KEY,
+        label: "Guide Timeline Window",
+        type: "select",
+        defaultValue: String(DEFAULT_GUIDE_WINDOW_MINUTES),
+        options: [
+          { label: "90 min", value: "90" },
+          { label: "120 min", value: "120" },
+          { label: "180 min", value: "180" },
+        ],
+      },
     ],
   },
 ];

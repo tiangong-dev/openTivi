@@ -63,7 +63,7 @@ export function AppShell() {
     if (currentIndex >= 0) {
       setFocusedNavIndex(currentIndex);
     }
-  }, [activeView, navItems]);
+  }, [activeView]);
 
   const activateView = (view: View) => {
     setActiveView(view);
@@ -114,6 +114,8 @@ export function AppShell() {
       );
     };
     const onWindowKeyDown = (event: KeyboardEvent) => {
+      // Avoid handling the same key twice when a focused component already handled it.
+      if (event.defaultPrevented) return;
       if (isTypingTarget()) return;
       if (focusZone === "nav") {
         if (event.key === "ArrowDown") {

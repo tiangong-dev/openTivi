@@ -28,3 +28,7 @@ See `README.md` for prerequisites and run/build/test instructions. Key commands 
 - **No ESLint/Prettier**: The project has no JS linter config. TypeScript checking is done via `tsc --noEmit` (also runs as part of `pnpm build`).
 - **Vite dev server without Tauri**: Running `pnpm -C apps/desktop dev` starts Vite standalone on port 1420. The UI renders but Tauri `invoke()` calls fail with "Cannot read properties of undefined (reading 'invoke')" — this is expected when running outside the Tauri webview.
 - **`pnpm -C` flag**: All commands work from `/workspace` using `pnpm -C apps/desktop <script>`, since there's no root `package.json`.
+
+### Testing policy
+
+- **No manual GUI testing or screen recordings.** Verify changes via CLI commands only (`pnpm build`, `tsc --noEmit`, `cargo test`, `cargo clippy`, etc.). Do not launch a browser, use the `computerUse` subagent, or record videos.

@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { tr, type Locale } from "../../lib/i18n";
+import {
+  DEFAULT_GUIDE_WINDOW_MINUTES,
+  GUIDE_WINDOW_MINUTES_SETTING_KEY,
+  resolveGuideWindowMinutes,
+} from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
-import type { Channel, ChannelEpgSnapshot } from "../../types/api";
+import type { Channel, ChannelEpgSnapshot, Setting } from "../../types/api";
 
 interface Props<T extends Channel = Channel> {
   items: T[];
@@ -22,17 +27,38 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const [snapshots, setSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [loading, setLoading] = useState(false);
   const [nowTs, setNowTs] = useState(() => Date.now());
+  const [guideWindowMinutes, setGuideWindowMinutes] = useState(DEFAULT_GUIDE_WINDOW_MINUTES);
 
   const channelIds = useMemo(() => items.map((c) => c.id), [items]);
   const timelineWindow = useMemo(() => {
     const step = 30 * 60 * 1000;
     const start = Math.floor(nowTs / step) * step;
-    return { start, end: start + 2 * 60 * 60 * 1000 };
-  }, [nowTs]);
+    return { start, end: start + guideWindowMinutes * 60 * 1000 };
+  }, [nowTs, guideWindowMinutes]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowTs(Date.now()), 30_000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadGuideWindowSetting = async () => {
+      try {
+        const list = await tauriInvoke<Setting[]>("get_settings");
+        if (cancelled) return;
+        const raw = list.find((s) => s.key === GUIDE_WINDOW_MINUTES_SETTING_KEY)?.value;
+        setGuideWindowMinutes(resolveGuideWindowMinutes(raw));
+      } catch {
+        if (!cancelled) {
+          setGuideWindowMinutes(DEFAULT_GUIDE_WINDOW_MINUTES);
+        }
+      }
+    };
+    void loadGuideWindowSetting();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct ImportM3uInput {
     pub name: String,
     pub location: String,
+    pub auto_refresh_minutes: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,6 +26,18 @@ pub struct ImportXmltvInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpdateSourceInput {
+    pub source_id: i64,
+    pub name: String,
+    pub location: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub auto_refresh_minutes: Option<u32>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListChannelsQuery {
     pub source_id: Option<i64>,
     pub group_name: Option<String>,
@@ -40,6 +53,12 @@ pub struct GetChannelEpgQuery {
     pub channel_id: i64,
     pub from: Option<String>,
     pub to: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetChannelsEpgSnapshotsQuery {
+    pub channel_ids: Vec<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,7 +83,13 @@ pub struct SourceDto {
     pub name: String,
     pub location: String,
     pub username: Option<String>,
+    pub password: Option<String>,
     pub enabled: bool,
+    pub auto_refresh_minutes: Option<u32>,
+    pub channel_count: u32,
+    pub group_count: u32,
+    pub channels_with_tvg_id: u32,
+    pub epg_program_count: u32,
     pub last_imported_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -94,6 +119,22 @@ pub struct EpgProgramDto {
     pub title: String,
     pub description: Option<String>,
     pub category: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct EpgProgramMiniDto {
+    pub title: String,
+    pub start_at: String,
+    pub end_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelEpgSnapshotDto {
+    pub channel_id: i64,
+    pub now: Option<EpgProgramMiniDto>,
+    pub next: Option<EpgProgramMiniDto>,
 }
 
 #[derive(Debug, Serialize)]

@@ -24,11 +24,7 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SettingDto>> {
     Ok(results)
 }
 
-pub fn upsert(
-    conn: &Connection,
-    key: &str,
-    value: &serde_json::Value,
-) -> AppResult<SettingDto> {
+pub fn upsert(conn: &Connection, key: &str, value: &serde_json::Value) -> AppResult<SettingDto> {
     let value_json = serde_json::to_string(value)?;
 
     conn.execute(

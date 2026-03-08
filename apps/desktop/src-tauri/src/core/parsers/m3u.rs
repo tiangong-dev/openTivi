@@ -69,44 +69,57 @@ pub fn parse_m3u(content: &str) -> AppResult<Vec<ParsedChannel>> {
 
 fn parse_extinf_attrs(line: &str) -> std::collections::HashMap<String, String> {
     let mut attrs = std::collections::HashMap::new();
-    // Match key="value" patterns
-    let re_like = |s: &str| -> Vec<(String, String)> {
-        let mut results = Vec::new();
-        let mut chars = s.chars().peekable();
-        while let Some(&c) = chars.peek() {
-            // Look for key="
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                let mut key = String::new();
-                while let Some(&c) = chars.peek() {
-                    if c == '=' {
-                        chars.next();
-                        break;
-                    }
-                    key.push(c);
-                    chars.next();
-                }
-                if let Some(&'"') = chars.peek() {
-                    chars.next(); // skip opening quote
-                    let mut value = String::new();
-                    while let Some(&c) = chars.peek() {
-                        if c == '"' {
-                            chars.next();
-                            break;
-                        }
-                        value.push(c);
-                        chars.next();
-                    }
-                    results.push((key, value));
-                }
-            } else {
-                chars.next();
-            }
-        }
-        results
-    };
+    let extinf_meta = line.split_once(',').map(|(meta, _)| meta).unwrap_or(line);
+    let attrs_part = extinf_meta
+        .split_once(' ')
+        .map(|(_, rest)| rest)
+        .unwrap_or("");
+    let chars: Vec<char> = attrs_part.chars().collect();
+    let mut i = 0usize;
 
-    for (k, v) in re_like(line) {
-        attrs.insert(k, v);
+    while i < chars.len() {
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+
+        let key_start = i;
+        while i < chars.len()
+            && (chars[i].is_ascii_alphanumeric() || chars[i] == '-' || chars[i] == '_')
+        {
+            i += 1;
+        }
+        if key_start == i {
+            i += 1;
+            continue;
+        }
+        let key: String = chars[key_start..i].iter().collect();
+
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= chars.len() || chars[i] != '=' {
+            continue;
+        }
+        i += 1;
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= chars.len() || chars[i] != '"' {
+            continue;
+        }
+        i += 1;
+
+        let value_start = i;
+        while i < chars.len() && chars[i] != '"' {
+            i += 1;
+        }
+        if i > value_start {
+            let value: String = chars[value_start..i].iter().collect();
+            attrs.insert(key, value);
+        }
+        if i < chars.len() && chars[i] == '"' {
+            i += 1;
+        }
     }
     attrs
 }
@@ -124,9 +137,6 @@ fn parse_extinf_name(line: &str) -> String {
 mod tests {
     use super::*;
 
-    // Note: the parse_extinf_attrs parser mangles the first key="value" pair
-    // on each #EXTINF line by prepending the EXTINF prefix to the key. To test
-    // attribute extraction reliably we place a sacrificial attribute first.
     const TEST_M3U: &str = "#EXTM3U\n\
 #EXTINF:-1 tvg-chno=\"1\" tvg-id=\"ch1\" tvg-name=\"Channel 1\" tvg-logo=\"http://logo.png\" group-title=\"News\",Channel One\n\
 http://example.com/stream1\n\
@@ -153,8 +163,7 @@ http://example.com/stream2\n";
         assert_eq!(ch.tvg_name.as_deref(), Some("Channel 1"));
         assert_eq!(ch.logo_url.as_deref(), Some("http://logo.png"));
         assert_eq!(ch.group_name.as_deref(), Some("News"));
-        // tvg-chno is first attr so it gets the mangled key from the parser
-        assert_eq!(ch.channel_number, None);
+        assert_eq!(ch.channel_number.as_deref(), Some("1"));
     }
 
     #[test]

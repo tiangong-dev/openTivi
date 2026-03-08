@@ -1,4 +1,5 @@
 pub mod channel_service;
+pub mod epg_matching;
 pub mod epg_service;
 pub mod favorites_service;
 pub mod import_service;

@@ -1,51 +1,72 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SourcesView } from "../features/sources/SourcesView";
 import { ChannelsView } from "../features/channels/ChannelsView";
 import { FavoritesView } from "../features/favorites/FavoritesView";
 import { RecentsView } from "../features/recents/RecentsView";
 import { SettingsView } from "../features/settings/SettingsView";
 import { VideoPlayer } from "../features/player/VideoPlayer";
-import type { Channel } from "../types/api";
+import { tauriInvoke } from "../lib/tauri";
+import { detectDefaultLocale, LOCALE_SETTING_KEY, resolveLocale, tr, type Locale } from "../lib/i18n";
+import type { Channel, Setting } from "../types/api";
 
 type View = "channels" | "favorites" | "recents" | "sources" | "settings";
-
-const NAV_ITEMS: { key: View; label: string }[] = [
-  { key: "channels", label: "Channels" },
-  { key: "favorites", label: "Favorites" },
-  { key: "recents", label: "Recents" },
-  { key: "sources", label: "Sources" },
-  { key: "settings", label: "Settings" },
-];
 
 export function AppShell() {
   const [activeView, setActiveView] = useState<View>("sources");
   const [playingChannel, setPlayingChannel] = useState<Channel | null>(null);
   const [channelList, setChannelList] = useState<Channel[]>([]);
+  const [locale, setLocale] = useState<Locale>(detectDefaultLocale());
+
+  useEffect(() => {
+    const loadLocale = async () => {
+      try {
+        const settings = await tauriInvoke<Setting[]>("get_settings");
+        const localeSetting = settings.find((s) => s.key === LOCALE_SETTING_KEY);
+        setLocale(resolveLocale(localeSetting?.value));
+      } catch {
+        setLocale(detectDefaultLocale());
+      }
+    };
+    void loadLocale();
+  }, []);
 
   const handlePlay = (ch: Channel, allChannels?: Channel[]) => {
+    void tauriInvoke("mark_recent_watched", { channelId: ch.id }).catch(() => undefined);
     setPlayingChannel(ch);
     if (allChannels) setChannelList(allChannels);
   };
 
+  const handleLocaleChange = (next: Locale) => {
+    setLocale(next);
+  };
+
+  const navItems: { key: View; label: string }[] = [
+    { key: "channels", label: tr(locale, "Channels", "频道") },
+    { key: "favorites", label: tr(locale, "Favorites", "收藏") },
+    { key: "recents", label: tr(locale, "Recents", "最近观看") },
+    { key: "sources", label: tr(locale, "Sources", "源") },
+    { key: "settings", label: tr(locale, "Settings", "设置") },
+  ];
+
   const renderView = () => {
     switch (activeView) {
       case "sources":
-        return <SourcesView />;
+        return <SourcesView locale={locale} />;
       case "channels":
-        return <ChannelsView onPlay={handlePlay} />;
+        return <ChannelsView locale={locale} onPlay={handlePlay} />;
       case "favorites":
-        return <FavoritesView onPlay={(ch) => handlePlay(ch)} />;
+        return <FavoritesView locale={locale} onPlay={handlePlay} />;
       case "recents":
-        return <RecentsView onPlay={(ch) => handlePlay(ch)} />;
+        return <RecentsView locale={locale} onPlay={handlePlay} />;
       case "settings":
-        return <SettingsView />;
+        return <SettingsView locale={locale} onLocaleChange={handleLocaleChange} />;
     }
   };
 
   return (
     <>
       <nav style={sidebarStyle}>
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <button
             key={item.key}
             onClick={() => { setActiveView(item.key); setPlayingChannel(null); }}
@@ -64,8 +85,12 @@ export function AppShell() {
           <VideoPlayer
             channel={playingChannel}
             channels={channelList}
+            locale={locale}
             onClose={() => setPlayingChannel(null)}
-            onChannelChange={(ch) => setPlayingChannel(ch)}
+            onChannelChange={(ch) => {
+              void tauriInvoke("mark_recent_watched", { channelId: ch.id }).catch(() => undefined);
+              setPlayingChannel(ch);
+            }}
           />
         ) : (
           renderView()

@@ -123,5 +123,15 @@
   "settings.edit.hint": "可用左右键或按钮修改当前值。",
   "settings.edit.decrease": "减小",
   "settings.edit.increase": "增大",
-  "settings.edit.done": "完成"
+  "settings.edit.done": "完成",
+  "settings.update.title": "应用更新",
+  "settings.update.checkNow": "立即检查",
+  "settings.update.checking": "检查中...",
+  "settings.update.currentVersion": "当前版本：v{version}",
+  "settings.update.latestVersion": "最新版本：v{version}",
+  "settings.update.available": "发现新版本：v{version}",
+  "settings.update.upToDate": "当前已是最新版本。",
+  "settings.update.publishedAt": "发布时间：{value}",
+  "settings.update.copyLink": "复制下载链接",
+  "settings.update.copied": "已复制链接"
 }

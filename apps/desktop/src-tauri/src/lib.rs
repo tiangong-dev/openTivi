@@ -33,6 +33,7 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::set_setting,
             commands::playback::resolve_playback,
+            commands::update::check_app_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -100,6 +100,7 @@ make rust-test
 - Tag push (`v*.*.*`) triggers GitHub Action release build and publishes artifacts to GitHub Release.
 - `workflow_dispatch` on `Desktop Release Build` can build manual test versions (optionally as prerelease).
 - `workflow_dispatch` on `Version Check and Update` can sync version files and auto-commit updates.
+- App settings page includes built-in update check, which compares current app version with latest GitHub Release and provides download link.
 
 ## Architecture
 

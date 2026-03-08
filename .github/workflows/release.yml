@@ -117,7 +117,7 @@ PY
         if: github.event_name == 'workflow_dispatch' && inputs.publish_prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: test-v${{ steps.version.outputs.value }}-${{ github.run_number }}
+          tag_name: v${{ steps.version.outputs.value }}-test.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           name: Test Build v${{ steps.version.outputs.value }} #${{ github.run_number }}
           prerelease: true

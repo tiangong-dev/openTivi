@@ -24,6 +24,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guideAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelListAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speedObserverRef = useRef<PerformanceObserver | null>(null);
   const showChannelListPanelRef = useRef(false);
   const focusedChannelIndexRef = useRef(0);
   const channelsRef = useRef<Channel[]>(channels);
@@ -294,6 +295,42 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     }, 30_000);
     return () => clearInterval(interval);
   }, [epgNow]);
+
+  useEffect(() => {
+    if (proxyPort === null) {
+      return;
+    }
+    if (typeof PerformanceObserver === "undefined") {
+      return;
+    }
+    const proxyPrefix = `http://127.0.0.1:${proxyPort}/stream?`;
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (entry.entryType !== "resource") {
+          continue;
+        }
+        const resource = entry as PerformanceResourceTiming;
+        if (!resource.name.startsWith(proxyPrefix)) {
+          continue;
+        }
+        const bytes = resource.transferSize > 0 ? resource.transferSize : resource.encodedBodySize;
+        const durationMs = resource.duration;
+        if (bytes <= 0 || durationMs <= 0) {
+          continue;
+        }
+        const bitsPerSecond = (bytes * 8 * 1000) / durationMs;
+        setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.65 + bitsPerSecond * 0.35));
+      }
+    });
+    observer.observe({ type: "resource", buffered: false });
+    speedObserverRef.current = observer;
+    return () => {
+      observer.disconnect();
+      if (speedObserverRef.current === observer) {
+        speedObserverRef.current = null;
+      }
+    };
+  }, [proxyPort]);
 
   const showOverlay = useCallback(() => {
     setOverlayVisible(true);

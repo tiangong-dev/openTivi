@@ -164,56 +164,59 @@ function GuideTimeline({
     nextStart !== null && range > 0 ? clamp((nextStart - windowStart) / range, 0, 1) : null;
 
   return (
-    <div style={timelineStyle}>
-      {nowBlock ? (
-        <div
-          style={{
-            ...timelineSegmentStyle,
-            left: `${(nowBlock.left * 100).toFixed(2)}%`,
-            width: `${(nowBlock.width * 100).toFixed(2)}%`,
-            background:
-              "linear-gradient(180deg, #1d4ed855 0%, #1d4ed822 100%)",
-          }}
-          title={snapshot.now?.title ?? ""}
-        >
-          <div style={timelineTextStyle}>
-            {tr(locale, "Now", "当前")} · {snapshot.now?.title ?? tr(locale, "No guide", "暂无节目")}
+    <div style={timelineWrapStyle}>
+      {splitMarker !== null && splitMarker > 0 && splitMarker < 1 && snapshot.next?.startAt ? (
+        <div style={{ ...timelineSplitLabelStyle, left: `${(splitMarker * 100).toFixed(2)}%` }}>
+          {formatTime(snapshot.next.startAt)}
+        </div>
+      ) : null}
+      <div style={timelineStyle}>
+        {nowBlock ? (
+          <div
+            style={{
+              ...timelineSegmentStyle,
+              left: `${(nowBlock.left * 100).toFixed(2)}%`,
+              width: `${(nowBlock.width * 100).toFixed(2)}%`,
+              background:
+                "linear-gradient(180deg, #1d4ed855 0%, #1d4ed822 100%)",
+            }}
+            title={snapshot.now?.title ?? ""}
+          >
+            <div style={timelineTextStyle}>
+              {tr(locale, "Now", "当前")} · {snapshot.now?.title ?? tr(locale, "No guide", "暂无节目")}
+            </div>
           </div>
-        </div>
-      ) : null}
-      {nextBlock ? (
-        <div
-          style={{
-            ...timelineSegmentStyle,
-            left: `${(nextBlock.left * 100).toFixed(2)}%`,
-            width: `${(nextBlock.width * 100).toFixed(2)}%`,
-            backgroundColor: "#111827aa",
-            borderLeft: "1px solid #1f2937",
-          }}
-          title={snapshot.next?.title ?? ""}
-        >
-          <div style={timelineTextStyle}>
-            {tr(locale, "Next", "下一档")} · {snapshot.next?.title ?? tr(locale, "No guide", "暂无节目")}
+        ) : null}
+        {nextBlock ? (
+          <div
+            style={{
+              ...timelineSegmentStyle,
+              left: `${(nextBlock.left * 100).toFixed(2)}%`,
+              width: `${(nextBlock.width * 100).toFixed(2)}%`,
+              backgroundColor: "#111827aa",
+              borderLeft: "1px solid #1f2937",
+            }}
+            title={snapshot.next?.title ?? ""}
+          >
+            <div style={timelineTextStyle}>
+              {tr(locale, "Next", "下一档")} · {snapshot.next?.title ?? tr(locale, "No guide", "暂无节目")}
+            </div>
           </div>
-        </div>
-      ) : null}
-      {progressBlock ? (
-        <div
-          style={{
-            ...timelineProgressStyle,
-            left: `${(progressBlock.left * 100).toFixed(2)}%`,
-            width: `${(progressBlock.width * 100).toFixed(2)}%`,
-          }}
-        />
-      ) : null}
-      {splitMarker !== null && splitMarker > 0 && splitMarker < 1 ? (
-        <div style={{ ...timelineSplitStyle, left: `${(splitMarker * 100).toFixed(2)}%` }}>
-          {snapshot.next?.startAt ? (
-            <div style={timelineSplitLabelStyle}>{formatTime(snapshot.next.startAt)}</div>
-          ) : null}
-        </div>
-      ) : null}
-      <div style={{ ...timelineCursorStyle, left: `${(currentRatio * 100).toFixed(2)}%` }} />
+        ) : null}
+        {progressBlock ? (
+          <div
+            style={{
+              ...timelineProgressStyle,
+              left: `${(progressBlock.left * 100).toFixed(2)}%`,
+              width: `${(progressBlock.width * 100).toFixed(2)}%`,
+            }}
+          />
+        ) : null}
+        {splitMarker !== null && splitMarker > 0 && splitMarker < 1 ? (
+          <div style={{ ...timelineSplitStyle, left: `${(splitMarker * 100).toFixed(2)}%` }} />
+        ) : null}
+        <div style={{ ...timelineCursorStyle, left: `${(currentRatio * 100).toFixed(2)}%` }} />
+      </div>
     </div>
   );
 }
@@ -267,7 +270,11 @@ const rowStyle: React.CSSProperties = {
 };
 
 const guideInlineStyle: React.CSSProperties = {
-  padding: "0 8px 8px 46px",
+  padding: "10px 8px 8px 46px",
+};
+
+const timelineWrapStyle: React.CSSProperties = {
+  position: "relative",
 };
 
 const timelineStyle: React.CSSProperties = {
@@ -324,12 +331,14 @@ const timelineSplitStyle: React.CSSProperties = {
 
 const timelineSplitLabelStyle: React.CSSProperties = {
   position: "absolute",
-  top: 1,
-  left: 3,
+  top: -9,
   fontSize: 9,
   color: "#cbd5e1",
   whiteSpace: "nowrap",
   opacity: 0.8,
+  transform: "translateX(4px)",
+  pointerEvents: "none",
+  zIndex: 3,
 };
 
 const timelineCursorStyle: React.CSSProperties = {

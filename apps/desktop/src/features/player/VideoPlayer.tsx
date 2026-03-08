@@ -23,6 +23,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guideAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const channelListAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showChannelListPanelRef = useRef(false);
   const focusedChannelIndexRef = useRef(0);
   const channelsRef = useRef<Channel[]>(channels);
@@ -47,6 +48,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [channelEpgLoading, setChannelEpgLoading] = useState(false);
 
   const GUIDE_AUTO_HIDE_MS = 3500;
+  const CHANNEL_LIST_AUTO_HIDE_MS = 5000;
 
   useEffect(() => {
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
@@ -315,9 +317,30 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     setShowChannelListPanel((prev) => {
       const resolved = typeof next === "function" ? (next as (value: boolean) => boolean)(prev) : next;
       showChannelListPanelRef.current = resolved;
+      if (!resolved && channelListAutoHideTimerRef.current) {
+        clearTimeout(channelListAutoHideTimerRef.current);
+        channelListAutoHideTimerRef.current = null;
+      }
       return resolved;
     });
   }, []);
+
+  const startChannelListAutoHide = useCallback(() => {
+    if (channelListAutoHideTimerRef.current) {
+      clearTimeout(channelListAutoHideTimerRef.current);
+    }
+    channelListAutoHideTimerRef.current = setTimeout(() => {
+      setChannelListPanel(false);
+      channelListAutoHideTimerRef.current = null;
+    }, CHANNEL_LIST_AUTO_HIDE_MS);
+  }, [CHANNEL_LIST_AUTO_HIDE_MS, setChannelListPanel]);
+
+  const touchChannelListAutoHide = useCallback(() => {
+    if (!channelListAutoHideTimerRef.current) {
+      return;
+    }
+    startChannelListAutoHide();
+  }, [startChannelListAutoHide]);
 
   const setFocusedIndex = useCallback((next: number | ((prev: number) => number)) => {
     setFocusedChannelIndex((prev) => {
@@ -352,6 +375,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           return;
         }
         setChannelListPanel(true);
+        startChannelListAutoHide();
         showOverlay();
       },
       onDouble: () => {
@@ -367,11 +391,14 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       confirmPressRef.current?.clear();
       confirmPressRef.current = null;
     };
-  }, [onChannelChange, setChannelListPanel, showOverlay, togglePlayPause]);
+  }, [onChannelChange, setChannelListPanel, showOverlay, startChannelListAutoHide, togglePlayPause]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const intent = mapKeyToTvIntent(e.key);
+      if (showChannelListPanelRef.current) {
+        touchChannelListAutoHide();
+      }
       if (intent === "Back") {
         e.preventDefault();
         if (showChannelListPanelRef.current) {
@@ -448,7 +475,16 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [onClose, setChannelListPanel, setFocusedIndex, showOverlay, switchChannel]);
+  }, [onClose, setChannelListPanel, setFocusedIndex, showOverlay, switchChannel, touchChannelListAutoHide]);
+
+  useEffect(() => {
+    return () => {
+      if (channelListAutoHideTimerRef.current) {
+        clearTimeout(channelListAutoHideTimerRef.current);
+        channelListAutoHideTimerRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>
@@ -604,7 +640,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
               const nowProgram = snapshot?.now;
               const nextProgram = snapshot?.next;
               const nowLine = nowProgram
-                ? `${formatTime(nowProgram.startAt)}-${formatTime(nowProgram.endAt)} ${nowProgram.title}`
+                ? nowProgram.title
                 : channelEpgLoading
                   ? t(locale, "player.loadingEpg")
                   : t(locale, "player.noGuideForChannel");

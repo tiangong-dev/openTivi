@@ -124,6 +124,8 @@ function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; loc
   const nowEnd = parseXmltvDate(snapshot.now?.endAt ?? "");
   const nextStart = parseXmltvDate(snapshot.next?.startAt ?? "");
   const nextEnd = parseXmltvDate(snapshot.next?.endAt ?? "");
+  const rangeStart = nowStart ?? nextStart;
+  const rangeEnd = nextEnd ?? nowEnd;
 
   const nowDuration = durationMs(nowStart, nowEnd);
   const nextDuration = durationMs(nextStart, nextEnd);
@@ -139,6 +141,8 @@ function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; loc
   if (nowStart !== null && nowEnd !== null && nowEnd > nowStart) {
     progress = clamp((Date.now() - nowStart) / (nowEnd - nowStart), 0, 1);
   }
+  const currentMarker = clamp(nowRatio * progress, 0, 1);
+  const ticks = buildTimelineTicks(rangeStart, rangeEnd, 30 * 60 * 1000);
 
   return (
     <div style={timelineStyle}>
@@ -158,8 +162,7 @@ function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; loc
           }}
         />
         <div style={timelineTextStyle}>
-          {snapshot.now?.startAt ? `${formatTime(snapshot.now.startAt)} ` : ""}
-          {snapshot.now?.title ?? tr(locale, "No guide", "暂无节目")}
+          {tr(locale, "Now", "当前")} · {snapshot.now?.title ?? tr(locale, "No guide", "暂无节目")}
         </div>
       </div>
       {snapshot.next ? (
@@ -172,11 +175,16 @@ function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; loc
           title={snapshot.next.title}
         >
           <div style={timelineTextStyle}>
-            {snapshot.next.startAt ? `${formatTime(snapshot.next.startAt)} ` : ""}
-            {snapshot.next.title}
+            {tr(locale, "Next", "下一档")} · {snapshot.next.title}
           </div>
         </div>
       ) : null}
+      {ticks.map((tick) => (
+        <div key={tick.ts} style={{ ...timelineTickStyle, left: `${(tick.ratio * 100).toFixed(2)}%` }}>
+          <div style={timelineTickLabelStyle}>{formatTickTime(tick.ts)}</div>
+        </div>
+      ))}
+      {snapshot.now ? <div style={{ ...timelineCursorStyle, left: `${(currentMarker * 100).toFixed(2)}%` }} /> : null}
     </div>
   );
 }
@@ -184,6 +192,10 @@ function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; loc
 function formatTime(raw: string): string {
   const ts = parseXmltvDate(raw);
   if (ts === null) return raw;
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatTickTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
@@ -207,6 +219,24 @@ function durationMs(start: number | null, end: number | null): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function buildTimelineTicks(
+  rangeStart: number | null,
+  rangeEnd: number | null,
+  stepMs: number,
+): Array<{ ts: number; ratio: number }> {
+  if (rangeStart === null || rangeEnd === null || rangeEnd <= rangeStart || stepMs <= 0) {
+    return [];
+  }
+  const firstTick = Math.ceil(rangeStart / stepMs) * stepMs;
+  const duration = rangeEnd - rangeStart;
+  const ticks: Array<{ ts: number; ratio: number }> = [];
+  for (let ts = firstTick; ts < rangeEnd; ts += stepMs) {
+    if (ts <= rangeStart) continue;
+    ticks.push({ ts, ratio: clamp((ts - rangeStart) / duration, 0, 1) });
+  }
+  return ticks;
 }
 
 const rowStyle: React.CSSProperties = {
@@ -236,7 +266,7 @@ const timelineSegmentStyle: React.CSSProperties = {
   minWidth: 0,
   display: "flex",
   alignItems: "center",
-  padding: "0 8px",
+  padding: "0 8px 4px 8px",
   overflow: "hidden",
 };
 
@@ -244,6 +274,8 @@ const timelineTextStyle: React.CSSProperties = {
   position: "relative",
   zIndex: 1,
   fontSize: 11,
+  textAlign: "left",
+  width: "100%",
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -252,7 +284,35 @@ const timelineTextStyle: React.CSSProperties = {
 const timelineProgressStyle: React.CSSProperties = {
   position: "absolute",
   left: 0,
+  bottom: 0,
+  height: 3,
+  backgroundColor: "#2563eb44",
+};
+
+const timelineTickStyle: React.CSSProperties = {
+  position: "absolute",
   top: 0,
   bottom: 0,
-  backgroundColor: "#2563eb44",
+  width: 0,
+  borderLeft: "1px solid #ffffff2b",
+  pointerEvents: "none",
+};
+
+const timelineTickLabelStyle: React.CSSProperties = {
+  position: "absolute",
+  top: 1,
+  left: 3,
+  fontSize: 9,
+  color: "#cbd5e1",
+  whiteSpace: "nowrap",
+  opacity: 0.8,
+};
+
+const timelineCursorStyle: React.CSSProperties = {
+  position: "absolute",
+  top: 0,
+  bottom: 0,
+  width: 2,
+  backgroundColor: "var(--accent)",
+  pointerEvents: "none",
 };

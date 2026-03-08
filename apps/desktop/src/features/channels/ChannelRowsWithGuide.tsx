@@ -103,23 +103,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
 
             <div style={guideInlineStyle}>
               {snapshot?.now || snapshot?.next ? (
-                <div style={guideHorizontalStyle}>
-                  <GuideBlock
-                    label={tr(locale, "Now", "当前")}
-                    title={snapshot.now?.title}
-                    startAt={snapshot.now?.startAt}
-                    endAt={snapshot.now?.endAt}
-                    active
-                    locale={locale}
-                  />
-                  <GuideBlock
-                    label={tr(locale, "Next", "下一档")}
-                    title={snapshot.next?.title}
-                    startAt={snapshot.next?.startAt}
-                    endAt={snapshot.next?.endAt}
-                    locale={locale}
-                  />
-                </div>
+                <GuideTimeline snapshot={snapshot} locale={locale} />
               ) : (
                 <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
                   {loading
@@ -135,36 +119,64 @@ export function ChannelRowsWithGuide<T extends Channel>({
   );
 }
 
-function GuideBlock({
-  label,
-  title,
-  startAt,
-  endAt,
-  active = false,
-  locale,
-}: {
-  label: string;
-  title?: string;
-  startAt?: string;
-  endAt?: string;
-  active?: boolean;
-  locale: Locale;
-}) {
+function GuideTimeline({ snapshot, locale }: { snapshot: ChannelEpgSnapshot; locale: Locale }) {
+  const nowStart = parseXmltvDate(snapshot.now?.startAt ?? "");
+  const nowEnd = parseXmltvDate(snapshot.now?.endAt ?? "");
+  const nextStart = parseXmltvDate(snapshot.next?.startAt ?? "");
+  const nextEnd = parseXmltvDate(snapshot.next?.endAt ?? "");
+
+  const nowDuration = durationMs(nowStart, nowEnd);
+  const nextDuration = durationMs(nextStart, nextEnd);
+  const totalDuration = nowDuration + nextDuration;
+
+  const fallbackNow = snapshot.now ? 0.62 : 0.5;
+  const rawNowRatio = totalDuration > 0 ? nowDuration / totalDuration : fallbackNow;
+  const nowRatio = snapshot.next ? clamp(rawNowRatio, 0.28, 0.78) : 1;
+  const nowWidth = `${Math.round(nowRatio * 100)}%`;
+  const nextWidth = `${100 - Math.round(nowRatio * 100)}%`;
+
+  let progress = 0;
+  if (nowStart !== null && nowEnd !== null && nowEnd > nowStart) {
+    progress = clamp((Date.now() - nowStart) / (nowEnd - nowStart), 0, 1);
+  }
+
   return (
-    <div
-      style={{
-        ...guideBlockStyle,
-        borderColor: active ? "var(--accent)" : "var(--border)",
-        backgroundColor: active ? "#2563eb22" : "transparent",
-      }}
-    >
-      <div style={{ fontSize: 10, color: "var(--text-secondary)" }}>
-        {label}
-        {startAt && endAt ? ` · ${formatTime(startAt)}-${formatTime(endAt)}` : ""}
+    <div style={timelineStyle}>
+      <div
+        style={{
+          ...timelineSegmentStyle,
+          width: nowWidth,
+          background: "linear-gradient(180deg, #1d4ed855 0%, #1d4ed822 100%)",
+          borderRight: snapshot.next ? "1px solid #1f2937" : "none",
+        }}
+        title={snapshot.now?.title ?? ""}
+      >
+        <div
+          style={{
+            ...timelineProgressStyle,
+            width: `${Math.round(progress * 100)}%`,
+          }}
+        />
+        <div style={timelineTextStyle}>
+          {snapshot.now?.startAt ? `${formatTime(snapshot.now.startAt)} ` : ""}
+          {snapshot.now?.title ?? tr(locale, "No guide", "暂无节目")}
+        </div>
       </div>
-      <div style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {title ?? tr(locale, "No data", "暂无")}
-      </div>
+      {snapshot.next ? (
+        <div
+          style={{
+            ...timelineSegmentStyle,
+            width: nextWidth,
+            backgroundColor: "#111827aa",
+          }}
+          title={snapshot.next.title}
+        >
+          <div style={timelineTextStyle}>
+            {snapshot.next.startAt ? `${formatTime(snapshot.next.startAt)} ` : ""}
+            {snapshot.next.title}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -188,6 +200,15 @@ function parseXmltvDate(raw: string): number | null {
   return Number.isNaN(ts) ? null : ts;
 }
 
+function durationMs(start: number | null, end: number | null): number {
+  if (start === null || end === null || end <= start) return 0;
+  return end - start;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 const rowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -199,14 +220,39 @@ const guideInlineStyle: React.CSSProperties = {
   padding: "0 8px 8px 46px",
 };
 
-const guideHorizontalStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 6,
-};
-
-const guideBlockStyle: React.CSSProperties = {
+const timelineStyle: React.CSSProperties = {
+  position: "relative",
+  display: "flex",
+  alignItems: "stretch",
+  height: 28,
+  overflow: "hidden",
   border: "1px solid var(--border)",
   borderRadius: 6,
-  padding: "4px 6px",
+  backgroundColor: "#0b1220",
+};
+
+const timelineSegmentStyle: React.CSSProperties = {
+  position: "relative",
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  padding: "0 8px",
+  overflow: "hidden",
+};
+
+const timelineTextStyle: React.CSSProperties = {
+  position: "relative",
+  zIndex: 1,
+  fontSize: 11,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const timelineProgressStyle: React.CSSProperties = {
+  position: "absolute",
+  left: 0,
+  top: 0,
+  bottom: 0,
+  backgroundColor: "#2563eb44",
 };

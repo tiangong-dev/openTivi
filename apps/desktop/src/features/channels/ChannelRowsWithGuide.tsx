@@ -71,7 +71,11 @@ export function ChannelRowsWithGuide<T extends Channel>({
       setLoading(true);
       try {
         const list = await tauriInvoke<ChannelEpgSnapshot[]>("get_channels_epg_snapshots", {
-          query: { channelIds },
+          query: {
+            channelIds,
+            windowStartTs: timelineWindow.start,
+            windowEndTs: timelineWindow.end,
+          },
         });
         if (cancelled) return;
         const map: Record<number, ChannelEpgSnapshot> = {};
@@ -93,7 +97,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
     return () => {
       cancelled = true;
     };
-  }, [channelIds]);
+  }, [channelIds, timelineWindow.start, timelineWindow.end]);
 
   return (
     <>
@@ -139,7 +143,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
             </div>
 
             <div style={guideInlineStyle}>
-              {snapshot?.now || snapshot?.next ? (
+              {snapshot && ((snapshot.timelinePrograms?.length ?? 0) > 0 || snapshot.now || snapshot.next) ? (
                 <GuideTimeline
                   snapshot={snapshot}
                   locale={locale}
@@ -175,60 +179,51 @@ function GuideTimeline({
   windowStart: number;
   windowEnd: number;
 }) {
-  const nowStart = parseXmltvDate(snapshot.now?.startAt ?? "");
-  const nowEnd = parseXmltvDate(snapshot.now?.endAt ?? "");
-  const nextStart = parseXmltvDate(snapshot.next?.startAt ?? "");
-  const nextEnd = parseXmltvDate(snapshot.next?.endAt ?? "");
-
   const range = windowEnd - windowStart;
   const currentRatio = range > 0 ? clamp((currentTs - windowStart) / range, 0, 1) : 0;
-
-  const nowBlock = calcBlock(nowStart, nowEnd, windowStart, windowEnd);
-  const nextBlock = calcBlock(nextStart, nextEnd, windowStart, windowEnd);
-  const progressBlock = calcBlock(nowStart, currentTs, windowStart, windowEnd);
-  const splitMarker =
-    nextStart !== null && range > 0 ? clamp((nextStart - windowStart) / range, 0, 1) : null;
+  const timelinePrograms =
+    (snapshot.timelinePrograms?.length ?? 0) > 0
+      ? snapshot.timelinePrograms
+      : [snapshot.now, snapshot.next].filter((program): program is NonNullable<typeof program> => Boolean(program));
+  const segments = timelinePrograms
+    .map((program, index) => {
+      const start = parseXmltvDate(program.startAt);
+      const end = parseXmltvDate(program.endAt);
+      const block = calcBlock(start, end, windowStart, windowEnd);
+      if (!block) return null;
+      const isCurrent = start !== null && end !== null && start <= currentTs && currentTs < end;
+      return { key: `${program.startAt}-${program.endAt}-${index}`, program, block, isCurrent };
+    })
+    .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment));
+  const currentProgram = timelinePrograms.find((program) => {
+    const start = parseXmltvDate(program.startAt);
+    const end = parseXmltvDate(program.endAt);
+    return start !== null && end !== null && start <= currentTs && currentTs < end;
+  });
+  const progressBlock = currentProgram
+    ? calcBlock(parseXmltvDate(currentProgram.startAt), currentTs, windowStart, windowEnd)
+    : null;
 
   return (
     <div style={timelineWrapStyle}>
-      {splitMarker !== null && splitMarker > 0 && splitMarker < 1 && snapshot.next?.startAt ? (
-        <div style={{ ...timelineSplitLabelStyle, left: `${(splitMarker * 100).toFixed(2)}%` }}>
-          {formatTime(snapshot.next.startAt)}
-        </div>
-      ) : null}
       <div style={timelineStyle}>
-        {nowBlock ? (
+        {segments.map((segment) => (
           <div
+            key={segment.key}
             style={{
               ...timelineSegmentStyle,
-              left: `${(nowBlock.left * 100).toFixed(2)}%`,
-              width: `${(nowBlock.width * 100).toFixed(2)}%`,
-              background:
-                "linear-gradient(180deg, #1d4ed855 0%, #1d4ed822 100%)",
-            }}
-            title={snapshot.now?.title ?? ""}
-          >
-            <div style={timelineTextStyle}>
-              {tr(locale, "Now", "当前")} · {snapshot.now?.title ?? tr(locale, "No guide", "暂无节目")}
-            </div>
-          </div>
-        ) : null}
-        {nextBlock ? (
-          <div
-            style={{
-              ...timelineSegmentStyle,
-              left: `${(nextBlock.left * 100).toFixed(2)}%`,
-              width: `${(nextBlock.width * 100).toFixed(2)}%`,
-              backgroundColor: "#111827aa",
+              left: `${(segment.block.left * 100).toFixed(2)}%`,
+              width: `${(segment.block.width * 100).toFixed(2)}%`,
+              background: segment.isCurrent ? "linear-gradient(180deg, #1d4ed855 0%, #1d4ed822 100%)" : "#111827aa",
               borderLeft: "1px solid #1f2937",
             }}
-            title={snapshot.next?.title ?? ""}
+            title={segment.program.title ?? ""}
           >
             <div style={timelineTextStyle}>
-              {tr(locale, "Next", "下一档")} · {snapshot.next?.title ?? tr(locale, "No guide", "暂无节目")}
+              {segment.program.title || tr(locale, "No guide", "暂无节目")}
             </div>
           </div>
-        ) : null}
+        ))}
         {progressBlock ? (
           <div
             style={{
@@ -238,19 +233,10 @@ function GuideTimeline({
             }}
           />
         ) : null}
-        {splitMarker !== null && splitMarker > 0 && splitMarker < 1 ? (
-          <div style={{ ...timelineSplitStyle, left: `${(splitMarker * 100).toFixed(2)}%` }} />
-        ) : null}
         <div style={{ ...timelineCursorStyle, left: `${(currentRatio * 100).toFixed(2)}%` }} />
       </div>
     </div>
   );
-}
-
-function formatTime(raw: string): string {
-  const ts = parseXmltvDate(raw);
-  if (ts === null) return raw;
-  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function parseXmltvDate(raw: string): number | null {
@@ -344,27 +330,6 @@ const timelineProgressStyle: React.CSSProperties = {
   backgroundColor: "#2563eb2f",
   pointerEvents: "none",
   zIndex: 0,
-};
-
-const timelineSplitStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 0,
-  bottom: 0,
-  width: 0,
-  borderLeft: "1px solid #cbd5e1aa",
-  pointerEvents: "none",
-};
-
-const timelineSplitLabelStyle: React.CSSProperties = {
-  position: "absolute",
-  top: -9,
-  fontSize: 9,
-  color: "#cbd5e1",
-  whiteSpace: "nowrap",
-  opacity: 0.8,
-  transform: "translateX(4px)",
-  pointerEvents: "none",
-  zIndex: 3,
 };
 
 const timelineCursorStyle: React.CSSProperties = {

@@ -48,6 +48,7 @@ export interface ChannelEpgSnapshot {
   channelId: number;
   now?: EpgProgramMini;
   next?: EpgProgramMini;
+  timelinePrograms: EpgProgramMini[];
 }
 
 export interface ImportSummary {

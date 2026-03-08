@@ -598,8 +598,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const prewarmChannel = useCallback(
     (next: Channel) => {
       if (proxyPort === null) return;
+      if (next.id === channel.id) return;
       const standbySlot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
-      loadChannelInSlot(standbySlot, next, true);
+      if (slotChannelIdRef.current[standbySlot] !== next.id) {
+        loadChannelInSlot(standbySlot, next, true);
+      }
       setSlotMuted(standbySlot, true);
       warmProxyUrl(next.streamUrl, true);
       cancelPrewarm();
@@ -612,7 +615,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           if (prewarmAbortRef.current === controller) prewarmAbortRef.current = null;
         });
     },
-    [cancelPrewarm, loadChannelInSlot, proxyPort, setSlotMuted, warmProxyUrl],
+    [cancelPrewarm, channel.id, loadChannelInSlot, proxyPort, setSlotMuted, warmProxyUrl],
   );
 
   const commitPendingSwitch = useCallback(() => {
@@ -643,6 +646,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const baseChannelId = pendingSwitchChannelRef.current?.id ?? channel.id;
       const next = getAdjacentChannel(baseChannelId, direction);
       if (!next) return;
+      if (next.id === channel.id) {
+        pendingSwitchChannelRef.current = null;
+        clearPendingSwitchTimer();
+        cancelPrewarm();
+        return;
+      }
       pendingSwitchChannelRef.current = next;
       showSwitchOsd(next);
       prewarmChannel(next);
@@ -654,6 +663,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     [
       CHANNEL_SWITCH_COMMIT_DELAY_MS,
       channel.id,
+      cancelPrewarm,
       clearPendingSwitchTimer,
       commitPendingSwitch,
       getAdjacentChannel,

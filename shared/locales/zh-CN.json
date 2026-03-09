@@ -4,6 +4,7 @@
   "nav.recents": "最近观看",
   "nav.sources": "源",
   "nav.settings": "设置",
+  "nav.debug": "调试",
   "channels.groups": "分组",
   "channels.all": "全部",
   "channels.searchPlaceholder": "搜索频道...",
@@ -135,5 +136,18 @@
   "settings.update.upToDate": "当前已是最新版本。",
   "settings.update.publishedAt": "发布时间：{value}",
   "settings.update.copyLink": "复制下载链接",
-  "settings.update.copied": "已复制链接"
+  "settings.update.copied": "已复制链接",
+  "debug.panel.title": "切台调试面板",
+  "debug.panel.refresh": "刷新",
+  "debug.panel.clear": "清空日志",
+  "debug.panel.loading": "正在加载指标...",
+  "debug.panel.tip": "每 1.5 秒自动从 standby runtime 日志刷新。",
+  "debug.panel.loadError": "加载运行时日志失败。",
+  "debug.panel.clearError": "清空运行时日志失败。",
+  "debug.panel.rawLog": "原始运行时日志",
+  "debug.metric.totalSwitches": "切台总次数",
+  "debug.metric.hitRate": "Standby 命中率",
+  "debug.metric.avgProbeSince": "切台时预热年龄均值",
+  "debug.metric.avgActivationLatency": "激活延迟均值",
+  "debug.metric.avgReadyLatency": "就绪延迟均值"
 }

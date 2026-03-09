@@ -36,6 +36,9 @@ pub fn run() {
             commands::prewarm::prewarm_report_primary,
             commands::prewarm::prewarm_submit_intents,
             commands::prewarm::prewarm_clear_source,
+            commands::runtime_log::append_runtime_log,
+            commands::runtime_log::get_runtime_logs,
+            commands::runtime_log::clear_runtime_logs,
             commands::update::check_app_update,
             commands::remote::get_remote_config_info,
         ])

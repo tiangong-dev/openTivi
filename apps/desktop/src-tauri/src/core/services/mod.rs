@@ -8,6 +8,7 @@ pub mod import_service;
 pub mod playback_service;
 pub mod prewarm_orchestrator;
 pub mod recents_service;
+pub mod runtime_logger;
 pub mod settings_service;
 pub mod source_service;
 pub mod update_service;

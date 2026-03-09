@@ -4,9 +4,12 @@ use std::net::TcpListener;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use serde_json::json;
 use tokio::sync::RwLock;
 use url::Url;
 use warp::{Filter, Reply};
+
+use crate::core::services::runtime_logger::append_runtime_log;
 
 const PLAYLIST_CACHE_TTL: Duration = Duration::from_secs(2);
 const PLAYLIST_CACHE_MAX_ENTRIES: usize = 64;
@@ -170,32 +173,54 @@ async fn handle_warm(
         .get("mode")
         .map(|value| value.to_ascii_lowercase())
         .unwrap_or_else(|| "auto".to_string());
+    let requested_mode = mode.clone();
     let segment_count = params
         .get("segment_count")
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(1)
         .max(1)
         .min(3);
+    let started_at = Instant::now();
+    let mut playlist_warmed = false;
+    let mut prefetched_segments = 0usize;
+    let warm_stream_host = stream_host(&url);
 
     match mode.as_str() {
         "conn" => {}
         "playlist" => {
             if is_playlist_url(&url) {
                 let _ = warm_playlist_cache(state, url).await;
+                playlist_warmed = true;
             }
         }
         "segment" => {
             if is_playlist_url(&url) {
                 let _ = warm_playlist_cache(state.clone(), url.clone()).await;
-                let _ = prefetch_playlist_segments(state, url, segment_count).await;
+                playlist_warmed = true;
+                prefetched_segments = prefetch_playlist_segments(state, url, segment_count)
+                    .await
+                    .unwrap_or(0);
             }
         }
         _ => {
             if is_playlist_url(&url) {
                 let _ = warm_playlist_cache(state, url).await;
+                playlist_warmed = true;
             }
         }
     }
+    append_runtime_log(
+        "proxy",
+        "handle_warm",
+        json!({
+            "mode": requested_mode,
+            "segment_count_requested": segment_count,
+            "playlist_warmed": playlist_warmed,
+            "prefetched_segments": prefetched_segments,
+            "stream_host": warm_stream_host,
+            "elapsed_ms": started_at.elapsed().as_millis(),
+        }),
+    );
 
     Ok(warp::reply::with_status("", warp::http::StatusCode::NO_CONTENT).into_response())
 }
@@ -293,8 +318,13 @@ async fn prefetch_playlist_segments(
     state: ProxyState,
     playlist_url: String,
     segment_count: usize,
-) -> Result<(), ()> {
-    let response = state.client.get(&playlist_url).send().await.map_err(|_| ())?;
+) -> Result<usize, ()> {
+    let response = state
+        .client
+        .get(&playlist_url)
+        .send()
+        .await
+        .map_err(|_| ())?;
     let content_type = response
         .headers()
         .get("content-type")
@@ -302,15 +332,21 @@ async fn prefetch_playlist_segments(
         .unwrap_or("application/octet-stream")
         .to_string();
     if !is_playlist_content_type(&content_type) && !is_playlist_url(&playlist_url) {
-        return Ok(());
+        return Ok(0);
     }
     let body = response.bytes().await.map_err(|_| ())?;
     let playlist_text = String::from_utf8_lossy(&body);
     let segment_urls = extract_segment_urls(&playlist_text, &playlist_url, segment_count);
+    let mut prefetched = 0usize;
     for segment_url in segment_urls {
-        let _ = prefetch_segment(state.client.clone(), segment_url).await;
+        if prefetch_segment(state.client.clone(), segment_url)
+            .await
+            .is_ok()
+        {
+            prefetched += 1;
+        }
     }
-    Ok(())
+    Ok(prefetched)
 }
 
 fn extract_segment_urls(content: &str, base_url: &str, segment_count: usize) -> Vec<String> {
@@ -348,6 +384,12 @@ async fn prefetch_segment(client: reqwest::Client, segment_url: String) -> Resul
     };
     let _ = tokio::time::timeout(SEGMENT_PREFETCH_TIMEOUT, response.chunk()).await;
     Ok(())
+}
+
+fn stream_host(stream_url: &str) -> Option<String> {
+    Url::parse(stream_url)
+        .ok()
+        .and_then(|url| url.host_str().map(|value| value.to_string()))
 }
 
 async fn maybe_schedule_host_warm(state: ProxyState, raw_url: &str) {
@@ -487,7 +529,8 @@ segment2.ts";
 
     #[test]
     fn test_extract_segment_urls_handles_absolute_and_relative() {
-        let content = "#EXTM3U\n#EXTINF:10,\nsegment1.ts\n#EXTINF:10,\nhttps://cdn.example.com/segment2.ts";
+        let content =
+            "#EXTM3U\n#EXTINF:10,\nsegment1.ts\n#EXTINF:10,\nhttps://cdn.example.com/segment2.ts";
         let urls = extract_segment_urls(content, BASE_URL, 2);
         assert_eq!(
             urls,

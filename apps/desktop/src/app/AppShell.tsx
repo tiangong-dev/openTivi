@@ -4,14 +4,13 @@ import { ChannelsView } from "../features/channels/ChannelsView";
 import { FavoritesView } from "../features/favorites/FavoritesView";
 import { RecentsView } from "../features/recents/RecentsView";
 import { SettingsView } from "../features/settings/SettingsView";
-import { DebugView } from "../features/debug/DebugView";
 import { VideoPlayer } from "../features/player/VideoPlayer";
 import { tauriInvoke } from "../lib/tauri";
 import { mapKeyToTvIntent, type TvContentKeyDetail } from "../lib/tvInput";
 import { detectDefaultLocale, LOCALE_SETTING_KEY, resolveLocale, t, type Locale } from "../lib/i18n";
 import type { Channel, Setting } from "../types/api";
 
-type View = "channels" | "favorites" | "recents" | "sources" | "settings" | "debug";
+type View = "channels" | "favorites" | "recents" | "sources" | "settings";
 type FocusZone = "nav" | "content";
 
 export function AppShell() {
@@ -54,7 +53,6 @@ export function AppShell() {
     { key: "recents", label: t(locale, "nav.recents") },
     { key: "sources", label: t(locale, "nav.sources") },
     { key: "settings", label: t(locale, "nav.settings") },
-    { key: "debug", label: t(locale, "nav.debug") },
   ];
   const hoveredNavIndex = hoveredNavKey ? navItems.findIndex((item) => item.key === hoveredNavKey) : -1;
   const activeViewIndex = navItems.findIndex((item) => item.key === activeView);
@@ -234,8 +232,6 @@ export function AppShell() {
         return <RecentsView locale={locale} onPlay={handlePlay} />;
       case "settings":
         return <SettingsView locale={locale} onLocaleChange={handleLocaleChange} />;
-      case "debug":
-        return <DebugView locale={locale} />;
     }
   };
 

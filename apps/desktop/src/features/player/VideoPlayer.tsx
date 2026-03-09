@@ -563,9 +563,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     setOverlayVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
-      if (!error) setOverlayVisible(false);
+      if (!error) {
+        setOverlayVisible(false);
+      }
     }, 4000);
-  }, [error]);
+  }, [channel.id, error]);
 
   useEffect(() => {
     showOverlay();
@@ -1017,8 +1019,8 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       <div
         style={{
           ...bottomBarStyle,
-          opacity: overlayVisible ? 1 : 0,
-          pointerEvents: overlayVisible ? "auto" : "none",
+          opacity: 1,
+          pointerEvents: "none",
         }}
       >
         {epgNow && (
@@ -1034,6 +1036,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
               <div style={{ ...progressBarStyle, width: `${Math.max(0, Math.min(100, epgProgress))}%` }} />
             </div>
           </>
+        )}
+        {!epgNow && (
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            {epgLoading ? t(locale, "player.loadingEpg") : t(locale, "player.noGuideForChannel")}
+          </div>
         )}
         <div style={networkSpeedStyle}>
           {t(locale, "player.networkSpeed")}:{" "}

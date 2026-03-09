@@ -3,7 +3,13 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use serde_json::json;
 use tokio::sync::{RwLock, Semaphore};
+use url::Url;
+
+use crate::core::services::runtime_logger::append_runtime_log;
+
+const STANDBY_WARM_HIT_WINDOW_MS: u128 = 15_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrewarmReason {
@@ -31,6 +37,15 @@ impl PrewarmReason {
             PrewarmReason::Background => 2_000,
         }
     }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            PrewarmReason::ExplicitSwitch => "explicit_switch",
+            PrewarmReason::Neighbor => "neighbor",
+            PrewarmReason::ListFocus => "list_focus",
+            PrewarmReason::Background => "background",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -38,6 +53,16 @@ pub enum PrewarmSource {
     Player,
     ChannelListOuter,
     ChannelListInner,
+}
+
+impl PrewarmSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            PrewarmSource::Player => "player",
+            PrewarmSource::ChannelListOuter => "channel_list_outer",
+            PrewarmSource::ChannelListInner => "channel_list_inner",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -54,6 +79,10 @@ impl WarmMode {
             WarmMode::Playlist => "playlist",
             WarmMode::Segment => "segment",
         }
+    }
+
+    fn as_str(self) -> &'static str {
+        self.as_query()
     }
 }
 
@@ -144,36 +173,86 @@ impl ResourcePrewarmOrchestrator {
 
     pub async fn report_primary(&self, primary: PrimaryPlaybackState) {
         let mut state = self.state.write().await;
+        let previous_primary = state.primary.channel_id;
+        let previous_started = state.primary.started;
         state.primary = primary;
         Self::prune_expired_candidates(&mut state);
+        let (switch_probe_hit, since_last_warm_ms) = if primary.channel_id != previous_primary
+            && primary.channel_id.is_some()
+            && !primary.started
+        {
+            Self::detect_switch_probe_hit(&state, primary.channel_id.unwrap_or_default())
+        } else {
+            (None, None)
+        };
+        append_runtime_log(
+            "prewarm_orchestrator",
+            "primary_report",
+            json!({
+                "channel_id": primary.channel_id,
+                "started": primary.started,
+                "previous_channel_id": previous_primary,
+                "previous_started": previous_started,
+                "switch_probe_hit": switch_probe_hit,
+                "switch_probe_since_last_warm_ms": since_last_warm_ms,
+                "candidate_count": state.candidates.len(),
+            }),
+        );
     }
 
     pub async fn clear_source(&self, source: PrewarmSource) {
         let mut state = self.state.write().await;
+        let mut removed = 0usize;
         if let Some(channels) = state.source_channels.remove(&source) {
             for channel_id in channels {
                 if let Some(entry) = state.candidates.get(&channel_id) {
                     if entry.source == source {
                         state.candidates.remove(&channel_id);
+                        removed += 1;
                     }
                 }
             }
         }
         Self::prune_expired_candidates(&mut state);
+        append_runtime_log(
+            "prewarm_orchestrator",
+            "clear_source",
+            json!({
+                "source": source.as_str(),
+                "removed_candidates": removed,
+                "remaining_candidates": state.candidates.len(),
+            }),
+        );
     }
 
     pub async fn submit_intents(&self, intents: Vec<PrewarmIntent>) {
         if intents.is_empty() {
             return;
         }
+        let intent_count = intents.len();
+        let intent_summary: Vec<serde_json::Value> = intents
+            .iter()
+            .map(|intent| {
+                json!({
+                    "channel_id": intent.channel_id,
+                    "reason": intent.reason.as_str(),
+                    "source": intent.source.as_str(),
+                    "ttl_ms": intent.ttl_ms,
+                    "stream_host": stream_host(&intent.stream_url),
+                })
+            })
+            .collect();
 
-        let jobs = {
+        let (jobs, candidate_count_after_submit) = {
             let mut state = self.state.write().await;
             Self::prune_expired_candidates(&mut state);
             let now = Instant::now();
 
             for intent in intents {
-                let ttl_ms = intent.ttl_ms.unwrap_or(intent.reason.default_ttl_ms()).max(150);
+                let ttl_ms = intent
+                    .ttl_ms
+                    .unwrap_or(intent.reason.default_ttl_ms())
+                    .max(150);
                 let entry = CandidateEntry {
                     channel_id: intent.channel_id,
                     stream_url: intent.stream_url,
@@ -191,8 +270,20 @@ impl ResourcePrewarmOrchestrator {
                     .insert(intent.channel_id);
             }
 
-            Self::collect_warm_jobs(&self.config, &mut state)
+            let jobs = Self::collect_warm_jobs(&self.config, &mut state);
+            (jobs, state.candidates.len())
         };
+        append_runtime_log(
+            "prewarm_orchestrator",
+            "submit_intents",
+            json!({
+                "intent_count": intent_count,
+                "intents": intent_summary,
+                "scheduled_job_count": jobs.len(),
+                "candidate_count_after_submit": candidate_count_after_submit,
+                "network_warm_enabled": self.config.enable_network_warm,
+            }),
+        );
 
         if !self.config.enable_network_warm {
             return;
@@ -274,6 +365,27 @@ impl ResourcePrewarmOrchestrator {
             state.inflight.insert(key);
             jobs.push((entry.channel_id, entry.stream_url.clone(), mode));
         }
+        if !jobs.is_empty() {
+            let job_summary: Vec<serde_json::Value> = jobs
+                .iter()
+                .map(|(channel_id, stream_url, mode)| {
+                    json!({
+                        "channel_id": channel_id,
+                        "mode": mode.as_str(),
+                        "stream_host": stream_host(stream_url),
+                    })
+                })
+                .collect();
+            append_runtime_log(
+                "prewarm_orchestrator",
+                "collect_warm_jobs",
+                json!({
+                    "allow_high_cost": allow_high_cost,
+                    "candidate_count": state.candidates.len(),
+                    "jobs": job_summary,
+                }),
+            );
+        }
         jobs
     }
 
@@ -284,10 +396,21 @@ impl ResourcePrewarmOrchestrator {
         let proxy_port = self.proxy_port;
         tokio::spawn(async move {
             let (channel_id, stream_url, mode) = job;
+            let stream_host = stream_host(&stream_url);
             let permit = semaphore.acquire().await;
             if permit.is_err() {
                 let mut s = state.write().await;
                 s.inflight.remove(&(channel_id, mode));
+                append_runtime_log(
+                    "prewarm_orchestrator",
+                    "warm_job_skipped",
+                    json!({
+                        "channel_id": channel_id,
+                        "mode": mode.as_str(),
+                        "reason": "semaphore_acquire_failed",
+                        "stream_host": stream_host,
+                    }),
+                );
                 return;
             }
             let mode_query = mode.as_query();
@@ -296,14 +419,66 @@ impl ResourcePrewarmOrchestrator {
                 urlencoding::encode(&stream_url),
                 mode_query
             );
-
-            let _ = client.get(warm_url).send().await;
+            let started_at = Instant::now();
+            append_runtime_log(
+                "prewarm_orchestrator",
+                "warm_job_started",
+                json!({
+                    "channel_id": channel_id,
+                    "mode": mode.as_str(),
+                    "stream_host": stream_host,
+                }),
+            );
+            let response = client.get(warm_url).send().await;
+            let elapsed_ms = started_at.elapsed().as_millis();
             drop(permit);
+            let (ok, http_status, error_message) = match response {
+                Ok(value) => (
+                    value.status().is_success(),
+                    Some(value.status().as_u16()),
+                    None,
+                ),
+                Err(err) => (false, None, Some(err.to_string())),
+            };
 
             let mut s = state.write().await;
             s.inflight.remove(&(channel_id, mode));
-            s.last_warm.insert((channel_id, mode), Instant::now());
+            if ok {
+                s.last_warm.insert((channel_id, mode), Instant::now());
+            }
+            append_runtime_log(
+                "prewarm_orchestrator",
+                "warm_job_finished",
+                json!({
+                    "channel_id": channel_id,
+                    "mode": mode.as_str(),
+                    "stream_host": stream_host,
+                    "elapsed_ms": elapsed_ms,
+                    "ok": ok,
+                    "http_status": http_status,
+                    "error": error_message,
+                }),
+            );
         });
+    }
+
+    fn detect_switch_probe_hit(
+        state: &OrchestratorState,
+        channel_id: i64,
+    ) -> (Option<bool>, Option<u128>) {
+        let latest = [WarmMode::Conn, WarmMode::Playlist, WarmMode::Segment]
+            .into_iter()
+            .filter_map(|mode| {
+                state
+                    .last_warm
+                    .get(&(channel_id, mode))
+                    .map(|timestamp| Instant::now().duration_since(*timestamp).as_millis())
+            })
+            .min();
+        if let Some(since_ms) = latest {
+            return (Some(since_ms <= STANDBY_WARM_HIT_WINDOW_MS), Some(since_ms));
+        }
+        (Some(false), None)
     }
 }
 
@@ -332,6 +507,12 @@ fn pick_warm_mode(reason: PrewarmReason, allow_high_cost: bool) -> WarmMode {
         }
         PrewarmReason::Background => WarmMode::Conn,
     }
+}
+
+fn stream_host(stream_url: &str) -> Option<String> {
+    Url::parse(stream_url)
+        .ok()
+        .and_then(|url| url.host_str().map(|value| value.to_string()))
 }
 
 #[cfg(test)]

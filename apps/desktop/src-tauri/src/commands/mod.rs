@@ -5,6 +5,7 @@ pub mod health;
 pub mod playback;
 pub mod prewarm;
 pub mod recents;
+pub mod runtime_log;
 pub mod settings;
 pub mod sources;
 pub mod update;

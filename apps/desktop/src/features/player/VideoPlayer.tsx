@@ -154,6 +154,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     [],
   );
 
+  const appendRuntimeLog = useCallback((event: string, data: Record<string, unknown>) => {
+    void tauriInvoke("append_runtime_log", {
+      input: { component: "player", event, data },
+    }).catch(() => undefined);
+  }, []);
+
   const getVideoBySlot = useCallback(
     (slot: 0 | 1) => (slot === 0 ? primaryVideoRef.current : standbyVideoRef.current),
     [],
@@ -221,6 +227,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const markReady = () => {
         if (slotChannelIdRef.current[slot] === target.id) {
           slotReadyRef.current[slot] = true;
+          appendRuntimeLog("slot_ready", {
+            slot,
+            channelId: target.id,
+            prewarm,
+            isActiveSlot: slot === activeSlotRef.current,
+          });
           if (slot === activeSlotRef.current) {
             void reportPrimaryState(target.id, true);
           }
@@ -318,7 +330,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       slotChannelIdRef.current[slot] = target.id;
       return true;
     },
-    [destroySlot, getVideoBySlot, proxyPort, reportPrimaryState],
+    [appendRuntimeLog, destroySlot, getVideoBySlot, proxyPort, reportPrimaryState],
   );
 
   useEffect(() => {
@@ -602,6 +614,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     (next: Channel) => {
       const currentPlaybackChannelId = getCurrentPlaybackChannelId();
       if (next.id === currentPlaybackChannelId) return;
+      appendRuntimeLog("neighbor_prewarm_requested", {
+        currentPlaybackChannelId,
+        nextChannelId: next.id,
+      });
       void submitPrewarmIntents(
         [
           {
@@ -622,7 +638,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       }
       setSlotMuted(standbySlot, true);
     },
-    [getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, submitPrewarmIntents],
+    [appendRuntimeLog, getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, submitPrewarmIntents],
   );
 
   useEffect(() => {
@@ -662,6 +678,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const baseChannelId = getCurrentPlaybackChannelId();
       const next = getAdjacentChannel(channels, baseChannelId, direction);
       if (!next || next.id === baseChannelId) return;
+      appendRuntimeLog("switch_requested", {
+        direction,
+        baseChannelId,
+        nextChannelId: next.id,
+      });
       void submitPrewarmIntents(
         [
           {
@@ -681,10 +702,15 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       }
       setError(null);
       activateSlot(standbySlot);
+      appendRuntimeLog("switch_activated", {
+        standbySlot,
+        nextChannelId: next.id,
+      });
       onChannelChange(next);
     },
     [
       activateSlot,
+      appendRuntimeLog,
       channels,
       getCurrentPlaybackChannelId,
       loadChannelInSlot,

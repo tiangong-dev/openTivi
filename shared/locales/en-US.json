@@ -4,7 +4,6 @@
   "nav.recents": "Recents",
   "nav.sources": "Sources",
   "nav.settings": "Settings",
-  "nav.debug": "Debug",
   "channels.groups": "Groups",
   "channels.all": "All",
   "channels.searchPlaceholder": "Search channels...",
@@ -136,18 +135,5 @@
   "settings.update.upToDate": "You are on the latest version.",
   "settings.update.publishedAt": "Published at: {value}",
   "settings.update.copyLink": "Copy download link",
-  "settings.update.copied": "Link copied",
-  "debug.panel.title": "Switch Debug Panel",
-  "debug.panel.refresh": "Refresh",
-  "debug.panel.clear": "Clear Logs",
-  "debug.panel.loading": "Loading metrics...",
-  "debug.panel.tip": "Auto refresh every 1.5s from standby runtime logs.",
-  "debug.panel.loadError": "Failed to load runtime logs.",
-  "debug.panel.clearError": "Failed to clear runtime logs.",
-  "debug.panel.rawLog": "Raw runtime logs",
-  "debug.metric.totalSwitches": "Total switches",
-  "debug.metric.hitRate": "Standby hit rate",
-  "debug.metric.avgProbeSince": "Avg warm age at switch",
-  "debug.metric.avgActivationLatency": "Avg activation latency",
-  "debug.metric.avgReadyLatency": "Avg ready latency"
+  "settings.update.copied": "Link copied"
 }

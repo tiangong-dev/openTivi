@@ -1,18 +1,22 @@
 import type { Channel } from "../../types/api";
 
 export type SwitchDirection = -1 | 1;
-export type PlayerSlot = 0 | 1;
+export type PlayerSlot = 0 | 1 | 2; // 0=prev(n-1), 1=active(n), 2=next(n+1)
 
 export function resolveCurrentPlaybackChannelId(
-  slotChannelIds: [number | null, number | null],
+  slotChannelIds: [number | null, number | null, number | null],
   activeSlot: PlayerSlot,
   fallbackChannelId: number,
 ): number {
   return slotChannelIds[activeSlot] ?? fallbackChannelId;
 }
 
-export function getStandbySlot(activeSlot: PlayerSlot): PlayerSlot {
-  return activeSlot === 0 ? 1 : 0;
+export function getPrevSlot(): 0 {
+  return 0;
+}
+
+export function getNextSlot(): 2 {
+  return 2;
 }
 
 export function getAdjacentChannel(

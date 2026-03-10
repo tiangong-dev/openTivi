@@ -4,9 +4,9 @@ import type { Channel } from "../../types/api";
 import {
   buildNeighborWarmPlan,
   getAdjacentChannel,
-  getStandbySlot,
+  getPrevSlot,
+  getNextSlot,
   resolveCurrentPlaybackChannelId,
-  shouldLoadInStandby,
 } from "./playerSwitchCore";
 
 function buildChannel(id: number): Channel {
@@ -21,18 +21,18 @@ function buildChannel(id: number): Channel {
 
 describe("playerSwitchCore", () => {
   it("resolves current playback channel id from active slot first", () => {
-    const resolved = resolveCurrentPlaybackChannelId([101, 102], 1, 999);
+    const resolved = resolveCurrentPlaybackChannelId([101, 102, 103], 1, 999);
     expect(resolved).toBe(102);
   });
 
   it("falls back to incoming channel id when slot is empty", () => {
-    const resolved = resolveCurrentPlaybackChannelId([101, null], 1, 999);
+    const resolved = resolveCurrentPlaybackChannelId([101, null, 103], 1, 999);
     expect(resolved).toBe(999);
   });
 
-  it("computes standby slot from active slot", () => {
-    expect(getStandbySlot(0)).toBe(1);
-    expect(getStandbySlot(1)).toBe(0);
+  it("returns prev and next slot numbers", () => {
+    expect(getPrevSlot()).toBe(0);
+    expect(getNextSlot()).toBe(2);
   });
 
   it("finds adjacent channel with wrap-around", () => {
@@ -44,11 +44,6 @@ describe("playerSwitchCore", () => {
   it("returns null when base channel does not exist", () => {
     const channels = [buildChannel(1), buildChannel(2)];
     expect(getAdjacentChannel(channels, 404, 1)).toBeNull();
-  });
-
-  it("decides standby reload only when target changes", () => {
-    expect(shouldLoadInStandby(100, 200)).toBe(true);
-    expect(shouldLoadInStandby(100, 100)).toBe(false);
   });
 
   it("builds deduplicated neighbor warm plan", () => {

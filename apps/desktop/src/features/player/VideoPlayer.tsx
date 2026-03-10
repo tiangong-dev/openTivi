@@ -45,10 +45,6 @@ const OVERLAY_HIDE_MS = 4000;
 const OSD_DISPLAY_MS = 2000;
 const NEIGHBOR_WARM_DELAY_MS = 320;
 const STANDBY_SLOT_TTL_MS = 60000; // 1min - keep standby slots ready
-const PREWARM_TTL_NEIGHBOR_MS = 2500; // Send to backend - release resources after 2.5s
-const PREWARM_TTL_NEIGHBOR_BG_MS = 2000;
-const PREWARM_TTL_EXPLICIT_MS = 6000;
-const PREWARM_TTL_LIST_FOCUS_MS = 1200;
 
 interface Props {
   channel: Channel;
@@ -56,17 +52,6 @@ interface Props {
   locale: Locale;
   onClose: () => void;
   onChannelChange: (channel: Channel) => void;
-}
-
-type PrewarmReason = "explicit_switch" | "neighbor" | "list_focus" | "background";
-type PrewarmSource = "player" | "channel_list_outer" | "channel_list_inner";
-
-interface PrewarmIntentInput {
-  channelId: number;
-  streamUrl: string;
-  reason: PrewarmReason;
-  source: PrewarmSource;
-  ttlMs?: number;
 }
 
 export function VideoPlayer({ channel, channels, locale, onClose, onChannelChange }: Props) {
@@ -113,13 +98,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     activeSlotRef,
     slotChannelIdRef,
     hlsSlotsRef,
-    decoderPrewarmAllowedRef,
     loadChannelInSlot,
     activateSlot,
     destroySlot,
     setSlotMuted,
     getVideoBySlot,
-    reportPrimaryState,
     appendRuntimeLog,
   } = useStandbyPlayback({
     proxyPort,
@@ -143,19 +126,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     });
   }, []);
 
-  const submitPrewarmIntents = useCallback(
-    async (intents: PrewarmIntentInput[], decoderSlots = 0): Promise<number[]> => {
-      if (intents.length === 0) return [];
-      try {
-        return await tauriInvoke<number[]>("prewarm_submit_intents", {
-          input: { intents, decoderSlots },
-        });
-      } catch {
-        return [];
-      }
-    },
-    [],
-  );
+
 
   useEffect(() => {
     if (proxyPort === null) return;
@@ -196,9 +167,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     setSlotMuted,
   ]);
 
-  useEffect(() => {
-    void reportPrimaryState(channel.id, false);
-  }, [channel.id, reportPrimaryState]);
+
 
   useEffect(() => {
     setEpgLoading(true);
@@ -269,30 +238,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     channelsRef.current = channels;
   }, [channels]);
 
-  useEffect(() => {
-    if (!showChannelListPanel || channels.length === 0) return;
-    const focused = channels[focusedChannelIndex];
-    if (!focused) return;
-    const prev = channels[(focusedChannelIndex - 1 + channels.length) % channels.length];
-    const next = channels[(focusedChannelIndex + 1) % channels.length];
-    const intents = new Map<number, PrewarmIntentInput>();
-    for (const item of [focused, prev, next]) {
-      if (!item) continue;
-      intents.set(item.id, {
-        channelId: item.id,
-        streamUrl: item.streamUrl,
-        reason: "list_focus",
-        source: "channel_list_inner",
-        ttlMs: PREWARM_TTL_LIST_FOCUS_MS,
-      });
-    }
-    void submitPrewarmIntents(Array.from(intents.values()), 0);
-  }, [channels, focusedChannelIndex, showChannelListPanel, submitPrewarmIntents]);
 
-  useEffect(() => {
-    if (showChannelListPanel) return;
-    void tauriInvoke("prewarm_clear_source", { source: "channel_list_inner" }).catch(() => undefined);
-  }, [showChannelListPanel]);
 
   useEffect(() => {
     if (!showChannelListPanel || channels.length === 0) {
@@ -449,27 +395,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     (next: Channel, direction: -1 | 1) => {
       const currentPlaybackChannelId = getCurrentPlaybackChannelId();
       if (next.id === currentPlaybackChannelId) return;
-      appendRuntimeLog("neighbor_prewarm_requested", {
-        currentPlaybackChannelId,
-        nextChannelId: next.id,
-        direction,
-      });
-      void submitPrewarmIntents(
-        [
-          {
-            channelId: next.id,
-            streamUrl: next.streamUrl,
-            reason: "neighbor",
-            source: "player",
-            ttlMs: PREWARM_TTL_NEIGHBOR_MS,
-          },
-        ],
-        1,
-      );
-      if (!decoderPrewarmAllowedRef.current) {
-        console.log("[Standby] Prewarm not allowed");
-        return;
-      }
+
       if (proxyPort === null) {
         console.log("[Standby] Proxy port not available");
         return;
@@ -492,7 +418,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       }
       setSlotMuted(slot, true);
     },
-    [appendRuntimeLog, getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, standbyEnabled, submitPrewarmIntents],
+    [getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, standbyEnabled],
   );
 
   const resetInactivityTimer = useCallback(() => {
@@ -550,25 +476,8 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const baseChannelId = getCurrentPlaybackChannelId();
       const next = getAdjacentChannel(channels, baseChannelId, direction);
       if (!next || next.id === baseChannelId) return;
-      appendRuntimeLog("switch_requested", {
-        direction,
-        baseChannelId,
-        nextChannelId: next.id,
-      });
       console.log(
         `[Standby] User switch - from ${baseChannelId} to ${next.id} (${next.name}), direction: ${direction}`,
-      );
-      void submitPrewarmIntents(
-        [
-          {
-            channelId: next.id,
-            streamUrl: next.streamUrl,
-            reason: "explicit_switch",
-            source: "player",
-            ttlMs: PREWARM_TTL_EXPLICIT_MS,
-          },
-        ],
-        1,
       );
       showSwitchOsd(next);
       const targetSlot = direction === 1 ? getNextSlot() : getPrevSlot();
@@ -584,23 +493,17 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       }
       setError(null);
       activateSlot(targetSlot);
-      appendRuntimeLog("switch_activated", {
-        slot: targetSlot,
-        nextChannelId: next.id,
-      });
       onChannelChange(next);
     },
     [
       activateSlot,
-      appendRuntimeLog,
       channels,
-      getCurrentPlaybackChannelId,
-      loadChannelInSlot,
-      onChannelChange,
-      showSwitchOsd,
-      submitPrewarmIntents,
-    ],
-  );
+       getCurrentPlaybackChannelId,
+       loadChannelInSlot,
+       onChannelChange,
+       showSwitchOsd,
+      ],
+      );
 
   const setChannelListPanel = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
     setShowChannelListPanel((prev) => {
@@ -834,16 +737,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         clearTimeout(channelListAutoHideTimerRef.current);
         channelListAutoHideTimerRef.current = null;
       }
-      void tauriInvoke("prewarm_clear_source", { source: "channel_list_inner" }).catch(
-        () => undefined,
-      );
-      void tauriInvoke("prewarm_clear_source", { source: "player" }).catch(() => undefined);
-      void reportPrimaryState(null, false);
       destroySlot(0);
       destroySlot(1);
       destroySlot(2);
     };
-  }, [destroySlot, reportPrimaryState]);
+  }, [destroySlot]);
 
   return (
     <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>

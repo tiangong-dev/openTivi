@@ -22,13 +22,11 @@ export interface StandbyPlaybackEngine {
   activeSlotRef: React.MutableRefObject<1>;
   slotChannelIdRef: React.MutableRefObject<[number | null, number | null, number | null]>;
   hlsSlotsRef: React.MutableRefObject<[Hls | null, Hls | null, Hls | null]>;
-  decoderPrewarmAllowedRef: React.MutableRefObject<boolean>;
   loadChannelInSlot: (slot: 0 | 1 | 2, target: Channel, prewarm: boolean) => boolean;
   activateSlot: (slot: 0 | 1 | 2) => void;
   destroySlot: (slot: 0 | 1 | 2) => void;
   setSlotMuted: (slot: 0 | 1 | 2, muted: boolean) => void;
   getVideoBySlot: (slot: 0 | 1 | 2) => HTMLVideoElement | null;
-  reportPrimaryState: (channelId: number | null, started: boolean) => Promise<boolean>;
   appendRuntimeLog: (event: string, data: Record<string, unknown>) => void;
 }
 
@@ -168,7 +166,6 @@ export function useStandbyPlayback({
   const activeSlotRef = useRef<1>(1);
   const slotReadyRef = useRef<[boolean, boolean, boolean]>([false, false, false]);
   const localeRef = useRef(locale);
-  const decoderPrewarmAllowedRef = useRef(true);
 
   const onErrorRef = useRef(onError);
   const onNetworkSpeedRef = useRef(onNetworkSpeed);
@@ -190,18 +187,6 @@ export function useStandbyPlayback({
   useEffect(() => {
     onNetworkSpeedRef.current = onNetworkSpeed;
   }, [onNetworkSpeed]);
-
-  const reportPrimaryState = useCallback(async (channelId: number | null, started: boolean) => {
-    try {
-      const allow = await tauriInvoke<boolean>("prewarm_report_primary", {
-        input: { channelId, started },
-      });
-      decoderPrewarmAllowedRef.current = allow;
-      return allow;
-    } catch {
-      return decoderPrewarmAllowedRef.current;
-    }
-  }, []);
 
   const appendRuntimeLog = useCallback((event: string, data: Record<string, unknown>) => {
     void tauriInvoke("append_runtime_log", {
@@ -305,9 +290,6 @@ export function useStandbyPlayback({
             prewarm,
             isActiveSlot: slot === 1,
           });
-          if (slot === 1) {
-            void reportPrimaryState(target.id, true);
-          }
         }
       };
 
@@ -333,7 +315,7 @@ export function useStandbyPlayback({
       slotChannelIdRef.current[slot] = target.id;
       return true;
       },
-      [appendRuntimeLog, destroySlot, getVideoBySlot, proxyPort, reportPrimaryState],
+      [appendRuntimeLog, destroySlot, getVideoBySlot, proxyPort],
       );
 
       return {
@@ -344,13 +326,11 @@ export function useStandbyPlayback({
       activeSlotRef,
       slotChannelIdRef,
       hlsSlotsRef,
-      decoderPrewarmAllowedRef,
       loadChannelInSlot,
       activateSlot,
       destroySlot,
       setSlotMuted,
       getVideoBySlot,
-      reportPrimaryState,
       appendRuntimeLog,
       };
       }

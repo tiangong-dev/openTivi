@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { t, type Locale } from "../../lib/i18n";
+import { DEFAULT_STANDBY_ENABLED, STANDBY_ENABLED_SETTING_KEY, resolveStandbyEnabled } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
 import { createConfirmPressHandler, mapKeyToTvIntent } from "../../lib/tvInput";
-import type { Channel, ChannelEpgSnapshot, EpgProgram } from "../../types/api";
+import type { Channel, ChannelEpgSnapshot, EpgProgram, Setting } from "../../types/api";
 import {
   buildNeighborWarmPlan,
   getAdjacentChannel,
@@ -100,6 +101,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [networkSpeedBps, setNetworkSpeedBps] = useState<number | null>(null);
   const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [channelEpgLoading, setChannelEpgLoading] = useState(false);
+  const [standbyEnabled, setStandbyEnabled] = useState(DEFAULT_STANDBY_ENABLED);
 
   const {
     primaryVideoRef,
@@ -132,6 +134,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   useEffect(() => {
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
+    void tauriInvoke<Setting[]>("get_settings").then((settings) => {
+      const standbyEnabledSetting = settings.find((s) => s.key === STANDBY_ENABLED_SETTING_KEY);
+      setStandbyEnabled(resolveStandbyEnabled(standbyEnabledSetting?.value ?? DEFAULT_STANDBY_ENABLED));
+    });
   }, []);
 
   const submitPrewarmIntents = useCallback(
@@ -447,13 +453,14 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       );
       if (!decoderPrewarmAllowedRef.current) return;
       if (proxyPort === null) return;
+      if (!standbyEnabled) return;
       const standbySlot = getStandbySlot(activeSlotRef.current);
       if (shouldLoadInStandby(slotChannelIdRef.current[standbySlot], next.id)) {
         loadChannelInSlot(standbySlot, next, true);
       }
       setSlotMuted(standbySlot, true);
     },
-    [appendRuntimeLog, getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, submitPrewarmIntents],
+    [appendRuntimeLog, getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, standbyEnabled, submitPrewarmIntents],
   );
 
   useEffect(() => {

@@ -115,6 +115,7 @@
   "settings.startView.recents": "最近观看",
   "settings.player.autoplay": "自动播放",
   "settings.player.volume": "音量",
+  "settings.player.standbyEnabled": "快速换台",
   "settings.epg.autoRefresh": "自动刷新 EPG",
   "settings.epg.guideTimelineWindow": "节目单时间窗口",
   "settings.option.minutes": "{minutes} 分钟",

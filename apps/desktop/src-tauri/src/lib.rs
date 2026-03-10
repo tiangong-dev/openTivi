@@ -34,6 +34,7 @@ pub fn run() {
             commands::settings::set_setting,
             commands::playback::resolve_playback,
             commands::update::check_app_update,
+            commands::remote::get_remote_config_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

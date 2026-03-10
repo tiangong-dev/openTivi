@@ -1,7 +1,9 @@
+pub mod channel_identity;
 pub mod channel_service;
 pub mod epg_matching;
 pub mod epg_service;
 pub mod favorites_service;
+pub mod health_worker;
 pub mod import_service;
 pub mod playback_service;
 pub mod recents_service;

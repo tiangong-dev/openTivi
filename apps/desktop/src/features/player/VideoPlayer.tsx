@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { t, type Locale } from "../../lib/i18n";
-import { DEFAULT_STANDBY_ENABLED, STANDBY_ENABLED_SETTING_KEY, resolveStandbyEnabled } from "../../lib/settings";
+import { DEFAULT_INSTANT_SWITCH_ENABLED, INSTANT_SWITCH_ENABLED_SETTING_KEY, resolveInstantSwitchEnabled } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
 import { createConfirmPressHandler, mapKeyToTvIntent } from "../../lib/tvInput";
 import type { Channel, ChannelEpgSnapshot, EpgProgram, Setting } from "../../types/api";
@@ -18,7 +18,7 @@ import {
   getGuidePrograms,
   parseXmltvDate,
 } from "./playerUtils";
-import { useStandbyPlayback } from "./useStandbyPlayback";
+import { useInstantChannelSwitch } from "./useInstantChannelSwitch";
 import {
   bottomBarStyle,
   channelListItemStyle,
@@ -44,7 +44,7 @@ import {
 const OVERLAY_HIDE_MS = 4000;
 const OSD_DISPLAY_MS = 2000;
 const NEIGHBOR_WARM_DELAY_MS = 320;
-const STANDBY_SLOT_TTL_MS = 60000; // 1min - keep standby slots ready
+const INSTANT_SWITCH_SLOT_TTL_MS = 60000; // 1min - keep instant switch slots ready
 
 interface Props {
   channel: Channel;
@@ -88,7 +88,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [networkSpeedBps, setNetworkSpeedBps] = useState<number | null>(null);
   const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [channelEpgLoading, setChannelEpgLoading] = useState(false);
-  const [standbyEnabled, setStandbyEnabled] = useState(DEFAULT_STANDBY_ENABLED);
+  const [instantSwitchEnabled, setInstantSwitchEnabled] = useState(DEFAULT_INSTANT_SWITCH_ENABLED);
 
   const {
     prevVideoRef,
@@ -104,7 +104,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     setSlotMuted,
     getVideoBySlot,
     appendRuntimeLog,
-  } = useStandbyPlayback({
+  } = useInstantChannelSwitch({
     proxyPort,
     locale,
     onError: setError,
@@ -121,8 +121,8 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   useEffect(() => {
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
     void tauriInvoke<Setting[]>("get_settings").then((settings) => {
-      const standbyEnabledSetting = settings.find((s) => s.key === STANDBY_ENABLED_SETTING_KEY);
-      setStandbyEnabled(resolveStandbyEnabled(standbyEnabledSetting?.value ?? DEFAULT_STANDBY_ENABLED));
+      const instantSwitchEnabledSetting = settings.find((s) => s.key === INSTANT_SWITCH_ENABLED_SETTING_KEY);
+      setInstantSwitchEnabled(resolveInstantSwitchEnabled(instantSwitchEnabledSetting?.value ?? DEFAULT_INSTANT_SWITCH_ENABLED));
     });
   }, []);
 
@@ -140,7 +140,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     // Check if in prev or next slot
     if (slotChannelIdRef.current[0] === channel.id) {
       console.log(
-        `[Standby] User switched to prev channel ${channel.id} (${channel.name})`,
+        `[InstantSwitch] User switched to prev channel ${channel.id} (${channel.name})`,
       );
       activateSlot(0);
       return;
@@ -148,7 +148,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
     if (slotChannelIdRef.current[2] === channel.id) {
       console.log(
-        `[Standby] User switched to next channel ${channel.id} (${channel.name})`,
+        `[InstantSwitch] User switched to next channel ${channel.id} (${channel.name})`,
       );
       activateSlot(2);
       return;
@@ -397,28 +397,28 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       if (next.id === currentPlaybackChannelId) return;
 
       if (proxyPort === null) {
-        console.log("[Standby] Proxy port not available");
+        console.log("[InstantSwitch] Proxy port not available");
         return;
       }
-      if (!standbyEnabled) {
-        console.log("[Standby] Standby disabled in settings");
+      if (!instantSwitchEnabled) {
+        console.log("[InstantSwitch] Instant switch disabled in settings");
         return;
       }
       const slot = direction === 1 ? getNextSlot() : getPrevSlot();
       const currentSlotChannelId = slotChannelIdRef.current[slot];
       if (currentSlotChannelId !== next.id) {
         console.log(
-          `[Standby] Loading channel ${next.id} (${next.name}) into slot ${slot}(${direction === 1 ? "next" : "prev"}), previous: ${currentSlotChannelId}`,
+          `[InstantSwitch] Loading channel ${next.id} (${next.name}) into slot ${slot}(${direction === 1 ? "next" : "prev"}), previous: ${currentSlotChannelId}`,
         );
         loadChannelInSlot(slot, next, true);
       } else {
         console.log(
-          `[Standby] Channel ${next.id} already in slot ${slot}, skip loading`,
+          `[InstantSwitch] Channel ${next.id} already in slot ${slot}, skip loading`,
         );
       }
       setSlotMuted(slot, true);
     },
-    [getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, standbyEnabled],
+    [getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, instantSwitchEnabled],
   );
 
   const resetInactivityTimer = useCallback(() => {
@@ -426,10 +426,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       clearTimeout(inactivityCleanupTimerRef.current);
     }
     inactivityCleanupTimerRef.current = setTimeout(() => {
-      console.log("[Standby] Standby TTL expired - cleaning up standby slots");
+      console.log("[InstantSwitch] TTL expired - cleaning up standby slots");
       destroySlot(0);
       destroySlot(2);
-    }, STANDBY_SLOT_TTL_MS);
+    }, INSTANT_SWITCH_SLOT_TTL_MS);
   }, [destroySlot]);
 
   useEffect(() => {
@@ -442,7 +442,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const next = getAdjacentChannel(channels, baseChannelId, 1);
       if (next) {
         console.log(
-          `[Standby] Preload next channel - base: ${baseChannelId}, next: ${next.id} (${next.name})`,
+          `[InstantSwitch] Preload next channel - base: ${baseChannelId}, next: ${next.id} (${next.name})`,
         );
         prewarmChannel(next, 1);
       }
@@ -451,7 +451,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const prev = getAdjacentChannel(channels, baseChannelId, -1);
       if (prev) {
         console.log(
-          `[Standby] Preload prev channel - base: ${baseChannelId}, prev: ${prev.id} (${prev.name})`,
+          `[InstantSwitch] Preload prev channel - base: ${baseChannelId}, prev: ${prev.id} (${prev.name})`,
         );
         prewarmChannel(prev, -1);
       }
@@ -477,18 +477,18 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const next = getAdjacentChannel(channels, baseChannelId, direction);
       if (!next || next.id === baseChannelId) return;
       console.log(
-        `[Standby] User switch - from ${baseChannelId} to ${next.id} (${next.name}), direction: ${direction}`,
+        `[InstantSwitch] User switch - from ${baseChannelId} to ${next.id} (${next.name}), direction: ${direction}`,
       );
       showSwitchOsd(next);
       const targetSlot = direction === 1 ? getNextSlot() : getPrevSlot();
       if (slotChannelIdRef.current[targetSlot] !== next.id) {
         console.log(
-          `[Standby] Loading channel ${next.id} (${next.name}) in slot ${targetSlot} for immediate switch`,
+          `[InstantSwitch] Loading channel ${next.id} (${next.name}) in slot ${targetSlot} for immediate switch`,
         );
         loadChannelInSlot(targetSlot, next, false);
       } else {
         console.log(
-          `[Standby] Channel ${next.id} already in slot ${targetSlot}, activate directly`,
+          `[InstantSwitch] Channel ${next.id} already in slot ${targetSlot}, activate directly`,
         );
       }
       setError(null);

@@ -7,14 +7,14 @@ import { tauriInvoke } from "../../lib/tauri";
 import type { Channel } from "../../types/api";
 import { getPlaybackKind, toProxyUrl, type PlaybackKind } from "./playerUtils";
 
-export interface UseStandbyPlaybackOptions {
+export interface UseInstantChannelSwitchOptions {
   proxyPort: number | null;
   locale: Locale;
   onError: (error: string | null) => void;
   onNetworkSpeed: (bps: number) => void;
 }
 
-export interface StandbyPlaybackEngine {
+export interface InstantChannelSwitchEngine {
   prevVideoRef: React.RefObject<HTMLVideoElement>;
   activeVideoRef: React.RefObject<HTMLVideoElement>;
   nextVideoRef: React.RefObject<HTMLVideoElement>;
@@ -149,12 +149,12 @@ function loadNativeSlot(
    });
 }
 
-export function useStandbyPlayback({
+export function useInstantChannelSwitch({
   proxyPort,
   locale,
   onError,
   onNetworkSpeed,
-}: UseStandbyPlaybackOptions): StandbyPlaybackEngine {
+}: UseInstantChannelSwitchOptions): InstantChannelSwitchEngine {
   const prevVideoRef = useRef<HTMLVideoElement>(null);
   const activeVideoRef = useRef<HTMLVideoElement>(null);
   const nextVideoRef = useRef<HTMLVideoElement>(null);
@@ -216,7 +216,7 @@ export function useStandbyPlayback({
     (slot: 0 | 1 | 2) => {
       const oldChannelId = slotChannelIdRef.current[slot];
       const slotName = slot === 0 ? "prev" : slot === 1 ? "active" : "next";
-      console.log(`[Standby] destroySlot - slot ${slot}(${slotName}), channel: ${oldChannelId}`);
+      console.log(`[InstantSwitch] destroySlot - slot ${slot}(${slotName}), channel: ${oldChannelId}`);
       if (hlsSlotsRef.current[slot]) {
         hlsSlotsRef.current[slot]?.destroy();
         hlsSlotsRef.current[slot] = null;
@@ -244,12 +244,12 @@ export function useStandbyPlayback({
   const activateSlot = useCallback(
     (slot: 0 | 1 | 2) => {
       if (slot === 1) {
-        console.log("[Standby] activateSlot - already active");
+        console.log("[InstantSwitch] activateSlot - already active");
         return;
       }
       const direction = slot === 0 ? "prev" : "next";
       console.log(
-        `[Standby] activateSlot - switch to slot ${slot}(${direction}), channel: ${slotChannelIdRef.current[slot]}`,
+        `[InstantSwitch] activateSlot - switch to slot ${slot}(${direction}), channel: ${slotChannelIdRef.current[slot]}`,
       );
       activeSlotRef.current = 1;
       setActiveSlot(1);
@@ -271,7 +271,7 @@ export function useStandbyPlayback({
 
       const slotName = slot === 0 ? "prev" : slot === 1 ? "active" : "next";
       console.log(
-        `[Standby] loadChannelInSlot - slot ${slot}(${slotName}), channel: ${target.id} (${target.name}), prewarm: ${prewarm}`,
+        `[InstantSwitch] loadChannelInSlot - slot ${slot}(${slotName}), channel: ${target.id} (${target.name}), prewarm: ${prewarm}`,
       );
       destroySlot(slot);
       slotReadyRef.current[slot] = false;
@@ -282,7 +282,7 @@ export function useStandbyPlayback({
         if (slotChannelIdRef.current[slot] === target.id) {
           slotReadyRef.current[slot] = true;
           console.log(
-            `[Standby] Slot ${slot}(${slotName}) ready - channel: ${target.id} (${target.name}), prewarm: ${prewarm}`,
+            `[InstantSwitch] Slot ${slot}(${slotName}) ready - channel: ${target.id} (${target.name}), prewarm: ${prewarm}`,
           );
           appendRuntimeLog("slot_ready", {
             slot,

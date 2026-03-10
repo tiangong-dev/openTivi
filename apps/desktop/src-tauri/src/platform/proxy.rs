@@ -342,22 +342,26 @@ async fn prefetch_playlist_segments(
 }
 
 fn extract_segment_urls(content: &str, base_url: &str, segment_count: usize) -> Vec<String> {
-    let base = base_url
-        .rfind('/')
-        .map(|i| &base_url[..=i])
-        .unwrap_or(base_url);
+    let base = match Url::parse(base_url) {
+        Ok(value) => value,
+        Err(_) => return Vec::new(),
+    };
     let mut urls = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        let url = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-            trimmed.to_string()
+        let resolved = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+            Url::parse(trimmed).ok()
+        } else if trimmed.starts_with('/') {
+            base.join(trimmed).ok()
         } else {
-            format!("{}{}", base, trimmed)
+            base.join(trimmed).ok()
         };
-        urls.push(url);
+        if let Some(url) = resolved {
+            urls.push(url.to_string());
+        }
         if urls.len() >= segment_count {
             break;
         }
@@ -436,18 +440,40 @@ fn validate_stream_url(raw: &str) -> Result<(), &'static str> {
     if !ALLOWED_SCHEMES.contains(&scheme.as_str()) {
         return Err("Scheme not allowed");
     }
-    if let Some(host) = parsed.host_str() {
-        let lower = host.to_ascii_lowercase();
-        if lower == "localhost"
-            || lower == "127.0.0.1"
-            || lower == "[::1]"
-            || lower == "0.0.0.0"
-            || lower.ends_with(".local")
-        {
-            return Err("Localhost access not allowed");
+    let host = parsed.host_str().ok_or("Missing host")?;
+    let lower = host.to_ascii_lowercase();
+    if lower == "localhost"
+        || lower == "127.0.0.1"
+        || lower == "[::1]"
+        || lower == "0.0.0.0"
+        || lower.ends_with(".local")
+    {
+        return Err("Localhost access not allowed");
+    }
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        if is_private_ip(ip) {
+            return Err("Private network access not allowed");
         }
     }
     Ok(())
+}
+
+fn is_private_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_documentation()
+                || v4.is_unspecified()
+        }
+        std::net::IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unicast_link_local()
+                || v6.is_unique_local()
+                || v6.is_unspecified()
+        }
+    }
 }
 
 /// Rewrite URLs inside m3u8 playlists to go through the proxy.
@@ -545,5 +571,26 @@ segment2.ts";
                 "https://cdn.example.com/segment2.ts".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn test_extract_segment_urls_handles_root_and_query() {
+        let content =
+            "#EXTM3U\n#EXTINF:10,\n/seg1.ts?token=abc\n#EXTINF:10,\nseg2.ts?token=def";
+        let urls = extract_segment_urls(content, BASE_URL, 2);
+        assert_eq!(
+            urls,
+            vec![
+                "http://example.com/seg1.ts?token=abc".to_string(),
+                "http://example.com/live/seg2.ts?token=def".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_validate_stream_url_rejects_private_ip() {
+        assert!(validate_stream_url("http://10.1.2.3/stream.m3u8").is_err());
+        assert!(validate_stream_url("http://192.168.0.10/stream.m3u8").is_err());
+        assert!(validate_stream_url("http://172.16.5.1/stream.m3u8").is_err());
     }
 }

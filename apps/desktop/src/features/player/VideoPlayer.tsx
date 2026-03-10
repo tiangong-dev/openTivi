@@ -155,10 +155,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       return;
     }
 
-    // Load in active slot
+    // Load in current active slot
     setError(null);
-    loadChannelInSlot(1, channel, false);
-    setSlotMuted(1, false);
+    loadChannelInSlot(currentActiveSlot, channel, false);
+    setSlotMuted(currentActiveSlot, false);
   }, [
     activateSlot,
     channel.id,
@@ -486,7 +486,13 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         console.log(
           `[InstantSwitch] Loading channel ${next.id} (${next.name}) in slot ${targetSlot} for immediate switch`,
         );
-        loadChannelInSlot(targetSlot, next, false);
+        const loaded = loadChannelInSlot(targetSlot, next, false);
+        if (!loaded) {
+          console.warn(
+            `[InstantSwitch] Failed to load channel ${next.id} into slot ${targetSlot}, skip activation`,
+          );
+          return;
+        }
       } else {
         console.log(
           `[InstantSwitch] Channel ${next.id} already in slot ${targetSlot}, activate directly`,

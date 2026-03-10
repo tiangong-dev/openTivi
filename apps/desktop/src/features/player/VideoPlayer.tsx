@@ -18,7 +18,7 @@ import {
   getGuidePrograms,
   parseXmltvDate,
 } from "./playerUtils";
-import { useDualPlaybackEngine } from "./useDualPlaybackEngine";
+import { useTripleSlotPlaybackEngine } from "./useTripleSlotPlaybackEngine";
 import {
   bottomBarStyle,
   channelListItemStyle,
@@ -121,7 +121,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     getVideoBySlot,
     reportPrimaryState,
     appendRuntimeLog,
-  } = useDualPlaybackEngine({
+  } = useTripleSlotPlaybackEngine({
     proxyPort,
     locale,
     onError: setError,

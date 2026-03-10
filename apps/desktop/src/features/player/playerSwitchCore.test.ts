@@ -30,9 +30,13 @@ describe("playerSwitchCore", () => {
     expect(resolved).toBe(999);
   });
 
-  it("returns prev and next slot numbers", () => {
-    expect(getPrevSlot()).toBe(0);
-    expect(getNextSlot()).toBe(2);
+  it("returns prev and next slot numbers relative to active slot", () => {
+    expect(getPrevSlot(1)).toBe(0);
+    expect(getNextSlot(1)).toBe(2);
+    expect(getPrevSlot(0)).toBe(2);
+    expect(getNextSlot(0)).toBe(1);
+    expect(getPrevSlot(2)).toBe(1);
+    expect(getNextSlot(2)).toBe(0);
   });
 
   it("finds adjacent channel with wrap-around", () => {

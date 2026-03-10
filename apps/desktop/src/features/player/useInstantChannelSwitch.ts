@@ -18,8 +18,8 @@ export interface InstantChannelSwitchEngine {
   prevVideoRef: React.RefObject<HTMLVideoElement>;
   activeVideoRef: React.RefObject<HTMLVideoElement>;
   nextVideoRef: React.RefObject<HTMLVideoElement>;
-  activeSlot: 1;
-  activeSlotRef: React.MutableRefObject<1>;
+  activeSlot: 0 | 1 | 2;
+  activeSlotRef: React.MutableRefObject<0 | 1 | 2>;
   slotChannelIdRef: React.MutableRefObject<[number | null, number | null, number | null]>;
   hlsSlotsRef: React.MutableRefObject<[Hls | null, Hls | null, Hls | null]>;
   loadChannelInSlot: (slot: 0 | 1 | 2, target: Channel, prewarm: boolean) => boolean;
@@ -34,7 +34,7 @@ function loadHlsSlot(
   video: HTMLVideoElement,
   proxiedUrl: string,
   slot: 0 | 1 | 2,
-  activeSlotRef: React.MutableRefObject<1>,
+  activeSlotRef: React.MutableRefObject<0 | 1 | 2>,
   hlsSlotsRef: React.MutableRefObject<[Hls | null, Hls | null, Hls | null]>,
   localeRef: React.MutableRefObject<Locale>,
   markReady: () => void,
@@ -86,7 +86,7 @@ function loadMpegtsSlot(
   video: HTMLVideoElement,
   proxiedUrl: string,
   slot: 0 | 1 | 2,
-  activeSlotRef: React.MutableRefObject<1>,
+  activeSlotRef: React.MutableRefObject<0 | 1 | 2>,
   mpegtsSlotsRef: React.MutableRefObject<[mpegts.Player | null, mpegts.Player | null, mpegts.Player | null]>,
   localeRef: React.MutableRefObject<Locale>,
   markReady: () => void,
@@ -125,7 +125,7 @@ function loadNativeSlot(
   video: HTMLVideoElement,
   proxiedUrl: string,
   slot: 0 | 1 | 2,
-  activeSlotRef: React.MutableRefObject<1>,
+  activeSlotRef: React.MutableRefObject<0 | 1 | 2>,
   hlsSlotsRef: React.MutableRefObject<[Hls | null, Hls | null, Hls | null]>,
   localeRef: React.MutableRefObject<Locale>,
   markReady: () => void,
@@ -163,14 +163,14 @@ export function useInstantChannelSwitch({
   const slotKindRef = useRef<[PlaybackKind | null, PlaybackKind | null, PlaybackKind | null]>([null, null, null]);
   const slotUrlRef = useRef<[string | null, string | null, string | null]>([null, null, null]);
   const slotChannelIdRef = useRef<[number | null, number | null, number | null]>([null, null, null]);
-  const activeSlotRef = useRef<1>(1);
+  const activeSlotRef = useRef<0 | 1 | 2>(1);
   const slotReadyRef = useRef<[boolean, boolean, boolean]>([false, false, false]);
   const localeRef = useRef(locale);
 
   const onErrorRef = useRef(onError);
   const onNetworkSpeedRef = useRef(onNetworkSpeed);
 
-  const [activeSlot, setActiveSlot] = useState<1>(1);
+  const [activeSlot, setActiveSlot] = useState<0 | 1 | 2>(1);
 
   useEffect(() => {
     localeRef.current = locale;
@@ -243,22 +243,43 @@ export function useInstantChannelSwitch({
 
   const activateSlot = useCallback(
     (slot: 0 | 1 | 2) => {
-      if (slot === 1) {
-        console.log("[InstantSwitch] activateSlot - already active");
+      if (slot === activeSlotRef.current) {
+        console.log("[InstantSwitch] activateSlot - already at active");
         return;
       }
+      
       const direction = slot === 0 ? "prev" : "next";
+      const targetChannelId = slotChannelIdRef.current[slot];
       console.log(
-        `[InstantSwitch] activateSlot - switch to slot ${slot}(${direction}), channel: ${slotChannelIdRef.current[slot]}`,
+        `[InstantSwitch] activateSlot - move ${direction} to active, channel: ${targetChannelId}`,
       );
-      activeSlotRef.current = 1;
-      setActiveSlot(1);
-      setSlotMuted(1, false);
-      // Mute other slots
-      setSlotMuted(0, true);
-      setSlotMuted(2, true);
+      
+      // Track which slots need to stay
+      // When activating slot 0: [n-1, n, n+1] -> destroy 2, move 0->1, 1->2
+      // When activating slot 2: [n-1, n, n+1] -> destroy 0, move 2->1, 1->0
+      
+      activeSlotRef.current = slot;
+      setActiveSlot(slot);
+      
+      // Update playback: unmute active, mute others
+      setSlotMuted(slot, false);
+      for (let i = 0; i < 3; i++) {
+        if (i !== slot) {
+          setSlotMuted(i as 0 | 1 | 2, true);
+          const video = getVideoBySlot(i as 0 | 1 | 2);
+          if (video) {
+            video.pause();
+          }
+        }
+      }
+      
+      // Start playback
       const activeVideo = getVideoBySlot(slot);
-      activeVideo?.play().catch(() => {});
+      if (activeVideo) {
+        activeVideo.play().catch((err) => {
+          console.error(`[InstantSwitch] Failed to play slot ${slot}:`, err);
+        });
+      }
     },
     [getVideoBySlot, setSlotMuted],
   );

@@ -131,9 +131,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   useEffect(() => {
     if (proxyPort === null) return;
 
-    // Active slot is always 1
-    if (slotChannelIdRef.current[1] === channel.id) {
-      setSlotMuted(1, false);
+    const currentActiveSlot = activeSlotRef.current;
+
+    if (slotChannelIdRef.current[currentActiveSlot] === channel.id) {
+      setSlotMuted(currentActiveSlot, false);
       return;
     }
 
@@ -404,7 +405,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         console.log("[InstantSwitch] Instant switch disabled in settings");
         return;
       }
-      const slot = direction === 1 ? getNextSlot() : getPrevSlot();
+      const slot = direction === 1 ? getNextSlot(activeSlotRef.current) : getPrevSlot(activeSlotRef.current);
       const currentSlotChannelId = slotChannelIdRef.current[slot];
       if (currentSlotChannelId !== next.id) {
         console.log(
@@ -480,7 +481,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         `[InstantSwitch] User switch - from ${baseChannelId} to ${next.id} (${next.name}), direction: ${direction}`,
       );
       showSwitchOsd(next);
-      const targetSlot = direction === 1 ? getNextSlot() : getPrevSlot();
+      const targetSlot = direction === 1 ? getNextSlot(activeSlotRef.current) : getPrevSlot(activeSlotRef.current);
       if (slotChannelIdRef.current[targetSlot] !== next.id) {
         console.log(
           `[InstantSwitch] Loading channel ${next.id} (${next.name}) in slot ${targetSlot} for immediate switch`,
@@ -749,12 +750,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         ref={prevVideoRef}
         style={{
           ...videoStyle,
-          opacity: activeSlot === 1 ? 1 : 0,
-          zIndex: activeSlot === 1 ? 1 : 0,
-          pointerEvents: "none",
+          opacity: activeSlot === 0 ? 1 : 0,
+          zIndex: activeSlot === 0 ? 1 : 0,
+          pointerEvents: activeSlot === 0 ? "auto" : "none",
         }}
         autoPlay
-        muted
+        muted={activeSlot !== 0}
       />
       <video
         ref={activeVideoRef}
@@ -762,21 +763,21 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           ...videoStyle,
           opacity: activeSlot === 1 ? 1 : 0,
           zIndex: activeSlot === 1 ? 1 : 0,
-          pointerEvents: "none",
+          pointerEvents: activeSlot === 1 ? "auto" : "none",
         }}
         autoPlay
-        muted={false}
+        muted={activeSlot !== 1}
       />
       <video
         ref={nextVideoRef}
         style={{
           ...videoStyle,
-          opacity: activeSlot === 1 ? 1 : 0,
-          zIndex: activeSlot === 1 ? 1 : 0,
-          pointerEvents: "none",
+          opacity: activeSlot === 2 ? 1 : 0,
+          zIndex: activeSlot === 2 ? 1 : 0,
+          pointerEvents: activeSlot === 2 ? "auto" : "none",
         }}
         autoPlay
-        muted={activeSlot !== 1}
+        muted={activeSlot !== 2}
       />
 
       <div
@@ -1026,4 +1027,3 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     </div>
   );
 }
-

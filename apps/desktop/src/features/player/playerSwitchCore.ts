@@ -11,12 +11,12 @@ export function resolveCurrentPlaybackChannelId(
   return slotChannelIds[activeSlot] ?? fallbackChannelId;
 }
 
-export function getPrevSlot(): 0 {
-  return 0;
+export function getPrevSlot(activeSlot: PlayerSlot): PlayerSlot {
+  return ((activeSlot + 2) % 3) as PlayerSlot;
 }
 
-export function getNextSlot(): 2 {
-  return 2;
+export function getNextSlot(activeSlot: PlayerSlot): PlayerSlot {
+  return ((activeSlot + 1) % 3) as PlayerSlot;
 }
 
 export function getAdjacentChannel(

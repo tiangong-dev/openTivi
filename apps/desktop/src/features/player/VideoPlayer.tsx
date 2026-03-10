@@ -44,11 +44,11 @@ import {
 const OVERLAY_HIDE_MS = 4000;
 const OSD_DISPLAY_MS = 2000;
 const NEIGHBOR_WARM_DELAY_MS = 320;
-const PREWARM_TTL_NEIGHBOR_MS = 2500;
-const PREWARM_TTL_NEIGHBOR_BG_MS = 2000;
+const STANDBY_SLOT_TTL_MS = 2500; // TTL for standby slots - sync with backend
+const PREWARM_TTL_NEIGHBOR_MS = STANDBY_SLOT_TTL_MS; // Send to backend
+const PREWARM_TTL_NEIGHBOR_BG_MS = STANDBY_SLOT_TTL_MS;
 const PREWARM_TTL_EXPLICIT_MS = 6000;
 const PREWARM_TTL_LIST_FOCUS_MS = 1200;
-const INACTIVITY_CLEANUP_MS = 30000; // 30s - cleanup if user doesn't switch
 
 interface Props {
   channel: Channel;
@@ -500,10 +500,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       clearTimeout(inactivityCleanupTimerRef.current);
     }
     inactivityCleanupTimerRef.current = setTimeout(() => {
-      console.log("[Standby] Inactivity timeout - cleaning up standby slots");
+      console.log("[Standby] Standby TTL expired - cleaning up standby slots");
       destroySlot(0);
       destroySlot(2);
-    }, INACTIVITY_CLEANUP_MS);
+    }, STANDBY_SLOT_TTL_MS);
   }, [destroySlot]);
 
   useEffect(() => {

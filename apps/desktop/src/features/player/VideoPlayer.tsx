@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import Hls from "hls.js";
-import mpegts from "mpegts.js";
 
 import { t, type Locale } from "../../lib/i18n";
 import { tauriInvoke } from "../../lib/tauri";
@@ -17,11 +15,9 @@ import {
   formatNetworkSpeed,
   formatTime,
   getGuidePrograms,
-  getPlaybackKind,
   parseXmltvDate,
-  toProxyUrl,
-  type PlaybackKind,
 } from "./playerUtils";
+import { useDualPlaybackEngine } from "./useDualPlaybackEngine";
 import {
   bottomBarStyle,
   channelListItemStyle,
@@ -44,6 +40,14 @@ import {
   videoStyle,
 } from "./playerStyles";
 
+const OVERLAY_HIDE_MS = 4000;
+const OSD_DISPLAY_MS = 2000;
+const NEIGHBOR_WARM_DELAY_MS = 320;
+const PREWARM_TTL_NEIGHBOR_MS = 2500;
+const PREWARM_TTL_NEIGHBOR_BG_MS = 2000;
+const PREWARM_TTL_EXPLICIT_MS = 6000;
+const PREWARM_TTL_LIST_FOCUS_MS = 1200;
+
 interface Props {
   channel: Channel;
   channels: Channel[];
@@ -64,16 +68,7 @@ interface PrewarmIntentInput {
 }
 
 export function VideoPlayer({ channel, channels, locale, onClose, onChannelChange }: Props) {
-  const primaryVideoRef = useRef<HTMLVideoElement>(null);
-  const standbyVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const hlsSlotsRef = useRef<[Hls | null, Hls | null]>([null, null]);
-  const mpegtsSlotsRef = useRef<[mpegts.Player | null, mpegts.Player | null]>([null, null]);
-  const slotKindRef = useRef<[PlaybackKind | null, PlaybackKind | null]>([null, null]);
-  const slotUrlRef = useRef<[string | null, string | null]>([null, null]);
-  const slotChannelIdRef = useRef<[number | null, number | null]>([null, null]);
-  const activeSlotRef = useRef<0 | 1>(0);
-  const localeRef = useRef(locale);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guideAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,9 +80,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const channelsRef = useRef<Channel[]>(channels);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
   const channelListItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const slotReadyRef = useRef<[boolean, boolean]>([false, false]);
   const preferredDirectionRef = useRef<-1 | 1>(1);
-  const decoderPrewarmAllowedRef = useRef(true);
 
   const [error, setError] = useState<string | null>(null);
   const [proxyPort, setProxyPort] = useState<number | null>(null);
@@ -107,7 +100,28 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [networkSpeedBps, setNetworkSpeedBps] = useState<number | null>(null);
   const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [channelEpgLoading, setChannelEpgLoading] = useState(false);
-  const [activeSlot, setActiveSlot] = useState<0 | 1>(0);
+
+  const {
+    primaryVideoRef,
+    standbyVideoRef,
+    activeSlot,
+    activeSlotRef,
+    slotChannelIdRef,
+    hlsSlotsRef,
+    decoderPrewarmAllowedRef,
+    loadChannelInSlot,
+    activateSlot,
+    destroySlot,
+    setSlotMuted,
+    getVideoBySlot,
+    reportPrimaryState,
+    appendRuntimeLog,
+  } = useDualPlaybackEngine({
+    proxyPort,
+    locale,
+    onError: setError,
+    onNetworkSpeed: setNetworkSpeedBps,
+  });
 
   const GUIDE_AUTO_HIDE_MS = 3500;
   const CHANNEL_LIST_AUTO_HIDE_MS = 5000;
@@ -117,27 +131,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [playerFocusZone]);
 
   useEffect(() => {
-    localeRef.current = locale;
-  }, [locale]);
-
-  useEffect(() => {
-    activeSlotRef.current = activeSlot;
-  }, [activeSlot]);
-
-  useEffect(() => {
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
-  }, []);
-
-  const reportPrimaryState = useCallback(async (channelId: number | null, started: boolean) => {
-    try {
-      const allow = await tauriInvoke<boolean>("prewarm_report_primary", {
-        input: { channelId, started },
-      });
-      decoderPrewarmAllowedRef.current = allow;
-      return allow;
-    } catch {
-      return decoderPrewarmAllowedRef.current;
-    }
   }, []);
 
   const submitPrewarmIntents = useCallback(
@@ -152,185 +146,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       }
     },
     [],
-  );
-
-  const appendRuntimeLog = useCallback((event: string, data: Record<string, unknown>) => {
-    void tauriInvoke("append_runtime_log", {
-      input: { component: "player", event, data },
-    }).catch(() => undefined);
-  }, []);
-
-  const getVideoBySlot = useCallback(
-    (slot: 0 | 1) => (slot === 0 ? primaryVideoRef.current : standbyVideoRef.current),
-    [],
-  );
-
-  const setSlotMuted = useCallback(
-    (slot: 0 | 1, muted: boolean) => {
-      const video = getVideoBySlot(slot);
-      if (!video) return;
-      video.muted = muted;
-    },
-    [getVideoBySlot],
-  );
-
-  const destroySlot = useCallback(
-    (slot: 0 | 1) => {
-      if (hlsSlotsRef.current[slot]) {
-        hlsSlotsRef.current[slot]?.destroy();
-        hlsSlotsRef.current[slot] = null;
-      }
-      if (mpegtsSlotsRef.current[slot]) {
-        mpegtsSlotsRef.current[slot]?.pause();
-        mpegtsSlotsRef.current[slot]?.unload();
-        mpegtsSlotsRef.current[slot]?.detachMediaElement();
-        mpegtsSlotsRef.current[slot]?.destroy();
-        mpegtsSlotsRef.current[slot] = null;
-      }
-      const video = getVideoBySlot(slot);
-      if (video) {
-        video.removeAttribute("src");
-        video.load();
-      }
-      slotReadyRef.current[slot] = false;
-      slotKindRef.current[slot] = null;
-      slotUrlRef.current[slot] = null;
-      slotChannelIdRef.current[slot] = null;
-    },
-    [getVideoBySlot],
-  );
-
-  const activateSlot = useCallback(
-    (slot: 0 | 1) => {
-      const other: 0 | 1 = slot === 0 ? 1 : 0;
-      activeSlotRef.current = slot;
-      setActiveSlot(slot);
-      setSlotMuted(slot, false);
-      setSlotMuted(other, true);
-      const activeVideo = getVideoBySlot(slot);
-      activeVideo?.play().catch(() => {});
-    },
-    [getVideoBySlot, setSlotMuted],
-  );
-
-  const loadChannelInSlot = useCallback(
-    (slot: 0 | 1, target: Channel, prewarm: boolean) => {
-      if (proxyPort === null) return false;
-      const video = getVideoBySlot(slot);
-      if (!video) return false;
-
-      destroySlot(slot);
-      slotReadyRef.current[slot] = false;
-      video.muted = prewarm;
-      const proxiedUrl = toProxyUrl(target.streamUrl, proxyPort);
-      const kind = getPlaybackKind(target.streamUrl);
-      const markReady = () => {
-        if (slotChannelIdRef.current[slot] === target.id) {
-          slotReadyRef.current[slot] = true;
-          appendRuntimeLog("slot_ready", {
-            slot,
-            channelId: target.id,
-            prewarm,
-            isActiveSlot: slot === activeSlotRef.current,
-          });
-          if (slot === activeSlotRef.current) {
-            void reportPrimaryState(target.id, true);
-          }
-        }
-      };
-
-      if (kind === "hls") {
-        if (Hls.isSupported()) {
-          const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
-          hls.loadSource(proxiedUrl);
-          hls.attachMedia(video);
-          hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            markReady();
-            video.play().catch(() => {});
-          });
-          hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
-            if (slot !== activeSlotRef.current) return;
-            const fragData = data as unknown as {
-              stats?: {
-                total?: number;
-                loaded?: number;
-                loading?: { start?: number; end?: number };
-              };
-            };
-            const loadedBytes = fragData.stats?.total ?? fragData.stats?.loaded ?? 0;
-            const loadingStart = fragData.stats?.loading?.start ?? 0;
-            const loadingEnd = fragData.stats?.loading?.end ?? 0;
-            const durationMs = loadingEnd - loadingStart;
-            if (loadedBytes > 0 && durationMs > 0) {
-              const bitsPerSecond = (loadedBytes * 8 * 1000) / durationMs;
-              setNetworkSpeedBps(bitsPerSecond);
-            }
-          });
-          hls.on(Hls.Events.ERROR, (_e, data) => {
-            if (slot !== activeSlotRef.current) return;
-            if (data.fatal) {
-              setError(t(localeRef.current, "player.playbackErrorDetails", { details: data.details }));
-            }
-          });
-          hlsSlotsRef.current[slot] = hls;
-        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-          video.src = proxiedUrl;
-          video.play().catch(() => {});
-        } else if (slot === activeSlotRef.current) {
-          setError(t(localeRef.current, "player.hlsNotSupported"));
-        }
-      } else if (kind === "mpegts") {
-        if (mpegts.isSupported()) {
-          const player = mpegts.createPlayer({
-            type: "mpegts",
-            isLive: true,
-            url: proxiedUrl,
-          });
-          player.attachMediaElement(video);
-          player.load();
-          player.play();
-          player.on(mpegts.Events.STATISTICS_INFO, (stats) => {
-            markReady();
-            if (slot !== activeSlotRef.current) return;
-            const speedKiloBytesPerSec = Number((stats as { speed?: number })?.speed);
-            if (Number.isFinite(speedKiloBytesPerSec) && speedKiloBytesPerSec > 0) {
-              const bitsPerSecond = speedKiloBytesPerSec * 1024 * 8;
-              setNetworkSpeedBps(bitsPerSecond);
-            }
-          });
-          player.on(mpegts.Events.ERROR, () => {
-            if (slot !== activeSlotRef.current) return;
-            setError(t(localeRef.current, "player.mpegtsPlaybackError"));
-          });
-          mpegtsSlotsRef.current[slot] = player;
-        } else if (slot === activeSlotRef.current) {
-          setError(t(localeRef.current, "player.mpegtsNotSupported"));
-        }
-      } else {
-        video.addEventListener("loadeddata", markReady, { once: true });
-        video.src = proxiedUrl;
-        video.play().catch(() => {
-          if (slot !== activeSlotRef.current) return;
-          if (Hls.isSupported()) {
-            const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
-            hls.loadSource(proxiedUrl);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              video.play().catch(() => {});
-            });
-            hlsSlotsRef.current[slot] = hls;
-          } else {
-            setError(t(localeRef.current, "player.unsupportedStreamFormat"));
-          }
-        });
-      }
-
-      slotKindRef.current[slot] = kind;
-      slotUrlRef.current[slot] = proxiedUrl;
-      slotChannelIdRef.current[slot] = target.id;
-      return true;
-    },
-    [appendRuntimeLog, destroySlot, getVideoBySlot, proxyPort, reportPrimaryState],
   );
 
   useEffect(() => {
@@ -448,7 +263,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         streamUrl: item.streamUrl,
         reason: "list_focus",
         source: "channel_list_inner",
-        ttlMs: 1200,
+        ttlMs: PREWARM_TTL_LIST_FOCUS_MS,
       });
     }
     void submitPrewarmIntents(Array.from(intents.values()), 0);
@@ -578,7 +393,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       if (!error) {
         setOverlayVisible(false);
       }
-    }, 4000);
+    }, OVERLAY_HIDE_MS);
   }, [channel.id, error]);
 
   useEffect(() => {
@@ -607,7 +422,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const showSwitchOsd = useCallback((next: Channel) => {
     setOsdChannel(next);
     if (osdTimerRef.current) clearTimeout(osdTimerRef.current);
-    osdTimerRef.current = setTimeout(() => setOsdChannel(null), 2000);
+    osdTimerRef.current = setTimeout(() => setOsdChannel(null), OSD_DISPLAY_MS);
   }, []);
 
   const prewarmChannel = useCallback(
@@ -625,7 +440,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
             streamUrl: next.streamUrl,
             reason: "neighbor",
             source: "player",
-            ttlMs: 2500,
+            ttlMs: PREWARM_TTL_NEIGHBOR_MS,
           },
         ],
         1,
@@ -656,11 +471,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           streamUrl: target.streamUrl,
           reason: "neighbor" as const,
           source: "player" as const,
-          ttlMs: 2000,
+          ttlMs: PREWARM_TTL_NEIGHBOR_BG_MS,
         })),
         0,
       );
-    }, 320);
+    }, NEIGHBOR_WARM_DELAY_MS);
     return () => clearTimeout(timer);
   }, [
     channel.id,
@@ -690,7 +505,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
             streamUrl: next.streamUrl,
             reason: "explicit_switch",
             source: "player",
-            ttlMs: 6000,
+            ttlMs: PREWARM_TTL_EXPLICIT_MS,
           },
         ],
         1,

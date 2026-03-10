@@ -4,12 +4,11 @@ use std::net::TcpListener;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use serde_json::json;
 use tokio::sync::RwLock;
 use url::Url;
 use warp::{Filter, Reply};
 
-use crate::core::services::runtime_logger::append_runtime_log;
+const ALLOWED_SCHEMES: &[&str] = &["http", "https"];
 
 const PLAYLIST_CACHE_TTL: Duration = Duration::from_secs(2);
 const PLAYLIST_CACHE_MAX_ENTRIES: usize = 64;
@@ -84,6 +83,14 @@ async fn handle_proxy(
             .into_response())
         }
     };
+
+    if let Err(reason) = validate_stream_url(&url) {
+        return Ok(warp::reply::with_status(
+            reason.to_string(),
+            warp::http::StatusCode::FORBIDDEN,
+        )
+        .into_response());
+    }
 
     maybe_schedule_host_warm(state.clone(), &url).await;
 
@@ -168,59 +175,44 @@ async fn handle_warm(
         }
     };
 
+    if let Err(reason) = validate_stream_url(&url) {
+        return Ok(warp::reply::with_status(
+            reason.to_string(),
+            warp::http::StatusCode::FORBIDDEN,
+        )
+        .into_response());
+    }
+
     maybe_schedule_host_warm(state.clone(), &url).await;
     let mode = params
         .get("mode")
         .map(|value| value.to_ascii_lowercase())
         .unwrap_or_else(|| "auto".to_string());
-    let requested_mode = mode.clone();
     let segment_count = params
         .get("segment_count")
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(1)
         .max(1)
         .min(3);
-    let started_at = Instant::now();
-    let mut playlist_warmed = false;
-    let mut prefetched_segments = 0usize;
-    let warm_stream_host = stream_host(&url);
-
     match mode.as_str() {
         "conn" => {}
         "playlist" => {
             if is_playlist_url(&url) {
                 let _ = warm_playlist_cache(state, url).await;
-                playlist_warmed = true;
             }
         }
         "segment" => {
             if is_playlist_url(&url) {
                 let _ = warm_playlist_cache(state.clone(), url.clone()).await;
-                playlist_warmed = true;
-                prefetched_segments = prefetch_playlist_segments(state, url, segment_count)
-                    .await
-                    .unwrap_or(0);
+                let _ = prefetch_playlist_segments(state, url, segment_count).await;
             }
         }
         _ => {
             if is_playlist_url(&url) {
                 let _ = warm_playlist_cache(state, url).await;
-                playlist_warmed = true;
             }
         }
     }
-    append_runtime_log(
-        "proxy",
-        "handle_warm",
-        json!({
-            "mode": requested_mode,
-            "segment_count_requested": segment_count,
-            "playlist_warmed": playlist_warmed,
-            "prefetched_segments": prefetched_segments,
-            "stream_host": warm_stream_host,
-            "elapsed_ms": started_at.elapsed().as_millis(),
-        }),
-    );
 
     Ok(warp::reply::with_status("", warp::http::StatusCode::NO_CONTENT).into_response())
 }
@@ -386,12 +378,6 @@ async fn prefetch_segment(client: reqwest::Client, segment_url: String) -> Resul
     Ok(())
 }
 
-fn stream_host(stream_url: &str) -> Option<String> {
-    Url::parse(stream_url)
-        .ok()
-        .and_then(|url| url.host_str().map(|value| value.to_string()))
-}
-
 async fn maybe_schedule_host_warm(state: ProxyState, raw_url: &str) {
     let parsed = match Url::parse(raw_url) {
         Ok(value) => value,
@@ -442,6 +428,26 @@ fn insert_common_headers(headers: &mut warp::http::HeaderMap, content_type: &str
         warp::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
         warp::http::HeaderValue::from_static("*"),
     );
+}
+
+fn validate_stream_url(raw: &str) -> Result<(), &'static str> {
+    let parsed = Url::parse(raw).map_err(|_| "Invalid URL")?;
+    let scheme = parsed.scheme().to_ascii_lowercase();
+    if !ALLOWED_SCHEMES.contains(&scheme.as_str()) {
+        return Err("Scheme not allowed");
+    }
+    if let Some(host) = parsed.host_str() {
+        let lower = host.to_ascii_lowercase();
+        if lower == "localhost"
+            || lower == "127.0.0.1"
+            || lower == "[::1]"
+            || lower == "0.0.0.0"
+            || lower.ends_with(".local")
+        {
+            return Err("Localhost access not allowed");
+        }
+    }
+    Ok(())
 }
 
 /// Rewrite URLs inside m3u8 playlists to go through the proxy.

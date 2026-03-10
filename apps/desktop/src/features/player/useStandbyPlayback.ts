@@ -7,14 +7,14 @@ import { tauriInvoke } from "../../lib/tauri";
 import type { Channel } from "../../types/api";
 import { getPlaybackKind, toProxyUrl, type PlaybackKind } from "./playerUtils";
 
-export interface UseTripleSlotPlaybackEngineOptions {
+export interface UseStandbyPlaybackOptions {
   proxyPort: number | null;
   locale: Locale;
   onError: (error: string | null) => void;
   onNetworkSpeed: (bps: number) => void;
 }
 
-export interface TripleSlotPlaybackEngine {
+export interface StandbyPlaybackEngine {
   prevVideoRef: React.RefObject<HTMLVideoElement>;
   activeVideoRef: React.RefObject<HTMLVideoElement>;
   nextVideoRef: React.RefObject<HTMLVideoElement>;
@@ -151,12 +151,12 @@ function loadNativeSlot(
    });
 }
 
-export function useTripleSlotPlaybackEngine({
+export function useStandbyPlayback({
   proxyPort,
   locale,
   onError,
   onNetworkSpeed,
-}: UseTripleSlotPlaybackEngineOptions): TripleSlotPlaybackEngine {
+}: UseStandbyPlaybackOptions): StandbyPlaybackEngine {
   const prevVideoRef = useRef<HTMLVideoElement>(null);
   const activeVideoRef = useRef<HTMLVideoElement>(null);
   const nextVideoRef = useRef<HTMLVideoElement>(null);

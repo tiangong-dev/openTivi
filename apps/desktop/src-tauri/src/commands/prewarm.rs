@@ -4,10 +4,8 @@ use tauri::State;
 use crate::core::services::prewarm_orchestrator::{
     PrewarmIntent, PrewarmReason, PrewarmSource, PrimaryPlaybackState,
 };
-use crate::core::services::runtime_logger::append_runtime_log;
 use crate::error::AppResult;
 use crate::state::AppState;
-use serde_json::json;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,17 +77,7 @@ pub async fn prewarm_report_primary(
             started: input.started,
         })
         .await;
-    let allow_decoder = state.prewarm.allow_decoder_prewarm().await;
-    append_runtime_log(
-        "prewarm_command",
-        "report_primary",
-        json!({
-            "channel_id": input.channel_id,
-            "started": input.started,
-            "allow_decoder_prewarm": allow_decoder,
-        }),
-    );
-    Ok(allow_decoder)
+    Ok(state.prewarm.allow_decoder_prewarm().await)
 }
 
 #[tauri::command]
@@ -97,18 +85,6 @@ pub async fn prewarm_submit_intents(
     state: State<'_, AppState>,
     input: PrewarmSubmitInput,
 ) -> AppResult<Vec<i64>> {
-    let input_summary: Vec<serde_json::Value> = input
-        .intents
-        .iter()
-        .map(|item| {
-            json!({
-                "channel_id": item.channel_id,
-                "reason": format!("{:?}", item.reason),
-                "source": format!("{:?}", item.source),
-                "ttl_ms": item.ttl_ms,
-            })
-        })
-        .collect();
     let intents = input
         .intents
         .into_iter()
@@ -121,21 +97,10 @@ pub async fn prewarm_submit_intents(
         })
         .collect();
     state.prewarm.submit_intents(intents).await;
-    let decoder_targets = state
+    Ok(state
         .prewarm
         .poll_decoder_targets(input.decoder_slots.unwrap_or(1))
-        .await;
-    append_runtime_log(
-        "prewarm_command",
-        "submit_intents",
-        json!({
-            "intent_count": input_summary.len(),
-            "intents": input_summary,
-            "decoder_slots": input.decoder_slots.unwrap_or(1),
-            "decoder_targets": decoder_targets,
-        }),
-    );
-    Ok(decoder_targets)
+        .await)
 }
 
 #[tauri::command]
@@ -143,13 +108,6 @@ pub async fn prewarm_clear_source(
     state: State<'_, AppState>,
     source: PrewarmSourceInput,
 ) -> AppResult<()> {
-    append_runtime_log(
-        "prewarm_command",
-        "clear_source",
-        json!({
-            "source": format!("{:?}", source),
-        }),
-    );
     state.prewarm.clear_source(map_source(source)).await;
     Ok(())
 }

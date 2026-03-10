@@ -44,9 +44,9 @@ import {
 const OVERLAY_HIDE_MS = 4000;
 const OSD_DISPLAY_MS = 2000;
 const NEIGHBOR_WARM_DELAY_MS = 320;
-const STANDBY_SLOT_TTL_MS = 2500; // TTL for standby slots - sync with backend
-const PREWARM_TTL_NEIGHBOR_MS = STANDBY_SLOT_TTL_MS; // Send to backend
-const PREWARM_TTL_NEIGHBOR_BG_MS = STANDBY_SLOT_TTL_MS;
+const STANDBY_SLOT_TTL_MS = 60000; // 1min - keep standby slots ready
+const PREWARM_TTL_NEIGHBOR_MS = 2500; // Send to backend - release resources after 2.5s
+const PREWARM_TTL_NEIGHBOR_BG_MS = 2000;
 const PREWARM_TTL_EXPLICIT_MS = 6000;
 const PREWARM_TTL_LIST_FOCUS_MS = 1200;
 

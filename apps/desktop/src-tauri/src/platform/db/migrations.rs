@@ -17,6 +17,14 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0004_epg_channel_aliases",
         include_str!("../../../migrations/0004_epg_channel_aliases.sql"),
     ),
+    (
+        "0005_normalized_name",
+        include_str!("../../../migrations/0005_normalized_name.sql"),
+    ),
+    (
+        "0006_channel_health",
+        include_str!("../../../migrations/0006_channel_health.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {

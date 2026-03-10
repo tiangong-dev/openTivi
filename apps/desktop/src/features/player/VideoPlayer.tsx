@@ -451,12 +451,29 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         ],
         1,
       );
-      if (!decoderPrewarmAllowedRef.current) return;
-      if (proxyPort === null) return;
-      if (!standbyEnabled) return;
+      if (!decoderPrewarmAllowedRef.current) {
+        console.log("[Standby] Prewarm not allowed");
+        return;
+      }
+      if (proxyPort === null) {
+        console.log("[Standby] Proxy port not available");
+        return;
+      }
+      if (!standbyEnabled) {
+        console.log("[Standby] Standby disabled in settings");
+        return;
+      }
       const standbySlot = getStandbySlot(activeSlotRef.current);
-      if (shouldLoadInStandby(slotChannelIdRef.current[standbySlot], next.id)) {
+      const currentStandbyChannelId = slotChannelIdRef.current[standbySlot];
+      if (shouldLoadInStandby(currentStandbyChannelId, next.id)) {
+        console.log(
+          `[Standby] Loading channel ${next.id} (${next.name}) into standby slot ${standbySlot}, previous: ${currentStandbyChannelId}`,
+        );
         loadChannelInSlot(standbySlot, next, true);
+      } else {
+        console.log(
+          `[Standby] Channel ${next.id} already in standby slot ${standbySlot}, skip loading`,
+        );
       }
       setSlotMuted(standbySlot, true);
     },
@@ -469,6 +486,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       const preferred = preferredDirectionRef.current;
       const baseChannelId = getCurrentPlaybackChannelId();
       const { predicted, warmTargets } = buildNeighborWarmPlan(channels, baseChannelId, preferred);
+      console.log(
+        `[Standby] Neighbor warm plan - base: ${baseChannelId}, direction: ${preferred}, predicted: ${predicted?.id} (${predicted?.name}), warm targets: ${warmTargets.map((t) => `${t.id}(${t.name})`).join(", ")}`,
+      );
       if (predicted) {
         prewarmChannel(predicted);
       }
@@ -505,6 +525,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         baseChannelId,
         nextChannelId: next.id,
       });
+      console.log(
+        `[Standby] User switch - from ${baseChannelId} to ${next.id} (${next.name}), direction: ${direction}`,
+      );
       void submitPrewarmIntents(
         [
           {
@@ -520,7 +543,14 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       showSwitchOsd(next);
       const standbySlot = getStandbySlot(activeSlotRef.current);
       if (shouldLoadInStandby(slotChannelIdRef.current[standbySlot], next.id)) {
+        console.log(
+          `[Standby] Activating standby slot ${standbySlot} with channel ${next.id} (${next.name})`,
+        );
         loadChannelInSlot(standbySlot, next, false);
+      } else {
+        console.log(
+          `[Standby] Standby slot ${standbySlot} already has channel ${next.id}, activate directly`,
+        );
       }
       setError(null);
       activateSlot(standbySlot);

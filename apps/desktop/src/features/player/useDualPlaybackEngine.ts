@@ -223,6 +223,8 @@ export function useDualPlaybackEngine({
 
   const destroySlot = useCallback(
     (slot: 0 | 1) => {
+      const oldChannelId = slotChannelIdRef.current[slot];
+      console.log(`[Standby] destroySlot - slot ${slot} (channel: ${oldChannelId})`);
       if (hlsSlotsRef.current[slot]) {
         hlsSlotsRef.current[slot]?.destroy();
         hlsSlotsRef.current[slot] = null;
@@ -250,6 +252,9 @@ export function useDualPlaybackEngine({
   const activateSlot = useCallback(
     (slot: 0 | 1) => {
       const other: 0 | 1 = slot === 0 ? 1 : 0;
+      console.log(
+        `[Standby] activateSlot - slot ${slot} (channel: ${slotChannelIdRef.current[slot]}), mute slot ${other} (channel: ${slotChannelIdRef.current[other]})`,
+      );
       activeSlotRef.current = slot;
       setActiveSlot(slot);
       setSlotMuted(slot, false);
@@ -266,6 +271,9 @@ export function useDualPlaybackEngine({
       const video = getVideoBySlot(slot);
       if (!video) return false;
 
+      console.log(
+        `[Standby] loadChannelInSlot - slot: ${slot}, channel: ${target.id} (${target.name}), prewarm: ${prewarm}`,
+      );
       destroySlot(slot);
       slotReadyRef.current[slot] = false;
       video.muted = prewarm;
@@ -274,6 +282,9 @@ export function useDualPlaybackEngine({
       const markReady = () => {
         if (slotChannelIdRef.current[slot] === target.id) {
           slotReadyRef.current[slot] = true;
+          console.log(
+            `[Standby] Slot ${slot} ready - channel: ${target.id} (${target.name}), prewarm: ${prewarm}, isActive: ${slot === activeSlotRef.current}`,
+          );
           appendRuntimeLog("slot_ready", {
             slot,
             channelId: target.id,

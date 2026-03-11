@@ -3,7 +3,8 @@ import { useIndexFocusGroup, useLinearFocusGroup } from "../../lib/focusScope";
 import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
 import { t, type Locale } from "../../lib/i18n";
-import { TvIntent, type TvContentKeyDetail } from "../../lib/tvInput";
+import { useTvViewEvents, useViewActivity } from "../../lib/tvEvents";
+import { TvIntent } from "../../lib/tvInput";
 import type { Source, ImportSummary } from "../../types/api";
 
 type ImportTab = "m3u" | "xtream" | "xmltv";
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function SourcesView({ locale }: Props) {
+  const { isKeyboardContentActive, shouldClearDomFocus } = useViewActivity("sources");
   const [sources, setSources] = useState<Source[]>([]);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [activeTab, setActiveTab] = useState<ImportTab>("m3u");
@@ -32,7 +34,6 @@ export function SourcesView({ locale }: Props) {
   const [focusTarget, setFocusTarget] = useState<SourceFocusTarget>("add");
   const [domFocusedSourceId, setDomFocusedSourceId] = useState<number | null>(null);
   const [hoveredSourceId, setHoveredSourceId] = useState<number | null>(null);
-  const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const refreshingSourceIds = useRef<Set<number>>(new Set());
   const addButtonRef = useRef<HTMLButtonElement | null>(null);
   const addTabRefs = useRef<Record<ImportTab, HTMLButtonElement | null>>({
@@ -132,39 +133,23 @@ export function SourcesView({ locale }: Props) {
   };
 
   useEffect(() => {
-    const onZoneChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
-      const inThisView = !detail?.view || detail.view === "sources";
-      setIsContentZoneActive(detail?.zone === "content" && inThisView);
-      if (detail?.zone === "nav" && inThisView) {
-        setDomFocusedSourceId(null);
-      }
-    };
-    window.addEventListener("tv-focus-zone", onZoneChange as EventListener);
-    return () => {
-      window.removeEventListener("tv-focus-zone", onZoneChange as EventListener);
-    };
-  }, []);
+    if (shouldClearDomFocus) {
+      setDomFocusedSourceId(null);
+    }
+  }, [shouldClearDomFocus]);
 
-  useEffect(() => {
-    const onFocusContent = (event: Event) => {
-      const detail = (event as CustomEvent<{ view?: string }>).detail;
-      if (detail?.view && detail.view !== "sources") {
-        return;
-      }
+  useTvViewEvents({
+    views: "sources",
+    onFocusContent: () => {
       if (focusTarget === "list" && filteredSources.length > 0) {
         focusSourceByIndex(focusedSourceIndex);
         return;
       }
       focusAddButton();
-    };
-
-    const onContentKey = (event: Event) => {
+    },
+    onContentKey: (event) => {
       if (event.defaultPrevented) return;
-      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
-      if (detail?.view && detail.view !== "sources") {
-        return;
-      }
+      const detail = event.detail;
       const intent = detail?.intent;
       const key = detail?.key;
       if (!intent && !key) return;
@@ -255,15 +240,8 @@ export function SourcesView({ locale }: Props) {
         event.preventDefault();
         void handleRefresh(current.id);
       }
-    };
-
-    window.addEventListener("tv-focus-content", onFocusContent as EventListener);
-    window.addEventListener("tv-content-key", onContentKey as EventListener);
-    return () => {
-      window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
-      window.removeEventListener("tv-content-key", onContentKey as EventListener);
-    };
-  }, [activeTab, deleteConfirmAction, deleteConfirmSource, editing, filteredSources, focusTarget, focusedSourceIndex, showAddModal]);
+    },
+  });
 
   useEffect(() => {
     if (!showAddModal && !editing && !deleteConfirmSource) return;
@@ -461,7 +439,7 @@ export function SourcesView({ locale }: Props) {
           style={{
             ...submitBtnStyle,
             alignSelf: "auto",
-            backgroundColor: focusTarget === "add" && isContentZoneActive ? "var(--accent-hover)" : "var(--accent)",
+            backgroundColor: focusTarget === "add" && isKeyboardContentActive ? "var(--accent-hover)" : "var(--accent)",
           }}
         >
           + {t(locale, "sources.action.add")}
@@ -529,7 +507,7 @@ export function SourcesView({ locale }: Props) {
                   style={{
                     borderBottom: "1px solid var(--border)",
                     outline: "none",
-                    ...(hoveredSourceId === s.id || (isContentZoneActive && domFocusedSourceId === s.id) ? sourceRowActiveStyle : null),
+                    ...(hoveredSourceId === s.id || (isKeyboardContentActive && domFocusedSourceId === s.id) ? sourceRowActiveStyle : null),
                   }}
                   onFocus={() => {
                     setFocusTarget("list");

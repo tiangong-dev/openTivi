@@ -9,12 +9,12 @@ import {
   type EpgReminder,
 } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
+import { useTvViewEvents, useViewActivity } from "../../lib/tvEvents";
 import {
   ConfirmGesture,
   createConfirmPressHandler,
   isConfirmGestureOneOf,
   TvIntent,
-  type TvContentKeyDetail,
 } from "../../lib/tvInput";
 import type { Channel, EpgProgramSearchResult, Setting, Source } from "../../types/api";
 import { formatTime, parseXmltvDate } from "../player/playerUtils";
@@ -61,6 +61,7 @@ const browseAnchorOrder = [
 ] as const;
 
 export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
+  const { isKeyboardContentActive } = useViewActivity("channels");
   const [channels, setChannels] = useState<Channel[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
@@ -86,8 +87,6 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   const [filterSortIndex, setFilterSortIndex] = useState(0);
   const [epgRegion, setEpgRegion] = useState<EpgRegion>("input");
   const [epgResultIndex, setEpgResultIndex] = useState(0);
-  const [isContentZoneActive, setIsContentZoneActive] = useState(false);
-
   const channelSearchEntryRef = useRef<HTMLButtonElement | null>(null);
   const channelSearchInputRef = useRef<HTMLInputElement | null>(null);
   const filterEntryRef = useRef<HTMLButtonElement | null>(null);
@@ -135,10 +134,10 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   const currentChannel = channels[focusedChannelIndex] ?? null;
   const isBrowseMode = mode === ChannelsMode.Browse;
   const isSearchBarActive =
-    isContentZoneActive &&
+    isKeyboardContentActive &&
     (mode === ChannelsMode.ChannelSearchEditing ||
       (isBrowseMode && focusAnchor === ChannelsFocusAnchor.ChannelSearchEntry));
-  const isListActive = isContentZoneActive && isBrowseMode && focusAnchor === ChannelsFocusAnchor.ChannelList;
+  const isListActive = isKeyboardContentActive && isBrowseMode && focusAnchor === ChannelsFocusAnchor.ChannelList;
   const sourceIndex = Math.max(0, sourceOptions.findIndex((option) => option.value === selectedSourceId));
   const groupIndex = Math.max(0, groupOptions.findIndex((option) => option.value === selectedGroup));
   const sortIndex = Math.max(0, sortOptions.findIndex((option) => option.value === sortBy));
@@ -373,7 +372,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   };
 
   const focusCurrentTarget = () => {
-    if (!isContentZoneActive) return;
+    if (!isKeyboardContentActive) return;
     window.setTimeout(() => {
       if (mode === ChannelsMode.ChannelSearchEditing) {
         channelSearchInputRef.current?.focus();
@@ -441,7 +440,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     filterSortIndex,
     filterSourceIndex,
     focusAnchor,
-    isContentZoneActive,
+    isKeyboardContentActive,
     mode,
   ]);
 
@@ -622,28 +621,14 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     epgStatusOptions,
   ]);
 
-  useEffect(() => {
-    const onZoneChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
-      const inThisView = !detail?.view || detail.view === "channels";
-      if (!inThisView) return;
-      setIsContentZoneActive(detail?.zone === "content");
-    };
-
-    const onFocusContent = (event: Event) => {
-      const detail = (event as CustomEvent<{ view?: string }>).detail;
-      if (detail?.view && detail.view !== "channels") {
-        return;
-      }
+  useTvViewEvents({
+    views: "channels",
+    onFocusContent: () => {
       focusCurrentTarget();
-    };
-
-    const onContentKey = (event: Event) => {
+    },
+    onContentKey: (event) => {
       if (event.defaultPrevented) return;
-      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
-      if (detail?.view && detail.view !== "channels") {
-        return;
-      }
+      const detail = event.detail;
       const intent = detail?.intent;
       if (!intent) return;
 
@@ -783,14 +768,10 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
           confirmPressRef.current?.onKeyDown(Boolean(detail?.repeat));
         }
       }
-    };
-
-    const onContentKeyUp = (event: Event) => {
+    },
+    onContentKeyUp: (event) => {
       if (event.defaultPrevented) return;
-      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
-      if (detail?.view && detail.view !== "channels") {
-        return;
-      }
+      const detail = event.detail;
       if (detail?.intent !== TvIntent.Confirm) return;
       if (
         mode === ChannelsMode.ChannelSearchEditing ||
@@ -800,37 +781,8 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
       }
       event.preventDefault();
       confirmPressRef.current?.onKeyUp();
-    };
-
-    window.addEventListener("tv-focus-zone", onZoneChange as EventListener);
-    window.addEventListener("tv-focus-content", onFocusContent as EventListener);
-    window.addEventListener("tv-content-key", onContentKey as EventListener);
-    window.addEventListener("tv-content-keyup", onContentKeyUp as EventListener);
-    return () => {
-      window.removeEventListener("tv-focus-zone", onZoneChange as EventListener);
-      window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
-      window.removeEventListener("tv-content-key", onContentKey as EventListener);
-      window.removeEventListener("tv-content-keyup", onContentKeyUp as EventListener);
-    };
-  }, [
-    channels.length,
-    currentChannel,
-    epgRegion,
-    epgResultIndex,
-    epgResults,
-    epgStateFilter,
-    filterColumn,
-    focusAnchor,
-    focusedChannelIndex,
-    filterGroupIndex,
-    filterSortIndex,
-    filterSourceIndex,
-    mode,
-    sourceOptions,
-    groupOptions,
-    sortOptions,
-    epgStatusOptions,
-  ]);
+    },
+  });
 
   const renderEntryButton = (
     ref: Ref<HTMLButtonElement>,
@@ -901,14 +853,14 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
           filterEntryRef,
           t(locale, "channels.filterEntry"),
           `${sourceOptions[sourceIndex]?.label ?? t(locale, "channels.allSources")} · ${groupOptions[groupIndex]?.label ?? t(locale, "channels.all")} · ${sortOptions[sortIndex]?.label ?? ""}`,
-          isContentZoneActive && isBrowseMode && focusAnchor === ChannelsFocusAnchor.FilterEntry,
+          isKeyboardContentActive && isBrowseMode && focusAnchor === ChannelsFocusAnchor.FilterEntry,
           openFilters,
         )}
         {renderEntryButton(
           epgEntryRef,
           t(locale, "epg.explorer.title"),
           `${t(locale, "epg.explorer.reminders")}: ${epgReminders.length}`,
-          isContentZoneActive && isBrowseMode && focusAnchor === ChannelsFocusAnchor.EpgEntry,
+          isKeyboardContentActive && isBrowseMode && focusAnchor === ChannelsFocusAnchor.EpgEntry,
           openEpg,
           epgSearch || undefined,
         )}

@@ -7,6 +7,7 @@ import {
   GUIDE_WINDOW_MINUTES_SETTING_KEY,
   resolveGuideWindowMinutes,
 } from "../../lib/settings";
+import { useTvViewEvents, useViewActivity } from "../../lib/tvEvents";
 import { buildSnapshotRequestChannelIds } from "../../lib/epgSnapshots";
 import {
   ConfirmGesture,
@@ -14,7 +15,6 @@ import {
   isConfirmGestureOneOf,
   mapKeyToTvIntent,
   TvIntent,
-  type TvContentKeyDetail,
 } from "../../lib/tvInput";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel, ChannelEpgSnapshot, Setting } from "../../types/api";
@@ -58,6 +58,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
   virtualized = false,
   virtualListHeight = 560,
 }: Props<T>) {
+  const { isKeyboardContentActive, shouldClearDomFocus } = useViewActivity(["channels", "favorites", "recents"]);
   const [snapshots, setSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [loading, setLoading] = useState(false);
   const [nowTs, setNowTs] = useState(() => Date.now());
@@ -65,7 +66,6 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const [uncontrolledFocusedIndex, setUncontrolledFocusedIndex] = useState(0);
   const [domFocusedIndex, setDomFocusedIndex] = useState<number | null>(null);
   const [hoveredChannelId, setHoveredChannelId] = useState<number | null>(null);
-  const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
@@ -291,29 +291,21 @@ export function ChannelRowsWithGuide<T extends Channel>({
   }, []);
 
   useEffect(() => {
-    const onZoneChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
-      const inThisView = !detail?.view || ["channels", "favorites", "recents"].includes(detail.view);
-      setIsContentZoneActive(detail?.zone === "content" && inThisView);
-      if (detail?.zone === "nav" && inThisView) {
-        setDomFocusedIndex(null);
-        confirmPressRef.current?.clear();
-      }
-    };
-    const onFocusContent = (event: Event) => {
-      const detail = (event as CustomEvent<{ view?: string }>).detail;
-      if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
-        return;
-      }
+    if (shouldClearDomFocus) {
+      setDomFocusedIndex(null);
+      confirmPressRef.current?.clear();
+    }
+  }, [shouldClearDomFocus]);
+
+  useTvViewEvents({
+    views: ["channels", "favorites", "recents"],
+    onFocusContent: () => {
       if (!active) return;
       if (items.length === 0) return;
       focusRowByIndex(focusedIndex);
-    };
-    const onContentKey = (event: Event) => {
-      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
-      if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
-        return;
-      }
+    },
+    onContentKey: (event) => {
+      const detail = event.detail;
       if (!keyboardNavigationEnabled || !active) return;
       const key = detail?.key;
       const intent = detail?.intent ?? (key ? mapKeyToTvIntent(key) : null);
@@ -341,30 +333,17 @@ export function ChannelRowsWithGuide<T extends Channel>({
         event.preventDefault();
         triggerFavorite(current);
       }
-    };
-    const onContentKeyUp = (event: Event) => {
-      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
-      if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
-        return;
-      }
+    },
+    onContentKeyUp: (event) => {
+      const detail = event.detail;
       if (!keyboardNavigationEnabled || !active) return;
       const key = detail?.key;
       const intent = detail?.intent ?? (key ? mapKeyToTvIntent(key) : null);
       if (intent !== TvIntent.Confirm) return;
       event.preventDefault();
       confirmPressRef.current?.onKeyUp();
-    };
-    window.addEventListener("tv-focus-zone", onZoneChange as EventListener);
-    window.addEventListener("tv-focus-content", onFocusContent as EventListener);
-    window.addEventListener("tv-content-key", onContentKey as EventListener);
-    window.addEventListener("tv-content-keyup", onContentKeyUp as EventListener);
-    return () => {
-      window.removeEventListener("tv-focus-zone", onZoneChange as EventListener);
-      window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
-      window.removeEventListener("tv-content-key", onContentKey as EventListener);
-      window.removeEventListener("tv-content-keyup", onContentKeyUp as EventListener);
-    };
-  }, [active, focusedIndex, items, keyboardNavigationEnabled, onMoveBeforeFirst, onToggleFavorite]);
+    },
+  });
 
   useEffect(() => {
     return () => {
@@ -388,7 +367,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
       {visibleItems.map(({ item: ch, index }) => {
         const snapshot = snapshots[ch.id];
         const isActive =
-          hoveredChannelId === ch.id || (isContentZoneActive && domFocusedIndex === index);
+          hoveredChannelId === ch.id || (isKeyboardContentActive && domFocusedIndex === index);
         return (
           <div key={ch.id} style={{ borderBottom: "1px solid var(--border)" }}>
             <div

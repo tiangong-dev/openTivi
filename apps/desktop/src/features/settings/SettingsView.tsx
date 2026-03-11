@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useIndexFocusGroup, useLinearFocusGroup } from "../../lib/focusScope";
 import { getErrorMessage } from "../../lib/errors";
 import { LOCALE_SETTING_KEY, t, type Locale, type TranslationKey } from "../../lib/i18n";
+import { useTvViewEvents, useViewActivity } from "../../lib/tvEvents";
 import {
   APP_START_VIEW_SETTING_KEY,
   DEFAULT_APP_START_VIEW,
@@ -14,7 +15,7 @@ import {
   PREFER_NATIVE_HLS_SETTING_KEY,
 } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
-import { TvIntent, type TvContentKeyDetail } from "../../lib/tvInput";
+import { TvIntent } from "../../lib/tvInput";
 import type { AppUpdateInfo, Setting } from "../../types/api";
 
 interface Props {
@@ -109,11 +110,16 @@ interface SettingOption {
   value: string;
 }
 
+let cachedSettingsValues: Record<string, unknown> | null = null;
+let cachedUpdateInfo: AppUpdateInfo | null = null;
+let cachedUpdateError: string | null = null;
+
 export function SettingsView({ locale, onLocaleChange }: Props) {
-  const [values, setValues] = useState<Record<string, unknown>>({});
+  const { isKeyboardContentActive, shouldClearDomFocus } = useViewActivity("settings");
+  const [values, setValues] = useState<Record<string, unknown>>(() => cachedSettingsValues ?? {});
   const [error, setError] = useState<string | null>(null);
-  const [updateError, setUpdateError] = useState<string | null>(null);
-  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(() => cachedUpdateError);
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(() => cachedUpdateInfo);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [flash, setFlash] = useState(false);
   const [focusedSettingKey, setFocusedSettingKey] = useState<string | null>(null);
@@ -122,7 +128,6 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   const [editOptionIndex, setEditOptionIndex] = useState(0);
   const [domFocusedSettingKey, setDomFocusedSettingKey] = useState<string | null>(null);
   const [hoveredSettingKey, setHoveredSettingKey] = useState<string | null>(null);
-  const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const decreaseModalBtnRef = useRef<HTMLButtonElement | null>(null);
   const increaseModalBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -189,6 +194,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       for (const s of list) {
         map[s.key] = s.value;
       }
+      cachedSettingsValues = map;
       setValues(map);
       setError(null);
     } catch (e) {
@@ -197,13 +203,18 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   };
 
   const checkAppUpdate = async () => {
+    if (checkingUpdate) return;
     setCheckingUpdate(true);
     setUpdateError(null);
     try {
       const info = await tauriInvoke<AppUpdateInfo>("check_app_update");
+      cachedUpdateInfo = info;
+      cachedUpdateError = null;
       setUpdateInfo(info);
     } catch (e) {
-      setUpdateError(getErrorMessage(e));
+      const message = getErrorMessage(e);
+      cachedUpdateError = message;
+      setUpdateError(message);
     } finally {
       setCheckingUpdate(false);
     }
@@ -211,7 +222,6 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
 
   useEffect(() => {
     void loadSettings();
-    void checkAppUpdate();
   }, []);
 
   useEffect(() => {
@@ -252,26 +262,14 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   }, [editAction, editingSetting, editOptionIndex]);
 
   useEffect(() => {
-    const onZoneChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
-      const inThisView = !detail?.view || detail.view === "settings";
-      setIsContentZoneActive(detail?.zone === "content" && inThisView);
-      if (detail?.zone === "nav" && inThisView) {
-        setDomFocusedSettingKey(null);
-      }
-    };
-    window.addEventListener("tv-focus-zone", onZoneChange as EventListener);
-    return () => {
-      window.removeEventListener("tv-focus-zone", onZoneChange as EventListener);
-    };
-  }, []);
+    if (shouldClearDomFocus) {
+      setDomFocusedSettingKey(null);
+    }
+  }, [shouldClearDomFocus]);
 
-  useEffect(() => {
-    const onFocusContent = (event: Event) => {
-      const detail = (event as CustomEvent<{ view?: string }>).detail;
-      if (detail?.view && detail.view !== "settings") {
-        return;
-      }
+  useTvViewEvents({
+    views: "settings",
+    onFocusContent: () => {
       if (editingSetting) {
         window.setTimeout(() => {
           if (editingSetting.type !== "range" && editingSetting.type !== "action") {
@@ -296,13 +294,10 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
         ? orderedSettings.findIndex((item) => item.key === focusedSettingKey)
         : 0;
       focusSettingByIndex(currentIndex >= 0 ? currentIndex : 0);
-    };
-    const onContentKey = (event: Event) => {
+    },
+    onContentKey: (event) => {
       if (event.defaultPrevented) return;
-      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
-      if (detail?.view && detail.view !== "settings") {
-        return;
-      }
+      const detail = event.detail;
       const intent = detail?.intent;
       if (!intent || orderedSettings.length === 0) return;
       if (editingSetting) {
@@ -369,14 +364,8 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
         }
         setEditingSettingKey(current.key);
       }
-    };
-    window.addEventListener("tv-focus-content", onFocusContent as EventListener);
-    window.addEventListener("tv-content-key", onContentKey as EventListener);
-    return () => {
-      window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
-      window.removeEventListener("tv-content-key", onContentKey as EventListener);
-    };
-  }, [editAction, editActionGroup, editOptionGroup, editOptionIndex, editingOptions, editingSetting, focusedSettingIndex, orderedSettings, settingsListGroup]);
+    },
+  });
 
   useEffect(() => {
     if (!editingSetting) return;
@@ -534,7 +523,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
               data-tv-focusable={focusedSettingKey === def.key ? "true" : undefined}
               style={{
                 ...rowStyle,
-                ...(hoveredSettingKey === def.key || (isContentZoneActive && domFocusedSettingKey === def.key) ? rowActiveStyle : null),
+                ...(hoveredSettingKey === def.key || (isKeyboardContentActive && domFocusedSettingKey === def.key) ? rowActiveStyle : null),
               }}
               onFocus={() => {
                 setFocusedSettingKey(def.key);

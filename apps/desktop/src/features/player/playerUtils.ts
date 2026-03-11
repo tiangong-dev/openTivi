@@ -9,9 +9,21 @@ export function parseXmltvDate(raw: string): number | null {
     return Number.isNaN(fallback) ? null : fallback;
   }
   const [, y, mo, d, h, mi, s, offset] = match;
-  const tz = offset ? `${offset.slice(0, 3)}:${offset.slice(3)}` : "Z";
-  const iso = `${y}-${mo}-${d}T${h}:${mi}:${s}${tz}`;
-  const ts = Date.parse(iso);
+  if (offset) {
+    const tz = `${offset.slice(0, 3)}:${offset.slice(3)}`;
+    const iso = `${y}-${mo}-${d}T${h}:${mi}:${s}${tz}`;
+    const ts = Date.parse(iso);
+    return Number.isNaN(ts) ? null : ts;
+  }
+  const localDate = new Date(
+    Number(y),
+    Number(mo) - 1,
+    Number(d),
+    Number(h),
+    Number(mi),
+    Number(s),
+  );
+  const ts = localDate.getTime();
   return Number.isNaN(ts) ? null : ts;
 }
 
@@ -30,11 +42,10 @@ export function formatNetworkSpeed(bitsPerSecond: number): string {
 
 export function getGuidePrograms(programs: EpgProgram[]): EpgProgram[] {
   const now = Date.now();
-  const upcoming = programs.filter((p) => {
+  return programs.filter((p) => {
     const end = parseXmltvDate(p.endAt);
     return end !== null && end >= now - 15 * 60 * 1000;
-  });
-  return (upcoming.length > 0 ? upcoming : programs).slice(0, 12);
+  }).slice(0, 12);
 }
 
 export function toProxyUrl(originalUrl: string, port: number): string {

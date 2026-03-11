@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use chrono::{DateTime, Duration, Local, LocalResult, NaiveDateTime, TimeZone, Utc};
 
 use crate::commands::dto::{
     ChannelEpgSnapshotDto, EpgProgramDto, EpgProgramMiniDto, EpgProgramSearchResultDto,
@@ -121,7 +121,43 @@ fn parse_program_time(raw: &str) -> Option<DateTime<Utc>> {
         return Some(dt.with_timezone(&Utc));
     }
     if let Ok(ndt) = NaiveDateTime::parse_from_str(raw.trim(), "%Y-%m-%d %H:%M:%S") {
-        return Some(DateTime::from_naive_utc_and_offset(ndt, Utc));
+        return local_naive_to_utc(ndt);
+    }
+    if let Ok(ndt) = NaiveDateTime::parse_from_str(raw.trim(), "%Y%m%d%H%M%S") {
+        return local_naive_to_utc(ndt);
     }
     None
+}
+
+fn local_naive_to_utc(ndt: NaiveDateTime) -> Option<DateTime<Utc>> {
+    match Local.from_local_datetime(&ndt) {
+        LocalResult::Single(dt) => Some(dt.with_timezone(&Utc)),
+        LocalResult::Ambiguous(dt, _) => Some(dt.with_timezone(&Utc)),
+        LocalResult::None => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_xmltv_timestamp_without_timezone_as_local_time() {
+        let actual = parse_program_time("20260312083000").unwrap();
+        let expected = Local
+            .with_ymd_and_hms(2026, 3, 12, 8, 30, 0)
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn parses_xmltv_timestamp_with_timezone_offset() {
+        let actual = parse_program_time("20260312083000 +0800").unwrap();
+        let expected = DateTime::parse_from_rfc3339("2026-03-12T08:30:00+08:00")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(actual, expected);
+    }
 }

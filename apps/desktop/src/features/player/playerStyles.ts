@@ -54,7 +54,7 @@ export const guidePanelStyle: CSSProperties = {
   maxWidth: "40vw",
   borderRadius: 8,
   border: "1px solid var(--border)",
-  backgroundColor: "rgba(10,10,10,0.92)",
+  backgroundColor: "rgba(10,10,10,0.82)",
   backdropFilter: "blur(8px)",
   color: "var(--text-primary)",
   display: "flex",

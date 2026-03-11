@@ -138,6 +138,16 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       },
     [candidateIndex, channel, playbackCandidates],
   );
+  const visibleGuidePrograms = useMemo(() => getGuidePrograms(epgPrograms), [epgPrograms]);
+  const bottomBarNetworkSpeed = useMemo(() => {
+    if (networkSpeedBps === null) {
+      return t(locale, "player.networkSpeedUnavailable");
+    }
+    if (networkSpeedBps >= 1_000_000) {
+      return `${(networkSpeedBps / 1_000_000).toFixed(1)}M`;
+    }
+    return `${Math.round(networkSpeedBps / 1_000)}K`;
+  }, [locale, networkSpeedBps]);
   const requestedChannelListSnapshotIds = useMemo(
     () =>
       buildSnapshotRequestChannelIds(
@@ -1113,12 +1123,16 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
             {epgLoading ? t(locale, "player.loadingEpg") : t(locale, "player.noGuideForChannel")}
           </div>
         )}
-        <div style={networkSpeedStyle}>
-          {t(locale, "player.networkSpeed")}:{" "}
-          {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}
-        </div>
-        <div style={{ fontSize: 12, opacity: 0.7 }}>
-          {t(locale, "player.activeLine")}: {candidateIndex + 1}/{Math.max(playbackCandidates.length, 1)} · {t(locale, "player.retryCount")}: {retryCount}
+        <div style={bottomStatsStyle}>
+          <div style={bottomStatItemStyle}>
+            <span>{t(locale, "player.networkSpeed")}:</span>
+            <span style={networkSpeedValueStyle}>
+              {bottomBarNetworkSpeed}
+            </span>
+          </div>
+          <div style={bottomStatItemStyle}>
+            {t(locale, "player.activeLine")}: {candidateIndex + 1}/{Math.max(playbackCandidates.length, 1)} {t(locale, "player.retryCount")}: {retryCount}
+          </div>
         </div>
         {epgNext && (
           <div
@@ -1157,9 +1171,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
               {t(locale, "player.noGuideForChannel")}
             </div>
           )}
-          {!epgLoading && !epgError && epgPrograms.length > 0 && (
+          {!epgLoading && !epgError && visibleGuidePrograms.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
-              {getGuidePrograms(epgPrograms).map((program) => {
+              {visibleGuidePrograms.map((program) => {
                 const isCurrent = epgNow?.id === program.id;
                 return (
                   <div
@@ -1319,4 +1333,27 @@ const diagnosticLineStyle: React.CSSProperties = {
   fontSize: 12,
   lineHeight: 1.6,
   color: "#e2e8f0",
+};
+
+const bottomStatsStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const bottomStatItemStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  fontSize: 12,
+  opacity: 0.7,
+};
+
+const networkSpeedValueStyle: React.CSSProperties = {
+  display: "inline-block",
+  minWidth: "4ch",
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
+  whiteSpace: "nowrap",
 };

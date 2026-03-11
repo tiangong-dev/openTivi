@@ -74,6 +74,15 @@ export interface Setting {
   updatedAt: string;
 }
 
+export interface PlaybackSource {
+  channelId: number;
+  resolvedChannelId: number;
+  sourceId: number;
+  channelName: string;
+  streamUrl: string;
+  logoUrl?: string;
+}
+
 export interface AppUpdateInfo {
   currentVersion: string;
   latestVersion: string;

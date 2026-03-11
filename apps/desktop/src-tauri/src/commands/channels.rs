@@ -55,3 +55,9 @@ pub fn get_channels_epg_snapshots(
         query.window_end_ts,
     )
 }
+
+#[tauri::command]
+pub fn get_channel(state: State<AppState>, channel_id: i64) -> AppResult<Option<ChannelListItemDto>> {
+    let conn = state.db.lock().unwrap();
+    crate::platform::db::repositories::channel_repo::get_enabled_channel_dto_by_id(&conn, channel_id)
+}

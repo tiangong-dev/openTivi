@@ -2,6 +2,9 @@ export const GUIDE_WINDOW_MINUTES_SETTING_KEY = "epg.timelineWindowMinutes";
 export const DEFAULT_GUIDE_WINDOW_MINUTES = 180;
 export const INSTANT_SWITCH_ENABLED_SETTING_KEY = "player.instantSwitchEnabled";
 export const DEFAULT_INSTANT_SWITCH_ENABLED = false;
+export const PLAYER_VOLUME_SETTING_KEY = "player.volume";
+export const DEFAULT_PLAYER_VOLUME = 0.8;
+export const PLAYER_LAST_CHANNEL_ID_SETTING_KEY = "player.lastChannelId";
 export const APP_START_VIEW_SETTING_KEY = "app.startView";
 
 export const APP_START_VIEWS = ["channels", "favorites", "recents", "sources", "settings"] as const;
@@ -27,6 +30,23 @@ export function resolveInstantSwitchEnabled(raw: unknown): boolean {
   if (typeof raw === "boolean") return raw;
   if (typeof raw === "string") return raw === "true" || raw === "1";
   return DEFAULT_INSTANT_SWITCH_ENABLED;
+}
+
+export function resolvePlayerVolume(raw: unknown): number {
+  const value =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string"
+        ? Number(raw)
+        : DEFAULT_PLAYER_VOLUME;
+  if (!Number.isFinite(value)) return DEFAULT_PLAYER_VOLUME;
+  return Math.max(0, Math.min(1, value));
+}
+
+export function resolvePlayerLastChannelId(raw: unknown): number | null {
+  const value = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+  if (!Number.isInteger(value) || value <= 0) return null;
+  return value;
 }
 
 export function resolveAppStartView(raw: unknown): AppStartView {

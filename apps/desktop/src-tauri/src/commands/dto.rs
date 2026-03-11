@@ -182,6 +182,8 @@ pub struct SettingDto {
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSourceDto {
     pub channel_id: i64,
+    pub resolved_channel_id: i64,
+    pub source_id: i64,
     pub channel_name: String,
     pub stream_url: String,
     pub logo_url: Option<String>,

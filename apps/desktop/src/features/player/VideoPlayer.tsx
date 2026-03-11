@@ -2,10 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { t, type Locale } from "../../lib/i18n";
 import { buildSnapshotRequestChannelIds } from "../../lib/epgSnapshots";
-import { DEFAULT_INSTANT_SWITCH_ENABLED, INSTANT_SWITCH_ENABLED_SETTING_KEY, resolveInstantSwitchEnabled } from "../../lib/settings";
+import {
+  DEFAULT_INSTANT_SWITCH_ENABLED,
+  DEFAULT_PLAYER_VOLUME,
+  INSTANT_SWITCH_ENABLED_SETTING_KEY,
+  PLAYER_VOLUME_SETTING_KEY,
+  resolveInstantSwitchEnabled,
+  resolvePlayerVolume,
+} from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
 import { createConfirmPressHandler, mapKeyToTvIntent } from "../../lib/tvInput";
-import type { Channel, ChannelEpgSnapshot, EpgProgram, Setting } from "../../types/api";
+import type { Channel, ChannelEpgSnapshot, EpgProgram, PlaybackSource, Setting } from "../../types/api";
 import {
   getAdjacentChannel,
   getPrevSlot,
@@ -70,6 +77,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
   const channelListItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const preferredDirectionRef = useRef<-1 | 1>(1);
+  const loadedStreamUrlRef = useRef<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [proxyPort, setProxyPort] = useState<number | null>(null);
@@ -90,6 +98,28 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [channelEpgLoading, setChannelEpgLoading] = useState(false);
   const [instantSwitchEnabled, setInstantSwitchEnabled] = useState(DEFAULT_INSTANT_SWITCH_ENABLED);
+  const [volume, setVolume] = useState(DEFAULT_PLAYER_VOLUME);
+  const [playbackCandidates, setPlaybackCandidates] = useState<PlaybackSource[]>([]);
+  const [candidateIndex, setCandidateIndex] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [runtimeLogs, setRuntimeLogs] = useState<string[]>([]);
+  const volumeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryCountRef = useRef(0);
+  const candidateIndexRef = useRef(0);
+  const playbackCandidatesRef = useRef<PlaybackSource[]>([]);
+  const currentPlaybackSource = useMemo<PlaybackSource>(
+    () =>
+      playbackCandidates[candidateIndex] ?? {
+        channelId: channel.id,
+        resolvedChannelId: channel.id,
+        sourceId: channel.sourceId,
+        channelName: channel.name,
+        streamUrl: channel.streamUrl,
+        logoUrl: channel.logoUrl,
+      },
+    [candidateIndex, channel, playbackCandidates],
+  );
   const requestedChannelListSnapshotIds = useMemo(
     () =>
       buildSnapshotRequestChannelIds(
@@ -117,7 +147,29 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   } = useInstantChannelSwitch({
     proxyPort,
     locale,
-    onError: setError,
+    onError: (message) => {
+      if (!message) {
+        setError(null);
+        return;
+      }
+      const nextRetryCount = retryCountRef.current + 1;
+      const hasAlternate = candidateIndexRef.current + 1 < playbackCandidatesRef.current.length;
+      setError(message);
+      if (nextRetryCount <= 1) {
+        retryCountRef.current = nextRetryCount;
+        setRetryCount(nextRetryCount);
+        window.setTimeout(() => {
+          loadChannelInSlot(activeSlotRef.current, channel, false, currentPlaybackSource.streamUrl);
+          setSlotMuted(activeSlotRef.current, false);
+        }, 600);
+        return;
+      }
+      if (hasAlternate) {
+        retryCountRef.current = 0;
+        setRetryCount(0);
+        setCandidateIndex((prev) => prev + 1);
+      }
+    },
     onNetworkSpeed: setNetworkSpeedBps,
   });
 
@@ -132,9 +184,54 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
     void tauriInvoke<Setting[]>("get_settings").then((settings) => {
       const instantSwitchEnabledSetting = settings.find((s) => s.key === INSTANT_SWITCH_ENABLED_SETTING_KEY);
+      const volumeSetting = settings.find((s) => s.key === PLAYER_VOLUME_SETTING_KEY);
       setInstantSwitchEnabled(resolveInstantSwitchEnabled(instantSwitchEnabledSetting?.value ?? DEFAULT_INSTANT_SWITCH_ENABLED));
+      setVolume(resolvePlayerVolume(volumeSetting?.value ?? DEFAULT_PLAYER_VOLUME));
     });
   }, []);
+
+  useEffect(() => {
+    playbackCandidatesRef.current = playbackCandidates;
+  }, [playbackCandidates]);
+
+  useEffect(() => {
+    candidateIndexRef.current = candidateIndex;
+  }, [candidateIndex]);
+
+  useEffect(() => {
+    retryCountRef.current = retryCount;
+  }, [retryCount]);
+
+  useEffect(() => {
+    setCandidateIndex(0);
+    setRetryCount(0);
+    retryCountRef.current = 0;
+    void tauriInvoke<PlaybackSource[]>("list_playback_candidates", { channelId: channel.id })
+      .then((list) => setPlaybackCandidates(list))
+      .catch(() => setPlaybackCandidates([]));
+  }, [channel.id]);
+
+  useEffect(() => {
+    const videos = [prevVideoRef.current, activeVideoRef.current, nextVideoRef.current];
+    for (const video of videos) {
+      if (video) {
+        video.volume = volume;
+      }
+    }
+    if (volumeSaveTimerRef.current) {
+      clearTimeout(volumeSaveTimerRef.current);
+    }
+    volumeSaveTimerRef.current = window.setTimeout(() => {
+      void tauriInvoke("set_setting", {
+        input: { key: PLAYER_VOLUME_SETTING_KEY, value: volume },
+      }).catch(() => undefined);
+    }, 250);
+    return () => {
+      if (volumeSaveTimerRef.current) {
+        clearTimeout(volumeSaveTimerRef.current);
+      }
+    };
+  }, [volume]);
 
 
 
@@ -143,7 +240,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
     const currentActiveSlot = activeSlotRef.current;
 
-    if (slotChannelIdRef.current[currentActiveSlot] === channel.id) {
+    if (
+      slotChannelIdRef.current[currentActiveSlot] === channel.id &&
+      loadedStreamUrlRef.current === currentPlaybackSource.streamUrl
+    ) {
       setSlotMuted(currentActiveSlot, false);
       return;
     }
@@ -167,12 +267,13 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
     // Load in current active slot
     setError(null);
-    loadChannelInSlot(currentActiveSlot, channel, false);
+    loadChannelInSlot(currentActiveSlot, channel, false, currentPlaybackSource.streamUrl);
+    loadedStreamUrlRef.current = currentPlaybackSource.streamUrl;
     setSlotMuted(currentActiveSlot, false);
   }, [
     activateSlot,
     channel.id,
-    channel.streamUrl,
+    currentPlaybackSource.streamUrl,
     loadChannelInSlot,
     proxyPort,
     setSlotMuted,
@@ -392,6 +493,13 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     if (error) setOverlayVisible(true);
   }, [error]);
 
+  useEffect(() => {
+    if (!showDiagnostics && !error) return;
+    void tauriInvoke<string[]>("get_runtime_logs", { limit: 12 })
+      .then(setRuntimeLogs)
+      .catch(() => setRuntimeLogs([]));
+  }, [error, showDiagnostics, channel.id, candidateIndex, retryCount]);
+
   const getCurrentPlaybackChannelId = useCallback(() => {
     return resolveCurrentPlaybackChannelId(slotChannelIdRef.current, activeSlotRef.current, channel.id);
   }, [channel.id]);
@@ -591,6 +699,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     setIsPaused(true);
   }, [getVideoBySlot]);
 
+  const adjustVolume = useCallback((delta: number) => {
+    setVolume((current) => Math.max(0, Math.min(1, Number((current + delta).toFixed(2)))));
+    showOverlay();
+  }, [showOverlay]);
+
   useEffect(() => {
     confirmPressRef.current = createConfirmPressHandler({
       onSingle: () => {
@@ -719,6 +832,22 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           void containerRef.current?.requestFullscreen();
         }
         showOverlay();
+        return;
+      }
+      if (e.key === "[" || e.key === "-") {
+        e.preventDefault();
+        adjustVolume(-0.05);
+        return;
+      }
+      if (e.key === "]" || e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        adjustVolume(0.05);
+        return;
+      }
+      if (e.key === "d" || e.key === "D") {
+        e.preventDefault();
+        setShowDiagnostics((prev) => !prev);
+        showOverlay();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -746,6 +875,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     showOverlay,
     switchChannel,
     touchChannelListAutoHide,
+    adjustVolume,
   ]);
 
   useEffect(() => {
@@ -822,9 +952,21 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
               {channel.name}
             </div>
             {channel.groupName && <div style={{ fontSize: 12, opacity: 0.6 }}>{channel.groupName}</div>}
+            <div style={{ fontSize: 11, opacity: 0.55 }}>
+              {t(locale, "player.volume")}: {Math.round(volume * 100)}%
+            </div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => adjustVolume(-0.05)} style={overlayBtnStyle} title={t(locale, "player.volumeDown")}>
+            -
+          </button>
+          <button onClick={() => adjustVolume(0.05)} style={overlayBtnStyle} title={t(locale, "player.volumeUp")}>
+            +
+          </button>
+          <button onClick={() => setShowDiagnostics((prev) => !prev)} style={overlayBtnStyle} title={t(locale, "player.diagnostics")}>
+            Diag
+          </button>
           <button
             onClick={() => setChannelListPanel((v) => !v)}
             style={overlayBtnStyle}
@@ -880,6 +1022,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         <div style={networkSpeedStyle}>
           {t(locale, "player.networkSpeed")}:{" "}
           {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.7 }}>
+          {t(locale, "player.activeLine")}: {candidateIndex + 1}/{Math.max(playbackCandidates.length, 1)} · {t(locale, "player.retryCount")}: {retryCount}
         </div>
         {epgNow && epgNext && (
           <div
@@ -1015,6 +1160,32 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       {error && (
         <div style={errorOverlayStyle}>
           <div style={{ fontSize: 14, color: "#ef4444" }}>{error}</div>
+          {candidateIndex + 1 < Math.max(playbackCandidates.length, 1) && (
+            <div style={{ marginTop: 8, fontSize: 12 }}>
+              {t(locale, "player.switchingBackup")}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showDiagnostics && (
+        <div style={{ position: "absolute", right: 24, bottom: 120, width: 360, maxHeight: 320, overflowY: "auto", backgroundColor: "rgba(3, 7, 18, 0.92)", border: "1px solid rgba(148,163,184,0.35)", borderRadius: 10, padding: 14, zIndex: 5 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{t(locale, "player.diagnostics")}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.volume")}: {Math.round(volume * 100)}%</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.activeLine")}: {candidateIndex + 1}/{Math.max(playbackCandidates.length, 1)}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.retryCount")}: {retryCount}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.networkSpeed")}: {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.streamKind")}: {currentPlaybackSource.streamUrl.includes(".m3u8") ? "HLS" : currentPlaybackSource.streamUrl.includes(".ts") ? "MPEG-TS" : "Native"}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.resolvedSource")}: #{currentPlaybackSource.sourceId}</div>
+          <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-secondary)" }}>{t(locale, "player.runtimeLogs")}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+            {runtimeLogs.map((entry, index) => (
+              <div key={`${entry}-${index}`} style={{ fontSize: 11, lineHeight: 1.4, color: "#cbd5e1", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                {entry}
+              </div>
+            ))}
+            {runtimeLogs.length === 0 && <div style={{ fontSize: 11, color: "#94a3b8" }}>—</div>}
+          </div>
         </div>
       )}
 
@@ -1043,3 +1214,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     </div>
   );
 }
+
+const diagnosticLineStyle: React.CSSProperties = {
+  fontSize: 12,
+  lineHeight: 1.6,
+  color: "#e2e8f0",
+};

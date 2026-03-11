@@ -8,7 +8,9 @@ import { VideoPlayer } from "../features/player/VideoPlayer";
 import {
   APP_START_VIEW_SETTING_KEY,
   DEFAULT_APP_START_VIEW,
+  PLAYER_LAST_CHANNEL_ID_SETTING_KEY,
   resolveAppStartView,
+  resolvePlayerLastChannelId,
   type AppStartView,
 } from "../lib/settings";
 import { tauriInvoke } from "../lib/tauri";
@@ -35,8 +37,20 @@ export function AppShell() {
         const settings = await tauriInvoke<Setting[]>("get_settings");
         const localeSetting = settings.find((s) => s.key === LOCALE_SETTING_KEY);
         const startViewSetting = settings.find((s) => s.key === APP_START_VIEW_SETTING_KEY);
+        const lastChannelSetting = settings.find((s) => s.key === PLAYER_LAST_CHANNEL_ID_SETTING_KEY);
         setLocale(resolveLocale(localeSetting?.value));
         setActiveView(resolveAppStartView(startViewSetting?.value));
+        const lastChannelId = resolvePlayerLastChannelId(lastChannelSetting?.value);
+        if (lastChannelId) {
+          const restored = await tauriInvoke<Channel | null>("get_channel", { channelId: lastChannelId });
+          if (restored) {
+            const allChannels = await tauriInvoke<Channel[]>("list_channels", {
+              query: { limit: 5000, offset: 0 },
+            }).catch(() => [restored]);
+            setPlayingChannel(restored);
+            setChannelList(allChannels);
+          }
+        }
       } catch {
         setLocale(detectDefaultLocale());
         setActiveView(DEFAULT_APP_START_VIEW);
@@ -47,6 +61,9 @@ export function AppShell() {
 
   const handlePlay = (ch: Channel, allChannels?: Channel[]) => {
     void tauriInvoke("mark_recent_watched", { channelId: ch.id }).catch(() => undefined);
+    void tauriInvoke("set_setting", {
+      input: { key: PLAYER_LAST_CHANNEL_ID_SETTING_KEY, value: ch.id },
+    }).catch(() => undefined);
     setPlayingChannel(ch);
     if (allChannels) setChannelList(allChannels);
   };
@@ -269,6 +286,9 @@ export function AppShell() {
             onClose={() => setPlayingChannel(null)}
             onChannelChange={(ch) => {
               void tauriInvoke("mark_recent_watched", { channelId: ch.id }).catch(() => undefined);
+              void tauriInvoke("set_setting", {
+                input: { key: PLAYER_LAST_CHANNEL_ID_SETTING_KEY, value: ch.id },
+              }).catch(() => undefined);
               setPlayingChannel(ch);
             }}
           />

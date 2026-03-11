@@ -256,6 +256,39 @@ pub fn get_enabled_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel
     }
 }
 
+pub fn get_enabled_channel_dto_by_id(
+    conn: &Connection,
+    id: i64,
+) -> AppResult<Option<ChannelListItemDto>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.source_id, c.name, c.channel_number, c.group_name, c.tvg_id, c.logo_url, c.stream_url, (f.channel_id IS NOT NULL) as is_fav
+         FROM channels c
+         INNER JOIN sources s ON s.id = c.source_id
+         LEFT JOIN favorites f ON c.id = f.channel_id
+         WHERE c.id = ?1 AND s.enabled = 1",
+    )?;
+
+    let result = stmt.query_row([id], |row| {
+        Ok(ChannelListItemDto {
+            id: row.get(0)?,
+            source_id: row.get(1)?,
+            name: row.get(2)?,
+            channel_number: row.get(3)?,
+            group_name: row.get(4)?,
+            tvg_id: row.get(5)?,
+            logo_url: row.get(6)?,
+            stream_url: row.get(7)?,
+            is_favorite: row.get::<_, i64>(8)? != 0,
+        })
+    });
+
+    match result {
+        Ok(channel) => Ok(Some(channel)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Find all channels with the same normalized_name as the given channel.
 /// Returns the selected channel first, then others ordered by source_id.
 pub fn list_playback_candidates(conn: &Connection, channel_id: i64) -> AppResult<Vec<Channel>> {

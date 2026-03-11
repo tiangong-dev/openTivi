@@ -7,6 +7,43 @@ import { tauriInvoke } from "../../lib/tauri";
 import type { Channel } from "../../types/api";
 import { getPlaybackKind, toProxyUrl, type PlaybackKind } from "./playerUtils";
 
+const HLS_ACTIVE_CONFIG: Partial<Hls["config"]> = {
+  lowLatencyMode: true,
+  backBufferLength: 30,
+  maxBufferLength: 12,
+  maxMaxBufferLength: 20,
+  liveSyncDurationCount: 2,
+  liveMaxLatencyDurationCount: 4,
+};
+
+const HLS_PREWARM_CONFIG: Partial<Hls["config"]> = {
+  lowLatencyMode: true,
+  backBufferLength: 6,
+  maxBufferLength: 3,
+  maxMaxBufferLength: 5,
+  liveSyncDurationCount: 1,
+  liveMaxLatencyDurationCount: 2,
+};
+
+const MPEGTS_ACTIVE_CONFIG = {
+  enableStashBuffer: true,
+  stashInitialSize: 64 * 1024,
+  liveBufferLatencyChasing: true,
+  liveBufferLatencyChasingOnPaused: false,
+  liveBufferLatencyMaxLatency: 1.5,
+} as const;
+
+const MPEGTS_PREWARM_CONFIG = {
+  enableStashBuffer: false,
+  stashInitialSize: 16 * 1024,
+  liveBufferLatencyChasing: true,
+  liveBufferLatencyChasingOnPaused: false,
+  liveBufferLatencyMaxLatency: 0.75,
+} as const;
+
+const LIVE_EDGE_SAFETY_SECONDS = 0.4;
+const LIVE_EDGE_SYNC_THRESHOLD_SECONDS = 4;
+
 export interface UseInstantChannelSwitchOptions {
   proxyPort: number | null;
   locale: Locale;
@@ -89,7 +126,10 @@ function loadHlsSlot(
    }
 
    if (Hls.isSupported()) {
-     const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+     const hls = new Hls({
+       enableWorker: true,
+       ...(prewarm ? HLS_PREWARM_CONFIG : HLS_ACTIVE_CONFIG),
+     });
      hls.loadSource(proxiedUrl);
      hls.attachMedia(video);
      hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -148,12 +188,12 @@ function loadMpegtsSlot(
   onError: (error: string | null) => void,
   onNetworkSpeed: (bps: number) => void,
 ): void {
-   if (mpegts.isSupported()) {
+  if (mpegts.isSupported()) {
      const player = mpegts.createPlayer({
        type: "mpegts",
        isLive: true,
        url: proxiedUrl,
-     });
+     }, prewarm ? MPEGTS_PREWARM_CONFIG : MPEGTS_ACTIVE_CONFIG);
      player.attachMediaElement(video);
      player.load();
      if (!prewarm) {
@@ -265,6 +305,53 @@ export function useInstantChannelSwitch({
       return nextVideoRef.current;
     },
     [],
+  );
+
+  const syncSlotToLiveEdge = useCallback(
+    (slot: 0 | 1 | 2) => {
+      const video = getVideoBySlot(slot);
+      if (!video) return;
+
+      const hls = hlsSlotsRef.current[slot];
+      const hlsLiveSyncPosition = hls?.liveSyncPosition;
+      if (
+        typeof hlsLiveSyncPosition === "number" &&
+        Number.isFinite(hlsLiveSyncPosition) &&
+        hlsLiveSyncPosition > 0
+      ) {
+        if (hlsLiveSyncPosition - video.currentTime > LIVE_EDGE_SYNC_THRESHOLD_SECONDS) {
+          video.currentTime = hlsLiveSyncPosition;
+        }
+        return;
+      }
+
+      const mpegtsPlayer = mpegtsSlotsRef.current[slot];
+      if (mpegtsPlayer) {
+        const buffered = mpegtsPlayer.buffered;
+        if (buffered.length > 0) {
+          const liveEdge = Math.max(
+            0,
+            buffered.end(buffered.length - 1) - LIVE_EDGE_SAFETY_SECONDS,
+          );
+          if (liveEdge - video.currentTime > LIVE_EDGE_SYNC_THRESHOLD_SECONDS) {
+            mpegtsPlayer.currentTime = liveEdge;
+          }
+          return;
+        }
+      }
+
+      const seekable = video.seekable;
+      if (seekable.length > 0) {
+        const liveEdge = Math.max(
+          0,
+          seekable.end(seekable.length - 1) - LIVE_EDGE_SAFETY_SECONDS,
+        );
+        if (liveEdge - video.currentTime > LIVE_EDGE_SYNC_THRESHOLD_SECONDS) {
+          video.currentTime = liveEdge;
+        }
+      }
+    },
+    [getVideoBySlot],
   );
 
   const getSlotPlaybackDebugInfo = useCallback(
@@ -380,13 +467,14 @@ export function useInstantChannelSwitch({
       // Start playback
       const activeVideo = getVideoBySlot(slot);
       if (activeVideo) {
+        syncSlotToLiveEdge(slot);
         mpegtsSlotsRef.current[slot]?.play();
         activeVideo.play().catch((err) => {
           console.error(`[InstantSwitch] Failed to play slot ${slot}:`, err);
         });
       }
     },
-    [getVideoBySlot, setSlotMuted],
+    [getVideoBySlot, setSlotMuted, syncSlotToLiveEdge],
   );
 
   const loadChannelInSlot = useCallback(
@@ -408,6 +496,9 @@ export function useInstantChannelSwitch({
       const kind = getPlaybackKind(playbackUrl);
       const markReady = () => {
         if (slotChannelIdRef.current[slot] === target.id) {
+          if (!prewarm) {
+            syncSlotToLiveEdge(slot);
+          }
           slotReadyRef.current[slot] = true;
           console.log(
             `[InstantSwitch] Slot ${slot}(${slotName}) ready - channel: ${target.id} (${target.name}), prewarm: ${prewarm}`,
@@ -444,7 +535,7 @@ export function useInstantChannelSwitch({
       slotChannelIdRef.current[slot] = target.id;
       return true;
       },
-      [appendRuntimeLog, destroySlot, getVideoBySlot, preferNativeHls, proxyPort],
+      [appendRuntimeLog, destroySlot, getVideoBySlot, preferNativeHls, proxyPort, syncSlotToLiveEdge],
       );
 
       return {

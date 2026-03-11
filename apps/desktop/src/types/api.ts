@@ -6,12 +6,17 @@ export interface Source {
   username?: string;
   password?: string;
   enabled: boolean;
+  disabledReason?: string;
   autoRefreshMinutes?: number;
   channelCount: number;
   groupCount: number;
   channelsWithTvgId: number;
   epgProgramCount: number;
   lastImportedAt?: string;
+  lastRefreshError?: string;
+  lastRefreshAttemptAt?: string;
+  consecutiveRefreshFailures: number;
+  nextRetryAt?: string;
   createdAt: string;
   updatedAt: string;
 }

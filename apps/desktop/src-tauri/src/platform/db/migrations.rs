@@ -29,6 +29,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0007_channels_per_source_key",
         include_str!("../../../migrations/0007_channels_per_source_key.sql"),
     ),
+    (
+        "0008_source_refresh_health",
+        include_str!("../../../migrations/0008_source_refresh_health.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {

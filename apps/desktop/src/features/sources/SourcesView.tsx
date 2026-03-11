@@ -6,6 +6,7 @@ import type { Source, ImportSummary } from "../../types/api";
 
 type ImportTab = "m3u" | "xtream" | "xmltv";
 type SourceFocusTarget = "add" | "list";
+type SourceFilter = "all" | "enabled" | "disabled" | "backoff" | "error";
 
 interface Props {
   locale: Locale;
@@ -13,6 +14,7 @@ interface Props {
 
 export function SourcesView({ locale }: Props) {
   const [sources, setSources] = useState<Source[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [activeTab, setActiveTab] = useState<ImportTab>("m3u");
   const [showAddModal, setShowAddModal] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -37,6 +39,10 @@ export function SourcesView({ locale }: Props) {
   const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
   const deleteConfirmRef = useRef<HTMLButtonElement | null>(null);
   const sourceRowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
+  const filteredSources = useMemo(
+    () => sources.filter((source) => matchesSourceFilter(source, sourceFilter)),
+    [sourceFilter, sources],
+  );
 
   const loadSources = async () => {
     try {
@@ -52,14 +58,14 @@ export function SourcesView({ locale }: Props) {
   }, []);
 
   useEffect(() => {
-    if (sources.length === 0) {
+    if (filteredSources.length === 0) {
       setFocusedSourceIndex(0);
       setDomFocusedSourceId(null);
       setFocusTarget("add");
       return;
     }
-    setFocusedSourceIndex((prev) => Math.min(prev, sources.length - 1));
-  }, [sources.length]);
+    setFocusedSourceIndex((prev) => Math.min(prev, filteredSources.length - 1));
+  }, [filteredSources.length]);
 
   const focusAddButton = () => {
     setFocusTarget("add");
@@ -67,14 +73,14 @@ export function SourcesView({ locale }: Props) {
   };
 
   const focusSourceByIndex = (index: number) => {
-    if (sources.length === 0) {
+    if (filteredSources.length === 0) {
       focusAddButton();
       return;
     }
-    const wrapped = ((index % sources.length) + sources.length) % sources.length;
+    const wrapped = ((index % filteredSources.length) + filteredSources.length) % filteredSources.length;
     setFocusTarget("list");
     setFocusedSourceIndex(wrapped);
-    const source = sources[wrapped];
+    const source = filteredSources[wrapped];
     const rowNode = source ? sourceRowRefs.current[source.id] : null;
     rowNode?.focus();
     rowNode?.scrollIntoView({ block: "nearest" });
@@ -114,7 +120,7 @@ export function SourcesView({ locale }: Props) {
       if (detail?.view && detail.view !== "sources") {
         return;
       }
-      if (focusTarget === "list" && sources.length > 0) {
+      if (focusTarget === "list" && filteredSources.length > 0) {
         focusSourceByIndex(focusedSourceIndex);
         return;
       }
@@ -176,12 +182,12 @@ export function SourcesView({ locale }: Props) {
       if (key === "ArrowDown") {
         event.preventDefault();
         if (focusTarget === "add") {
-          if (sources.length > 0) {
+          if (filteredSources.length > 0) {
             focusSourceByIndex(0);
           }
           return;
         }
-        if (focusedSourceIndex === sources.length - 1) {
+        if (focusedSourceIndex === filteredSources.length - 1) {
           focusAddButton();
         } else {
           focusSourceByIndex(focusedSourceIndex + 1);
@@ -192,8 +198,8 @@ export function SourcesView({ locale }: Props) {
       if (key === "ArrowUp") {
         event.preventDefault();
         if (focusTarget === "add") {
-          if (sources.length > 0) {
-            focusSourceByIndex(sources.length - 1);
+          if (filteredSources.length > 0) {
+            focusSourceByIndex(filteredSources.length - 1);
           }
           return;
         }
@@ -211,7 +217,7 @@ export function SourcesView({ locale }: Props) {
           setShowAddModal(true);
           return;
         }
-        const current = sources[focusedSourceIndex];
+        const current = filteredSources[focusedSourceIndex];
         if (current) {
           openEdit(current);
         }
@@ -219,7 +225,7 @@ export function SourcesView({ locale }: Props) {
       }
 
       if (focusTarget !== "list") return;
-      const current = sources[focusedSourceIndex];
+      const current = filteredSources[focusedSourceIndex];
       if (!current) return;
 
       if (key === "Delete" || key === "Backspace") {
@@ -239,7 +245,7 @@ export function SourcesView({ locale }: Props) {
       window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
       window.removeEventListener("tv-content-key", onContentKey as EventListener);
     };
-  }, [activeTab, deleteConfirmAction, deleteConfirmSource, editing, focusTarget, focusedSourceIndex, showAddModal, sources]);
+  }, [activeTab, deleteConfirmAction, deleteConfirmSource, editing, filteredSources, focusTarget, focusedSourceIndex, showAddModal]);
 
   useEffect(() => {
     if (!showAddModal && !editing && !deleteConfirmSource) return;
@@ -395,13 +401,16 @@ export function SourcesView({ locale }: Props) {
     () => sources.filter((s) => s.enabled && s.kind === "m3u" && (s.autoRefreshMinutes ?? 0) > 0),
     [sources],
   );
-
   useEffect(() => {
     if (m3uSources.length === 0) return;
     const checkAndRefresh = () => {
       if (document.hidden) return;
       const now = Date.now();
       const overdue = m3uSources.find((source) => {
+        const nextRetryAt = parseSqliteDate(source.nextRetryAt);
+        if (nextRetryAt !== null && nextRetryAt > now) {
+          return false;
+        }
         const refreshMinutes = source.autoRefreshMinutes ?? 0;
         if (refreshMinutes <= 0) return false;
         const lastImportedAt = parseSqliteDate(source.lastImportedAt);
@@ -457,12 +466,31 @@ export function SourcesView({ locale }: Props) {
 
       {sources.length > 0 ? (
         <div style={{ marginTop: 8 }}>
-          <h3 style={{ marginBottom: 12 }}>{t(locale, "sources.section.importedSources")}</h3>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+            <h3 style={{ margin: 0 }}>{t(locale, "sources.section.importedSources")}</h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {(["all", "enabled", "disabled", "backoff", "error"] as SourceFilter[]).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setSourceFilter(filter)}
+                  style={{
+                    ...filterChipStyle,
+                    backgroundColor: sourceFilter === filter ? "var(--accent)" : "var(--bg-tertiary)",
+                    color: sourceFilter === filter ? "#fff" : "var(--text-primary)",
+                  }}
+                >
+                  {t(locale, `sources.filter.${filter}`)}
+                </button>
+              ))}
+            </div>
+          </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ textAlign: "left", color: "var(--text-secondary)", fontSize: 12 }}>
                 <th style={thStyle}>{t(locale, "sources.table.name")}</th>
                 <th style={thStyle}>{t(locale, "sources.table.type")}</th>
+                <th style={thStyle}>{t(locale, "sources.table.status")}</th>
                 <th style={thStyle}>{t(locale, "sources.table.location")}</th>
                 <th style={thStyle}>{t(locale, "sources.table.importedOverview")}</th>
                 <th style={thStyle}>{t(locale, "sources.table.autoRefresh")}</th>
@@ -471,7 +499,7 @@ export function SourcesView({ locale }: Props) {
               </tr>
             </thead>
             <tbody>
-              {sources.map((s, index) => (
+              {filteredSources.map((s, index) => (
                 <tr
                   key={s.id}
                   ref={(node) => {
@@ -499,6 +527,21 @@ export function SourcesView({ locale }: Props) {
                 >
                   <td style={tdStyle}>{s.name}</td>
                   <td style={tdStyle}>{s.kind.toUpperCase()}</td>
+                  <td style={{ ...tdStyle, minWidth: 240 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ ...statusBadgeStyle, ...getSourceStatusStyle(s) }}>
+                        {t(locale, `sources.status.${getSourceStatusKey(s)}`)}
+                      </span>
+                      <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+                        {describeSourceStatus(s, locale)}
+                      </span>
+                    </div>
+                    {s.lastRefreshError ? (
+                      <div style={{ marginTop: 6, color: "var(--danger)", fontSize: 12 }}>
+                        {t(locale, "sources.status.lastError", { error: s.lastRefreshError })}
+                      </div>
+                    ) : null}
+                  </td>
                   <td style={{ ...tdStyle, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {s.location}
                   </td>
@@ -519,12 +562,12 @@ export function SourcesView({ locale }: Props) {
                         event.stopPropagation();
                         void handleRefresh(s.id);
                       }}
-                      disabled={loading || !s.enabled}
+                      disabled={loading || !s.enabled || isSourceInBackoff(s)}
                       tabIndex={-1}
                       style={{
                         ...actionBtnStyle,
-                        opacity: s.enabled ? 1 : 0.5,
-                        cursor: s.enabled ? "pointer" : "not-allowed",
+                        opacity: s.enabled && !isSourceInBackoff(s) ? 1 : 0.5,
+                        cursor: s.enabled && !isSourceInBackoff(s) ? "pointer" : "not-allowed",
                       }}
                     >
                       {t(locale, "sources.action.refresh")}
@@ -554,6 +597,11 @@ export function SourcesView({ locale }: Props) {
               ))}
             </tbody>
           </table>
+          {filteredSources.length === 0 ? (
+            <div style={{ color: "var(--text-secondary)", marginTop: 16 }}>
+              {t(locale, "sources.filter.empty")}
+            </div>
+          ) : null}
         </div>
       ) : (
         <div style={{ color: "var(--text-secondary)", marginTop: 24 }}>
@@ -966,6 +1014,60 @@ function formatSourceOverview(source: Source, locale: Locale): string {
   });
 }
 
+function matchesSourceFilter(source: Source, filter: SourceFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "enabled") return source.enabled;
+  if (filter === "disabled") return !source.enabled;
+  if (filter === "backoff") return isSourceInBackoff(source);
+  if (filter === "error") return Boolean(source.lastRefreshError);
+  return true;
+}
+
+function getSourceStatusKey(source: Source): "disabled" | "backoff" | "error" | "healthy" {
+  if (!source.enabled) return "disabled";
+  if (isSourceInBackoff(source)) return "backoff";
+  if (source.lastRefreshError) return "error";
+  return "healthy";
+}
+
+function getSourceStatusStyle(source: Source): React.CSSProperties {
+  const status = getSourceStatusKey(source);
+  if (status === "disabled") {
+    return { backgroundColor: "#374151", color: "#e5e7eb" };
+  }
+  if (status === "backoff") {
+    return { backgroundColor: "#78350f", color: "#fde68a" };
+  }
+  if (status === "error") {
+    return { backgroundColor: "#7f1d1d", color: "#fecaca" };
+  }
+  return { backgroundColor: "#14532d", color: "#bbf7d0" };
+}
+
+function describeSourceStatus(source: Source, locale: Locale): string {
+  if (!source.enabled) {
+    return t(locale, "sources.reason.userDisabled");
+  }
+  if (isSourceInBackoff(source)) {
+    return t(locale, "sources.reason.backoffUntil", {
+      time: source.nextRetryAt ?? "—",
+      failures: source.consecutiveRefreshFailures,
+    });
+  }
+  if (source.lastRefreshError && source.lastRefreshAttemptAt) {
+    return t(locale, "sources.reason.lastFailedAt", { time: source.lastRefreshAttemptAt });
+  }
+  if (source.lastImportedAt) {
+    return t(locale, "sources.reason.lastImportedAt", { time: source.lastImportedAt });
+  }
+  return t(locale, "sources.reason.ready");
+}
+
+function isSourceInBackoff(source: Source): boolean {
+  const nextRetryTs = parseSqliteDate(source.nextRetryAt);
+  return nextRetryTs !== null && nextRetryTs > Date.now();
+}
+
 const formStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -1018,6 +1120,23 @@ const actionBtnStyle: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 13,
   marginRight: 8,
+};
+
+const filterChipStyle: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 999,
+  border: "1px solid var(--border)",
+  cursor: "pointer",
+  fontSize: 12,
+};
+
+const statusBadgeStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "2px 8px",
+  borderRadius: 999,
+  fontSize: 11,
+  fontWeight: 600,
 };
 
 const sourceRowActiveStyle: React.CSSProperties = {

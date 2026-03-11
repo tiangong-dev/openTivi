@@ -105,7 +105,19 @@ pub fn refresh_source(conn: &Connection, source_id: i64) -> AppResult<ImportSumm
         )));
     }
 
-    match source.kind {
+    if let Some(next_retry_at) = source.next_retry_at.as_deref() {
+        let retry_due = parse_sqlite_datetime(next_retry_at)
+            .map(|ts| ts <= chrono::Utc::now())
+            .unwrap_or(true);
+        if !retry_due {
+            return Err(AppError::Validation(format!(
+                "Source {} is in refresh backoff until {}",
+                source_id, next_retry_at
+            )));
+        }
+    }
+
+    let result = match source.kind {
         SourceKind::M3u => import_m3u(
             conn,
             &source.name,
@@ -118,6 +130,23 @@ pub fn refresh_source(conn: &Connection, source_id: i64) -> AppResult<ImportSumm
             import_xtream(conn, &source.name, &source.location, &username, &password)
         }
         SourceKind::Xmltv => import_xmltv(conn, &source.name, &source.location),
+    };
+
+    match result {
+        Ok(summary) => {
+            crate::platform::db::repositories::source_repo::clear_refresh_failure_state(
+                conn, source_id,
+            )?;
+            Ok(summary)
+        }
+        Err(error) => {
+            crate::platform::db::repositories::source_repo::record_refresh_failure(
+                conn,
+                source_id,
+                &error.to_string(),
+            )?;
+            Err(error)
+        }
     }
 }
 
@@ -127,4 +156,18 @@ fn fetch_content(location: &str) -> AppResult<String> {
     } else {
         Ok(std::fs::read_to_string(location)?)
     }
+}
+
+fn parse_sqlite_datetime(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(value) {
+        return Some(dt.with_timezone(&chrono::Utc));
+    }
+    let normalized = if value.contains('T') {
+        value.to_string()
+    } else {
+        format!("{}Z", value.replace(' ', "T"))
+    };
+    chrono::DateTime::parse_from_rfc3339(&normalized)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc))
 }

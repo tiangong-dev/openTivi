@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useIndexFocusGroup, useLinearFocusGroup } from "../../lib/focusScope";
 import { getErrorMessage } from "../../lib/errors";
 import { LOCALE_SETTING_KEY, t, type Locale, type TranslationKey } from "../../lib/i18n";
 import {
@@ -28,6 +29,10 @@ interface SettingDef {
   min?: number;
   max?: number;
 }
+
+type SettingEditAction = "decrease" | "increase" | "done";
+
+const settingEditActions = ["decrease", "increase", "done"] as const;
 
 const minuteOptions = [60, 90, 120, 150, 180, 240, 300, 360].map((minutes) => ({
   labelKey: "settings.option.minutes" as const,
@@ -93,13 +98,43 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   const [flash, setFlash] = useState(false);
   const [focusedSettingKey, setFocusedSettingKey] = useState<string | null>(null);
   const [editingSettingKey, setEditingSettingKey] = useState<string | null>(null);
+  const [editAction, setEditAction] = useState<SettingEditAction>("increase");
   const [domFocusedSettingKey, setDomFocusedSettingKey] = useState<string | null>(null);
   const [hoveredSettingKey, setHoveredSettingKey] = useState<string | null>(null);
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const decreaseModalBtnRef = useRef<HTMLButtonElement | null>(null);
+  const increaseModalBtnRef = useRef<HTMLButtonElement | null>(null);
   const closeModalBtnRef = useRef<HTMLButtonElement | null>(null);
   const orderedSettings = useMemo(() => settingCategories.flatMap((cat) => cat.settings), []);
   const editingSetting = orderedSettings.find((item) => item.key === editingSettingKey) ?? null;
+  const focusedSettingIndex = Math.max(
+    0,
+    focusedSettingKey ? orderedSettings.findIndex((item) => item.key === focusedSettingKey) : 0,
+  );
+  const settingsListGroup = useIndexFocusGroup({
+    itemCount: orderedSettings.length,
+    currentIndex: focusedSettingIndex,
+    setCurrentIndex: (nextIndex) => {
+      const next = orderedSettings[nextIndex];
+      if (next) {
+        setFocusedSettingKey(next.key);
+      }
+    },
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
+  const editActionGroup = useLinearFocusGroup({
+    items: settingEditActions,
+    current: editAction,
+    setCurrent: setEditAction,
+    backwardIntent: TvIntent.MoveLeft,
+    forwardIntent: TvIntent.MoveRight,
+    backwardEdge: "stay",
+    forwardEdge: "stay",
+  });
 
   const loadSettings = async () => {
     try {
@@ -152,6 +187,26 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   }, [focusedSettingKey, orderedSettings]);
 
   useEffect(() => {
+    if (!editingSetting) return;
+    setEditAction("increase");
+  }, [editingSetting]);
+
+  useEffect(() => {
+    if (!editingSetting) return;
+    window.setTimeout(() => {
+      if (editAction === "decrease") {
+        decreaseModalBtnRef.current?.focus();
+        return;
+      }
+      if (editAction === "done") {
+        closeModalBtnRef.current?.focus();
+        return;
+      }
+      increaseModalBtnRef.current?.focus();
+    }, 0);
+  }, [editAction, editingSetting]);
+
+  useEffect(() => {
     const onZoneChange = (event: Event) => {
       const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
       const inThisView = !detail?.view || detail.view === "settings";
@@ -173,7 +228,17 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
         return;
       }
       if (editingSetting) {
-        window.setTimeout(() => closeModalBtnRef.current?.focus(), 0);
+        window.setTimeout(() => {
+          if (editAction === "decrease") {
+            decreaseModalBtnRef.current?.focus();
+            return;
+          }
+          if (editAction === "done") {
+            closeModalBtnRef.current?.focus();
+            return;
+          }
+          increaseModalBtnRef.current?.focus();
+        }, 0);
         return;
       }
       if (orderedSettings.length === 0) return;
@@ -183,6 +248,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       focusSettingByIndex(currentIndex >= 0 ? currentIndex : 0);
     };
     const onContentKey = (event: Event) => {
+      if (event.defaultPrevented) return;
       const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
       if (detail?.view && detail.view !== "settings") {
         return;
@@ -190,37 +256,41 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       const intent = detail?.intent;
       if (!intent || orderedSettings.length === 0) return;
       if (editingSetting) {
-        if (intent === TvIntent.MoveRight) {
+        if (intent === TvIntent.Back) {
           event.preventDefault();
-          triggerSetting(editingSetting, 1);
+          closeEditingSetting(editingSetting.key);
           return;
         }
-        if (intent === TvIntent.MoveLeft) {
-          event.preventDefault();
-          triggerSetting(editingSetting, -1);
+        if (intent === TvIntent.MoveRight || intent === TvIntent.MoveLeft) {
+          const result = editActionGroup.handleIntent(intent);
+          if (result.handled) {
+            event.preventDefault();
+          }
           return;
         }
         if (intent === TvIntent.Confirm) {
           event.preventDefault();
+          if (editAction === "decrease") {
+            triggerSetting(editingSetting, -1);
+            return;
+          }
+          if (editAction === "done") {
+            closeEditingSetting(editingSetting.key);
+            return;
+          }
           triggerSetting(editingSetting, 1);
           return;
         }
         return;
       }
-      const currentIndex = focusedSettingKey
-        ? orderedSettings.findIndex((item) => item.key === focusedSettingKey)
-        : 0;
-      const normalizedIndex = currentIndex >= 0 ? currentIndex : 0;
-      const current = orderedSettings[normalizedIndex];
+      const current = orderedSettings[focusedSettingIndex];
       if (!current) return;
-      if (intent === TvIntent.MoveDown) {
-        event.preventDefault();
-        focusSettingByIndex(normalizedIndex + 1);
-        return;
-      }
-      if (intent === TvIntent.MoveUp) {
-        event.preventDefault();
-        focusSettingByIndex(normalizedIndex - 1);
+      if (intent === TvIntent.MoveDown || intent === TvIntent.MoveUp) {
+        const result = settingsListGroup.handleIntent(intent);
+        if (result.handled) {
+          event.preventDefault();
+          focusSettingByIndex(result.next);
+        }
         return;
       }
       if (intent === TvIntent.Confirm) {
@@ -234,20 +304,14 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
       window.removeEventListener("tv-content-key", onContentKey as EventListener);
     };
-  }, [editingSetting, focusedSettingKey, orderedSettings]);
+  }, [editAction, editActionGroup, editingSetting, focusedSettingIndex, orderedSettings, settingsListGroup]);
 
   useEffect(() => {
     if (!editingSetting) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      setEditingSettingKey(null);
-      window.setTimeout(() => {
-        const index = orderedSettings.findIndex((item) => item.key === editingSetting.key);
-        if (index >= 0) {
-          focusSettingByIndex(index);
-        }
-      }, 0);
+      closeEditingSetting(editingSetting.key);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -293,6 +357,17 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
     const node = rowRefs.current[target.key];
     node?.focus();
     node?.scrollIntoView({ block: "nearest" });
+  };
+
+  const closeEditingSetting = (settingKey: string) => {
+    const index = orderedSettings.findIndex((item) => item.key === settingKey);
+    setEditingSettingKey(null);
+    setEditAction("increase");
+    window.setTimeout(() => {
+      if (index >= 0) {
+        focusSettingByIndex(index);
+      }
+    }, 0);
   };
 
   const cycleSelect = (def: SettingDef, direction: 1 | -1) => {
@@ -438,9 +513,14 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
               <button
+                ref={decreaseModalBtnRef}
                 type="button"
                 onClick={() => triggerSetting(editingSetting, -1)}
-                style={modalActionBtnStyle}
+                data-tv-focusable={editAction === "decrease" ? "true" : undefined}
+                style={{
+                  ...modalActionBtnStyle,
+                  ...(editAction === "decrease" ? modalActionBtnActiveStyle : null),
+                }}
               >
                 {t(locale, "settings.edit.decrease")}
               </button>
@@ -448,9 +528,14 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
                 {displaySettingValue(editingSetting)}
               </span>
               <button
+                ref={increaseModalBtnRef}
                 type="button"
                 onClick={() => triggerSetting(editingSetting, 1)}
-                style={modalActionBtnStyle}
+                data-tv-focusable={editAction === "increase" ? "true" : undefined}
+                style={{
+                  ...modalActionBtnStyle,
+                  ...(editAction === "increase" ? modalActionBtnActiveStyle : null),
+                }}
               >
                 {t(locale, "settings.edit.increase")}
               </button>
@@ -460,15 +545,15 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
                 ref={closeModalBtnRef}
                 type="button"
                 onClick={() => {
-                  const index = orderedSettings.findIndex((item) => item.key === editingSetting.key);
-                  setEditingSettingKey(null);
-                  window.setTimeout(() => {
-                    if (index >= 0) {
-                      focusSettingByIndex(index);
-                    }
-                  }, 0);
+                  closeEditingSetting(editingSetting.key);
                 }}
-                style={{ ...modalActionBtnStyle, backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)" }}
+                data-tv-focusable={editAction === "done" ? "true" : undefined}
+                style={{
+                  ...modalActionBtnStyle,
+                  backgroundColor: "var(--bg-tertiary)",
+                  color: "var(--text-primary)",
+                  ...(editAction === "done" ? modalActionBtnActiveStyle : null),
+                }}
               >
                 {t(locale, "settings.edit.done")}
               </button>
@@ -539,6 +624,10 @@ const modalActionBtnStyle: React.CSSProperties = {
   backgroundColor: "var(--accent)",
   color: "#fff",
   cursor: "pointer",
+};
+
+const modalActionBtnActiveStyle: React.CSSProperties = {
+  boxShadow: "inset 0 0 0 1px #fff",
 };
 
 const flashStyle: React.CSSProperties = {

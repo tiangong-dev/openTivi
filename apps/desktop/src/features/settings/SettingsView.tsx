@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getErrorMessage } from "../../lib/errors";
 import { LOCALE_SETTING_KEY, t, type Locale, type TranslationKey } from "../../lib/i18n";
-import { DEFAULT_GUIDE_WINDOW_MINUTES, GUIDE_WINDOW_MINUTES_SETTING_KEY } from "../../lib/settings";
+import { DEFAULT_GUIDE_WINDOW_MINUTES, DEFAULT_INSTANT_SWITCH_ENABLED, GUIDE_WINDOW_MINUTES_SETTING_KEY, INSTANT_SWITCH_ENABLED_SETTING_KEY } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
 import type { AppUpdateInfo, Setting } from "../../types/api";
 
@@ -60,6 +60,7 @@ const settingCategories: { titleKey: TranslationKey; settings: SettingDef[] }[] 
     settings: [
       { key: "player.autoplay", labelKey: "settings.player.autoplay", type: "toggle", defaultValue: true },
       { key: "player.volume", labelKey: "settings.player.volume", type: "range", defaultValue: 80, min: 0, max: 100 },
+      { key: INSTANT_SWITCH_ENABLED_SETTING_KEY, labelKey: "settings.player.instantSwitchEnabled", type: "toggle", defaultValue: DEFAULT_INSTANT_SWITCH_ENABLED },
     ],
   },
   {

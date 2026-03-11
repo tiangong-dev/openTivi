@@ -115,6 +115,7 @@
   "settings.startView.recents": "Recents",
   "settings.player.autoplay": "Autoplay",
   "settings.player.volume": "Volume",
+  "settings.player.instantSwitchEnabled": "Instant Switch",
   "settings.epg.autoRefresh": "Auto Refresh EPG",
   "settings.epg.guideTimelineWindow": "Guide Timeline Window",
   "settings.option.minutes": "{minutes} min",

@@ -19,6 +19,14 @@ interface Props<T extends Channel = Channel> {
   onMoveBeforeFirst?: () => void;
 }
 
+interface PrewarmIntentInput {
+  channelId: number;
+  streamUrl: string;
+  reason: "list_focus";
+  source: "channel_list_outer";
+  ttlMs?: number;
+}
+
 export function ChannelRowsWithGuide<T extends Channel>({
   items,
   locale,
@@ -36,7 +44,6 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const [hoveredChannelId, setHoveredChannelId] = useState<number | null>(null);
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const pendingPlayTimerRef = useRef<number | null>(null);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
   const focusedIndexRef = useRef(0);
   const itemsRef = useRef<T[]>(items);
@@ -67,6 +74,28 @@ export function ChannelRowsWithGuide<T extends Channel>({
   useEffect(() => {
     focusedIndexRef.current = focusedIndex;
   }, [focusedIndex]);
+
+  useEffect(() => {
+    if (items.length === 0) return;
+    const focused = items[focusedIndex];
+    if (!focused) return;
+    const prev = items[(focusedIndex - 1 + items.length) % items.length];
+    const next = items[(focusedIndex + 1) % items.length];
+    const intents = new Map<number, PrewarmIntentInput>();
+    for (const item of [focused, prev, next]) {
+      if (!item) continue;
+      intents.set(item.id, {
+        channelId: item.id,
+        streamUrl: item.streamUrl,
+        reason: "list_focus",
+        source: "channel_list_outer",
+        ttlMs: 1200,
+      });
+    }
+    void tauriInvoke("prewarm_submit_intents", {
+      input: { intents: Array.from(intents.values()), decoderSlots: 0 },
+    }).catch(() => undefined);
+  }, [focusedIndex, items]);
 
   useEffect(() => {
     itemsRef.current = items;
@@ -138,33 +167,11 @@ export function ChannelRowsWithGuide<T extends Channel>({
     };
   }, [channelIds, timelineWindow.start, timelineWindow.end]);
 
-  useEffect(() => {
-    return () => {
-      if (pendingPlayTimerRef.current !== null) {
-        window.clearTimeout(pendingPlayTimerRef.current);
-        pendingPlayTimerRef.current = null;
-      }
-      confirmPressRef.current?.clear();
-    };
-  }, []);
-
-  const clearPendingPlay = () => {
-    if (pendingPlayTimerRef.current !== null) {
-      window.clearTimeout(pendingPlayTimerRef.current);
-      pendingPlayTimerRef.current = null;
-    }
-  };
-
   const schedulePlay = (channel: T) => {
-    clearPendingPlay();
-    pendingPlayTimerRef.current = window.setTimeout(() => {
-      pendingPlayTimerRef.current = null;
-      onPlayRef.current?.(channel, itemsRef.current);
-    }, 220);
+    onPlayRef.current?.(channel, itemsRef.current);
   };
 
   const triggerFavorite = (channel: T) => {
-    clearPendingPlay();
     onToggleFavoriteRef.current?.(channel);
   };
 
@@ -183,13 +190,6 @@ export function ChannelRowsWithGuide<T extends Channel>({
         const current = itemsRef.current[focusedIndexRef.current];
         if (current) {
           schedulePlay(current);
-        }
-      },
-      onDouble: () => {
-        if (!onToggleFavoriteRef.current) return;
-        const current = itemsRef.current[focusedIndexRef.current];
-        if (current) {
-          triggerFavorite(current);
         }
       },
       onLong: () => {
@@ -282,6 +282,14 @@ export function ChannelRowsWithGuide<T extends Channel>({
     };
   }, [focusedIndex, items, onMoveBeforeFirst, onToggleFavorite]);
 
+  useEffect(() => {
+    return () => {
+      void tauriInvoke("prewarm_clear_source", { source: "channel_list_outer" }).catch(
+        () => undefined,
+      );
+    };
+  }, []);
+
   return (
     <>
       {items.map((ch, index) => {
@@ -299,11 +307,6 @@ export function ChannelRowsWithGuide<T extends Channel>({
               data-tv-focusable={focusedIndex === index ? "true" : undefined}
               style={{ ...rowStyle, ...(isActive ? rowActiveStyle : null) }}
               onClick={() => schedulePlay(ch)}
-              onDoubleClick={() => {
-                if (onToggleFavorite) {
-                  triggerFavorite(ch);
-                }
-              }}
               onFocus={() => {
                 setFocusedIndex(index);
                 setDomFocusedIndex(index);

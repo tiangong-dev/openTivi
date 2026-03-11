@@ -2,8 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
 import { t, type Locale } from "../../lib/i18n";
-import type { Channel, Source } from "../../types/api";
+import {
+  EPG_REMINDERS_SETTING_KEY,
+  resolveEpgReminders,
+  type EpgReminder,
+} from "../../lib/settings";
+import type { Channel, EpgProgramSearchResult, Setting, Source } from "../../types/api";
 import { ChannelRowsWithGuide } from "./ChannelRowsWithGuide";
+import { formatTime, parseXmltvDate } from "../player/playerUtils";
 
 interface Props {
   locale: Locale;
@@ -12,6 +18,7 @@ interface Props {
 }
 
 type ChannelSort = "name" | "channelNumber" | "sourceThenChannel";
+type EpgStateFilter = "all" | "live" | "upcoming";
 
 export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -23,6 +30,12 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   const [search, setSearch] = useState("");
   const [isSearchEditing, setIsSearchEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [epgSearch, setEpgSearch] = useState("");
+  const [epgStateFilter, setEpgStateFilter] = useState<EpgStateFilter>("all");
+  const [epgResults, setEpgResults] = useState<EpgProgramSearchResult[]>([]);
+  const [epgLoading, setEpgLoading] = useState(false);
+  const [epgDrawerItem, setEpgDrawerItem] = useState<EpgProgramSearchResult | null>(null);
+  const [epgReminders, setEpgReminders] = useState<EpgReminder[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadChannels = async () => {
@@ -67,6 +80,15 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   }, []);
 
   useEffect(() => {
+    void tauriInvoke<Setting[]>("get_settings")
+      .then((settings) => {
+        const raw = settings.find((item) => item.key === EPG_REMINDERS_SETTING_KEY)?.value;
+        setEpgReminders(resolveEpgReminders(raw));
+      })
+      .catch(() => setEpgReminders([]));
+  }, []);
+
+  useEffect(() => {
     void loadChannels();
   }, [favoritesOnly, search, selectedGroup, selectedSourceId, sortBy]);
 
@@ -79,6 +101,42 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
       await tauriInvoke("set_favorite", { input: { channelId: ch.id, favorite: !ch.isFavorite } });
       loadChannels();
     } catch (_) {}
+  };
+
+  const searchPrograms = async () => {
+    setEpgLoading(true);
+    try {
+      const list = await tauriInvoke<EpgProgramSearchResult[]>("search_epg", {
+        query: {
+          search: epgSearch || undefined,
+          state: epgStateFilter,
+          limit: 80,
+        },
+      });
+      setEpgResults(list);
+    } finally {
+      setEpgLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void searchPrograms();
+  }, [epgSearch, epgStateFilter]);
+
+  const toggleReminder = async (program: EpgProgramSearchResult) => {
+    const exists = epgReminders.some((item) => item.programId === program.id);
+    const next = exists
+      ? epgReminders.filter((item) => item.programId !== program.id)
+      : [...epgReminders, {
+          programId: program.id,
+          channelId: program.channelId,
+          title: program.title,
+          startAt: program.startAt,
+        }];
+    setEpgReminders(next);
+    await tauriInvoke("set_setting", {
+      input: { key: EPG_REMINDERS_SETTING_KEY, value: next },
+    }).catch(() => undefined);
   };
 
   const focusSearchNavigationMode = () => {
@@ -196,6 +254,110 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
           </div>
         )}
 
+        <div style={epgPanelStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>{t(locale, "epg.explorer.title")}</div>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                {t(locale, "epg.explorer.subtitle")}
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+              {t(locale, "epg.explorer.reminders")}: {epgReminders.length}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+            <input
+              value={epgSearch}
+              onChange={(event) => setEpgSearch(event.target.value)}
+              placeholder={t(locale, "epg.searchPlaceholder")}
+              style={{ ...searchStyle, flex: "1 1 260px" }}
+            />
+            {(["all", "live", "upcoming"] as EpgStateFilter[]).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setEpgStateFilter(filter)}
+                style={{
+                  ...filterChipStyle,
+                  backgroundColor: epgStateFilter === filter ? "var(--accent)" : "var(--bg-tertiary)",
+                  color: epgStateFilter === filter ? "#fff" : "var(--text-primary)",
+                }}
+              >
+                {t(locale, `epg.filter.${filter}`)}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: epgDrawerItem ? "1fr minmax(260px, 320px)" : "1fr", gap: 12, marginTop: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
+              {epgLoading ? <div style={{ color: "var(--text-secondary)" }}>{t(locale, "guide.loading")}</div> : null}
+              {!epgLoading && epgResults.length === 0 ? (
+                <div style={{ color: "var(--text-secondary)" }}>{t(locale, "epg.empty")}</div>
+              ) : null}
+              {epgResults.map((program) => {
+                const isLive = isProgramLive(program);
+                const reminded = epgReminders.some((item) => item.programId === program.id);
+                return (
+                  <div key={program.id} style={epgResultCardStyle}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>{program.title}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                          {program.channelNumber ? `${program.channelNumber} · ` : ""}
+                          {program.channelName}
+                        </div>
+                      </div>
+                      <span style={{ ...statusTagStyle, backgroundColor: isLive ? "#14532d" : "#1e3a8a" }}>
+                        {t(locale, isLive ? "epg.filter.live" : "epg.filter.upcoming")}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                      {formatTime(program.startAt)} - {formatTime(program.endAt)}
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" style={miniButtonStyle} onClick={() => setEpgDrawerItem(program)}>
+                        {t(locale, "epg.details")}
+                      </button>
+                      <button type="button" style={miniButtonStyle} onClick={() => void toggleReminder(program)}>
+                        {reminded ? t(locale, "epg.reminder.cancel") : t(locale, "epg.reminder.set")}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {epgDrawerItem ? (
+              <div style={epgDrawerStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>{epgDrawerItem.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                      {epgDrawerItem.channelName}
+                    </div>
+                  </div>
+                  <button type="button" style={miniButtonStyle} onClick={() => setEpgDrawerItem(null)}>
+                    {t(locale, "sources.edit.cancel")}
+                  </button>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                  {formatTime(epgDrawerItem.startAt)} - {formatTime(epgDrawerItem.endAt)}
+                </div>
+                {epgDrawerItem.category ? (
+                  <div style={{ fontSize: 12, color: "var(--accent)" }}>{epgDrawerItem.category}</div>
+                ) : null}
+                <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+                  {epgDrawerItem.description || t(locale, "epg.noDescription")}
+                </div>
+                <button type="button" style={submitBtnStyleSmall} onClick={() => void toggleReminder(epgDrawerItem)}>
+                  {epgReminders.some((item) => item.programId === epgDrawerItem.id)
+                    ? t(locale, "epg.reminder.cancel")
+                    : t(locale, "epg.reminder.set")}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
         <div style={{ flex: 1, marginTop: 8 }}>
           <ChannelRowsWithGuide
             items={channels}
@@ -253,6 +415,71 @@ const selectStyle: React.CSSProperties = {
   fontSize: 14,
 };
 
+const epgPanelStyle: React.CSSProperties = {
+  marginTop: 16,
+  padding: 16,
+  borderRadius: 10,
+  border: "1px solid var(--border)",
+  backgroundColor: "rgba(15, 23, 42, 0.35)",
+};
+
+const filterChipStyle: React.CSSProperties = {
+  padding: "8px 10px",
+  borderRadius: 999,
+  border: "1px solid var(--border)",
+  fontSize: 12,
+  cursor: "pointer",
+};
+
+const epgResultCardStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  padding: 12,
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  backgroundColor: "rgba(15, 23, 42, 0.55)",
+};
+
+const statusTagStyle: React.CSSProperties = {
+  borderRadius: 999,
+  padding: "2px 8px",
+  fontSize: 11,
+  color: "#fff",
+  height: "fit-content",
+};
+
+const miniButtonStyle: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 6,
+  border: "1px solid var(--border)",
+  backgroundColor: "var(--bg-tertiary)",
+  color: "var(--text-primary)",
+  cursor: "pointer",
+  fontSize: 12,
+};
+
+const epgDrawerStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  padding: 14,
+  borderRadius: 10,
+  border: "1px solid var(--border)",
+  backgroundColor: "rgba(2, 6, 23, 0.7)",
+};
+
+const submitBtnStyleSmall: React.CSSProperties = {
+  padding: "8px 12px",
+  backgroundColor: "var(--accent)",
+  border: "none",
+  borderRadius: 6,
+  color: "#fff",
+  fontSize: 13,
+  cursor: "pointer",
+  alignSelf: "flex-start",
+};
+
 function sortChannels(items: Channel[], sortBy: ChannelSort): Channel[] {
   return [...items].sort((a, b) => {
     if (sortBy === "name") {
@@ -286,4 +513,11 @@ function parseChannelNumber(value?: string): number | null {
   if (!match) return null;
   const parsed = Number(match[0]);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isProgramLive(program: EpgProgramSearchResult): boolean {
+  const now = Date.now();
+  const start = parseXmltvDate(program.startAt);
+  const end = parseXmltvDate(program.endAt);
+  return start !== null && end !== null && start <= now && now < end;
 }

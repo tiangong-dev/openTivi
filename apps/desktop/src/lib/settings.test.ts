@@ -4,6 +4,7 @@ import {
   DEFAULT_APP_START_VIEW,
   DEFAULT_GUIDE_WINDOW_MINUTES,
   DEFAULT_PLAYER_VOLUME,
+  resolveEpgReminders,
   resolveAppStartView,
   resolveGuideWindowMinutes,
   resolveInstantSwitchEnabled,
@@ -41,5 +42,10 @@ describe("settings resolvers", () => {
     expect(resolvePlayerLastChannelId("12")).toBe(12);
     expect(resolvePlayerLastChannelId(0)).toBeNull();
     expect(resolvePlayerLastChannelId("bad")).toBeNull();
+  });
+
+  it("normalizes epg reminders", () => {
+    expect(resolveEpgReminders([{ programId: 1, channelId: 2, title: "News", startAt: "20260101080000 +0800" }])).toHaveLength(1);
+    expect(resolveEpgReminders([{ programId: 0 }])).toHaveLength(0);
   });
 });

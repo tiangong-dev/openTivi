@@ -65,6 +65,14 @@ pub struct GetChannelsEpgSnapshotsQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SearchEpgQuery {
+    pub search: Option<String>,
+    pub state: Option<String>,
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetFavoriteInput {
     pub channel_id: i64,
     pub favorite: bool,
@@ -120,6 +128,22 @@ pub struct ChannelListItemDto {
 #[serde(rename_all = "camelCase")]
 pub struct EpgProgramDto {
     pub id: i64,
+    pub channel_tvg_id: String,
+    pub start_at: String,
+    pub end_at: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub category: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EpgProgramSearchResultDto {
+    pub id: i64,
+    pub channel_id: i64,
+    pub source_id: i64,
+    pub channel_name: String,
+    pub channel_number: Option<String>,
     pub channel_tvg_id: String,
     pub start_at: String,
     pub end_at: String,

@@ -2,7 +2,9 @@ use rusqlite::Connection;
 
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 
-use crate::commands::dto::{ChannelEpgSnapshotDto, EpgProgramDto, EpgProgramMiniDto};
+use crate::commands::dto::{
+    ChannelEpgSnapshotDto, EpgProgramDto, EpgProgramMiniDto, EpgProgramSearchResultDto,
+};
 use crate::error::AppResult;
 
 pub fn get_channel_epg(
@@ -76,6 +78,29 @@ pub fn get_channels_epg_snapshots(
     }
 
     Ok(snapshots)
+}
+
+pub fn search_programs(
+    conn: &Connection,
+    search: Option<&str>,
+    state: Option<&str>,
+    limit: u32,
+) -> AppResult<Vec<EpgProgramSearchResultDto>> {
+    let now = Utc::now();
+    let results = crate::platform::db::repositories::epg_repo::search_programs(conn, search, limit)?;
+
+    Ok(results
+        .into_iter()
+        .filter(|program| match state.unwrap_or("all") {
+            "live" => {
+                let start = parse_program_time(&program.start_at);
+                let end = parse_program_time(&program.end_at);
+                matches!((start, end), (Some(start), Some(end)) if start <= now && now < end)
+            }
+            "upcoming" => parse_program_time(&program.start_at).is_some_and(|start| start > now),
+            _ => true,
+        })
+        .collect())
 }
 
 fn to_mini_program(program: &EpgProgramDto) -> EpgProgramMiniDto {

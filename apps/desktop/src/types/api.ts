@@ -83,6 +83,20 @@ export interface PlaybackSource {
   logoUrl?: string;
 }
 
+export interface EpgProgramSearchResult {
+  id: number;
+  channelId: number;
+  sourceId: number;
+  channelName: string;
+  channelNumber?: string;
+  channelTvgId: string;
+  startAt: string;
+  endAt: string;
+  title: string;
+  description?: string;
+  category?: string;
+}
+
 export interface AppUpdateInfo {
   currentVersion: string;
   latestVersion: string;

@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-use crate::commands::dto::EpgProgramDto;
+use crate::commands::dto::{EpgProgramDto, EpgProgramSearchResultDto};
 use crate::core::models::epg::ParsedProgram;
 use crate::core::services::epg_matching::{
     build_channel_candidates, merge_mapped_ids, normalize_epg_key,
@@ -209,4 +209,71 @@ fn push_unique(values: &mut Vec<String>, value: String) {
     if !value.is_empty() && !values.iter().any(|v| v == &value) {
         values.push(value);
     }
+}
+
+pub fn search_programs(
+    conn: &Connection,
+    search: Option<&str>,
+    limit: u32,
+) -> AppResult<Vec<EpgProgramSearchResultDto>> {
+    let pattern = search
+        .map(|value| format!("%{}%", value.trim()))
+        .filter(|value| value != "%%");
+
+    let mut stmt = conn.prepare(
+        "WITH alias_map AS (
+            SELECT source_id, channel_tvg_id, alias_normalized
+            FROM epg_channel_aliases
+        )
+        SELECT DISTINCT
+            ep.id,
+            c.id,
+            c.source_id,
+            c.name,
+            c.channel_number,
+            ep.channel_tvg_id,
+            ep.start_at,
+            ep.end_at,
+            ep.title,
+            ep.description,
+            ep.category
+        FROM epg_programs ep
+        INNER JOIN channels c ON (
+            LOWER(TRIM(ep.channel_tvg_id)) = LOWER(TRIM(COALESCE(c.tvg_id, '')))
+            OR LOWER(REPLACE(TRIM(ep.channel_tvg_id), ' ', '')) = LOWER(REPLACE(TRIM(COALESCE(c.tvg_id, '')), ' ', ''))
+            OR EXISTS (
+                SELECT 1 FROM alias_map am
+                WHERE am.source_id = ep.source_id
+                  AND am.channel_tvg_id = ep.channel_tvg_id
+                  AND am.alias_normalized = LOWER(REPLACE(TRIM(c.name), ' ', ''))
+            )
+        )
+        INNER JOIN sources s ON s.id = c.source_id
+        WHERE s.enabled = 1
+          AND (?1 IS NULL OR ep.title LIKE ?1 OR COALESCE(ep.description, '') LIKE ?1)
+        ORDER BY ep.start_at
+        LIMIT ?2",
+    )?;
+
+    let rows = stmt.query_map(rusqlite::params![pattern, limit], |row| {
+        Ok(EpgProgramSearchResultDto {
+            id: row.get(0)?,
+            channel_id: row.get(1)?,
+            source_id: row.get(2)?,
+            channel_name: row.get(3)?,
+            channel_number: row.get(4)?,
+            channel_tvg_id: row.get(5)?,
+            start_at: row.get(6)?,
+            end_at: row.get(7)?,
+            title: row.get(8)?,
+            description: row.get(9)?,
+            category: row.get(10)?,
+        })
+    })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
 }

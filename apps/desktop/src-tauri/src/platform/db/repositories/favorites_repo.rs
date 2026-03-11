@@ -5,7 +5,12 @@ use crate::error::AppResult;
 
 pub fn list_favorites(conn: &Connection) -> AppResult<Vec<ChannelListItemDto>> {
     let mut stmt = conn.prepare(
-        "SELECT c.id, c.source_id, c.name, c.channel_number, c.group_name, c.tvg_id, c.logo_url, c.stream_url FROM channels c INNER JOIN favorites f ON c.id = f.channel_id ORDER BY c.name",
+        "SELECT c.id, c.source_id, c.name, c.channel_number, c.group_name, c.tvg_id, c.logo_url, c.stream_url
+         FROM channels c
+         INNER JOIN favorites f ON c.id = f.channel_id
+         INNER JOIN sources s ON s.id = c.source_id
+         WHERE s.enabled = 1
+         ORDER BY c.name",
     )?;
 
     let rows = stmt.query_map([], |row| {

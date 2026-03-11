@@ -5,7 +5,14 @@ use crate::error::AppResult;
 
 pub fn list_recents(conn: &Connection, limit: u32) -> AppResult<Vec<RecentChannelDto>> {
     let mut stmt = conn.prepare(
-        "SELECT c.id, c.source_id, c.name, c.channel_number, c.group_name, c.tvg_id, c.logo_url, c.stream_url, (f.channel_id IS NOT NULL) as is_fav, r.last_watched_at, r.play_count FROM channels c INNER JOIN recents r ON c.id = r.channel_id LEFT JOIN favorites f ON c.id = f.channel_id ORDER BY r.last_watched_at DESC LIMIT ?1",
+        "SELECT c.id, c.source_id, c.name, c.channel_number, c.group_name, c.tvg_id, c.logo_url, c.stream_url, (f.channel_id IS NOT NULL) as is_fav, r.last_watched_at, r.play_count
+         FROM channels c
+         INNER JOIN recents r ON c.id = r.channel_id
+         INNER JOIN sources s ON s.id = c.source_id
+         LEFT JOIN favorites f ON c.id = f.channel_id
+         WHERE s.enabled = 1
+         ORDER BY r.last_watched_at DESC
+         LIMIT ?1",
     )?;
 
     let rows = stmt.query_map([limit], |row| {

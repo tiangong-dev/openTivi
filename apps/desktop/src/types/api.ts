@@ -6,12 +6,17 @@ export interface Source {
   username?: string;
   password?: string;
   enabled: boolean;
+  disabledReason?: string;
   autoRefreshMinutes?: number;
   channelCount: number;
   groupCount: number;
   channelsWithTvgId: number;
   epgProgramCount: number;
   lastImportedAt?: string;
+  lastRefreshError?: string;
+  lastRefreshAttemptAt?: string;
+  consecutiveRefreshFailures: number;
+  nextRetryAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,6 +72,29 @@ export interface Setting {
   key: string;
   value: unknown;
   updatedAt: string;
+}
+
+export interface PlaybackSource {
+  channelId: number;
+  resolvedChannelId: number;
+  sourceId: number;
+  channelName: string;
+  streamUrl: string;
+  logoUrl?: string;
+}
+
+export interface EpgProgramSearchResult {
+  id: number;
+  channelId: number;
+  sourceId: number;
+  channelName: string;
+  channelNumber?: string;
+  channelTvgId: string;
+  startAt: string;
+  endAt: string;
+  title: string;
+  description?: string;
+  category?: string;
 }
 
 export interface AppUpdateInfo {

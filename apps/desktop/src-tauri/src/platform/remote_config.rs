@@ -5,9 +5,7 @@ use serde::{Deserialize, Serialize};
 use warp::Filter;
 
 pub struct RemoteServerInfo {
-    pub port: u16,
     pub url: String,
-    pub token: String,
 }
 
 /// Start a LAN-accessible HTTP server for remote source configuration.
@@ -115,9 +113,7 @@ pub fn start_remote_config_server() -> RemoteServerInfo {
     });
 
     RemoteServerInfo {
-        port,
         url,
-        token,
     }
 }
 

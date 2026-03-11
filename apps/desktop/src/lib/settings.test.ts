@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_APP_START_VIEW,
   DEFAULT_GUIDE_WINDOW_MINUTES,
+  DEFAULT_PLAYER_VOLUME,
+  resolveEpgReminders,
   resolveAppStartView,
   resolveGuideWindowMinutes,
   resolveInstantSwitchEnabled,
+  resolvePlayerLastChannelId,
+  resolvePlayerVolume,
 } from "./settings";
 
 describe("settings resolvers", () => {
@@ -26,5 +30,22 @@ describe("settings resolvers", () => {
   it("normalizes instant switch values", () => {
     expect(resolveInstantSwitchEnabled("true")).toBe(true);
     expect(resolveInstantSwitchEnabled("0")).toBe(false);
+  });
+
+  it("normalizes player volume", () => {
+    expect(resolvePlayerVolume("0.5")).toBe(0.5);
+    expect(resolvePlayerVolume(2)).toBe(1);
+    expect(resolvePlayerVolume("bad")).toBe(DEFAULT_PLAYER_VOLUME);
+  });
+
+  it("normalizes last channel ids", () => {
+    expect(resolvePlayerLastChannelId("12")).toBe(12);
+    expect(resolvePlayerLastChannelId(0)).toBeNull();
+    expect(resolvePlayerLastChannelId("bad")).toBeNull();
+  });
+
+  it("normalizes epg reminders", () => {
+    expect(resolveEpgReminders([{ programId: 1, channelId: 2, title: "News", startAt: "20260101080000 +0800" }])).toHaveLength(1);
+    expect(resolveEpgReminders([{ programId: 0 }])).toHaveLength(0);
   });
 });

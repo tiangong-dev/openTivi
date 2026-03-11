@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useIndexFocusGroup } from "../lib/focusScope";
 import { SourcesView } from "../features/sources/SourcesView";
 import { ChannelsView } from "../features/channels/ChannelsView";
 import { FavoritesView } from "../features/favorites/FavoritesView";
@@ -8,11 +9,13 @@ import { VideoPlayer } from "../features/player/VideoPlayer";
 import {
   APP_START_VIEW_SETTING_KEY,
   DEFAULT_APP_START_VIEW,
+  PLAYER_LAST_CHANNEL_ID_SETTING_KEY,
   resolveAppStartView,
+  resolvePlayerLastChannelId,
   type AppStartView,
 } from "../lib/settings";
 import { tauriInvoke } from "../lib/tauri";
-import { mapKeyToTvIntent, type TvContentKeyDetail } from "../lib/tvInput";
+import { mapKeyToTvIntent, TvIntent, type TvContentKeyDetail } from "../lib/tvInput";
 import { detectDefaultLocale, LOCALE_SETTING_KEY, resolveLocale, t, type Locale } from "../lib/i18n";
 import type { Channel, Setting } from "../types/api";
 
@@ -35,8 +38,20 @@ export function AppShell() {
         const settings = await tauriInvoke<Setting[]>("get_settings");
         const localeSetting = settings.find((s) => s.key === LOCALE_SETTING_KEY);
         const startViewSetting = settings.find((s) => s.key === APP_START_VIEW_SETTING_KEY);
+        const lastChannelSetting = settings.find((s) => s.key === PLAYER_LAST_CHANNEL_ID_SETTING_KEY);
         setLocale(resolveLocale(localeSetting?.value));
         setActiveView(resolveAppStartView(startViewSetting?.value));
+        const lastChannelId = resolvePlayerLastChannelId(lastChannelSetting?.value);
+        if (lastChannelId) {
+          const restored = await tauriInvoke<Channel | null>("get_channel", { channelId: lastChannelId });
+          if (restored) {
+            const allChannels = await tauriInvoke<Channel[]>("list_channels", {
+              query: { limit: 5000, offset: 0 },
+            }).catch(() => [restored]);
+            setPlayingChannel(restored);
+            setChannelList(allChannels);
+          }
+        }
       } catch {
         setLocale(detectDefaultLocale());
         setActiveView(DEFAULT_APP_START_VIEW);
@@ -47,6 +62,9 @@ export function AppShell() {
 
   const handlePlay = (ch: Channel, allChannels?: Channel[]) => {
     void tauriInvoke("mark_recent_watched", { channelId: ch.id }).catch(() => undefined);
+    void tauriInvoke("set_setting", {
+      input: { key: PLAYER_LAST_CHANNEL_ID_SETTING_KEY, value: ch.id },
+    }).catch(() => undefined);
     setPlayingChannel(ch);
     if (allChannels) setChannelList(allChannels);
   };
@@ -62,6 +80,15 @@ export function AppShell() {
     { key: "sources", label: t(locale, "nav.sources") },
     { key: "settings", label: t(locale, "nav.settings") },
   ];
+  const navFocusGroup = useIndexFocusGroup({
+    itemCount: navItems.length,
+    currentIndex: focusedNavIndex,
+    setCurrentIndex: setFocusedNavIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
   useEffect(() => {
     setFocusedNavIndex((prev) => Math.min(prev, navItems.length - 1));
   }, [navItems.length]);
@@ -154,17 +181,15 @@ export function AppShell() {
       if (isTypingTarget()) return;
       const intent = mapKeyToTvIntent(event.key);
       if (focusZone === "nav") {
-        if (intent === "MoveDown") {
-          event.preventDefault();
-          focusNavByIndex(focusedNavIndex + 1);
+        if (intent === TvIntent.MoveDown || intent === TvIntent.MoveUp) {
+          const result = navFocusGroup.handleIntent(intent);
+          if (result.handled) {
+            event.preventDefault();
+            focusNavByIndex(result.next);
+          }
           return;
         }
-        if (intent === "MoveUp") {
-          event.preventDefault();
-          focusNavByIndex(focusedNavIndex - 1);
-          return;
-        }
-        if (intent === "Confirm") {
+        if (intent === TvIntent.Confirm) {
           event.preventDefault();
           const selected = navItems[focusedNavIndex];
           if (selected) {
@@ -172,13 +197,13 @@ export function AppShell() {
           }
           return;
         }
-        if (intent === "MoveRight") {
+        if (intent === TvIntent.MoveRight) {
           event.preventDefault();
           setFocusZone("content");
         }
         return;
       }
-      if (intent === "MoveLeft") {
+      if (intent === TvIntent.MoveLeft) {
         event.preventDefault();
         const handledByContent = dispatchContentKey(event.key, event.repeat);
         if (!handledByContent) {
@@ -188,12 +213,12 @@ export function AppShell() {
         return;
       }
       if (
-        intent === "MoveUp" ||
-        intent === "MoveDown" ||
-        intent === "MoveRight" ||
-        intent === "Confirm" ||
-        intent === "SecondaryAction" ||
-        intent === "Back" ||
+        intent === TvIntent.MoveUp ||
+        intent === TvIntent.MoveDown ||
+        intent === TvIntent.MoveRight ||
+        intent === TvIntent.Confirm ||
+        intent === TvIntent.SecondaryAction ||
+        intent === TvIntent.Back ||
         event.key === "Delete" ||
         event.key === "r" ||
         event.key === "R"
@@ -206,7 +231,7 @@ export function AppShell() {
       if (event.defaultPrevented) return;
       if (isTypingTarget()) return;
       if (focusZone !== "content") return;
-      if (mapKeyToTvIntent(event.key) !== "Confirm") return;
+      if (mapKeyToTvIntent(event.key) !== TvIntent.Confirm) return;
       event.preventDefault();
       dispatchContentKeyUp(event.key);
     };
@@ -216,7 +241,7 @@ export function AppShell() {
       window.removeEventListener("keydown", onWindowKeyDown);
       window.removeEventListener("keyup", onWindowKeyUp);
     };
-  }, [activeView, focusZone, focusedNavIndex, navItems, playingChannel]);
+  }, [activeView, focusZone, focusedNavIndex, navFocusGroup, navItems, playingChannel]);
 
   const renderView = () => {
     switch (activeView) {
@@ -269,6 +294,9 @@ export function AppShell() {
             onClose={() => setPlayingChannel(null)}
             onChannelChange={(ch) => {
               void tauriInvoke("mark_recent_watched", { channelId: ch.id }).catch(() => undefined);
+              void tauriInvoke("set_setting", {
+                input: { key: PLAYER_LAST_CHANNEL_ID_SETTING_KEY, value: ch.id },
+              }).catch(() => undefined);
               setPlayingChannel(ch);
             }}
           />

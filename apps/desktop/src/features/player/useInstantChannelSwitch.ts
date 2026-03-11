@@ -22,7 +22,12 @@ export interface InstantChannelSwitchEngine {
   activeSlotRef: React.MutableRefObject<0 | 1 | 2>;
   slotChannelIdRef: React.MutableRefObject<[number | null, number | null, number | null]>;
   hlsSlotsRef: React.MutableRefObject<[Hls | null, Hls | null, Hls | null]>;
-  loadChannelInSlot: (slot: 0 | 1 | 2, target: Channel, prewarm: boolean) => boolean;
+  loadChannelInSlot: (
+    slot: 0 | 1 | 2,
+    target: Channel,
+    prewarm: boolean,
+    streamUrlOverride?: string,
+  ) => boolean;
   activateSlot: (slot: 0 | 1 | 2) => void;
   destroySlot: (slot: 0 | 1 | 2) => void;
   setSlotMuted: (slot: 0 | 1 | 2, muted: boolean) => void;
@@ -285,7 +290,7 @@ export function useInstantChannelSwitch({
   );
 
   const loadChannelInSlot = useCallback(
-    (slot: 0 | 1 | 2, target: Channel, prewarm: boolean) => {
+    (slot: 0 | 1 | 2, target: Channel, prewarm: boolean, streamUrlOverride?: string) => {
       if (proxyPort === null) return false;
       const video = getVideoBySlot(slot);
       if (!video) return false;
@@ -297,8 +302,9 @@ export function useInstantChannelSwitch({
       destroySlot(slot);
       slotReadyRef.current[slot] = false;
       video.muted = prewarm;
-      const proxiedUrl = toProxyUrl(target.streamUrl, proxyPort);
-      const kind = getPlaybackKind(target.streamUrl);
+      const playbackUrl = streamUrlOverride ?? target.streamUrl;
+      const proxiedUrl = toProxyUrl(playbackUrl, proxyPort);
+      const kind = getPlaybackKind(playbackUrl);
       const markReady = () => {
         if (slotChannelIdRef.current[slot] === target.id) {
           slotReadyRef.current[slot] = true;

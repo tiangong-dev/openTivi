@@ -55,6 +55,8 @@ export function FavoritesView({ locale, onPlay }: Props) {
           locale={locale}
           onPlay={onPlay}
           onToggleFavorite={unfavorite}
+          keyboardNavigationEnabled
+          active
         />
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { useIndexFocusGroup } from "../../lib/focusScope";
 import { t, type Locale } from "../../lib/i18n";
 import {
   DEFAULT_GUIDE_WINDOW_MINUTES,
@@ -7,7 +8,14 @@ import {
   resolveGuideWindowMinutes,
 } from "../../lib/settings";
 import { buildSnapshotRequestChannelIds } from "../../lib/epgSnapshots";
-import { createConfirmPressHandler, mapKeyToTvIntent, type TvContentKeyDetail } from "../../lib/tvInput";
+import {
+  ConfirmGesture,
+  createConfirmPressHandler,
+  isConfirmGestureOneOf,
+  mapKeyToTvIntent,
+  TvIntent,
+  type TvContentKeyDetail,
+} from "../../lib/tvInput";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel, ChannelEpgSnapshot, Setting } from "../../types/api";
 
@@ -18,6 +26,12 @@ interface Props<T extends Channel = Channel> {
   onToggleFavorite?: (channel: T) => void;
   renderMeta?: (channel: T) => ReactNode;
   onMoveBeforeFirst?: () => void;
+  focusedIndex?: number;
+  onFocusedIndexChange?: (index: number) => void;
+  keyboardNavigationEnabled?: boolean;
+  active?: boolean;
+  virtualized?: boolean;
+  virtualListHeight?: number;
 }
 
 interface PrewarmIntentInput {
@@ -37,21 +51,40 @@ export function ChannelRowsWithGuide<T extends Channel>({
   onToggleFavorite,
   renderMeta,
   onMoveBeforeFirst,
+  focusedIndex: controlledFocusedIndex,
+  onFocusedIndexChange,
+  keyboardNavigationEnabled = true,
+  active = true,
+  virtualized = false,
+  virtualListHeight = 560,
 }: Props<T>) {
   const [snapshots, setSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [loading, setLoading] = useState(false);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [guideWindowMinutes, setGuideWindowMinutes] = useState(DEFAULT_GUIDE_WINDOW_MINUTES);
-  const [focusedIndex, setFocusedIndex] = useState(0);
+  const [uncontrolledFocusedIndex, setUncontrolledFocusedIndex] = useState(0);
   const [domFocusedIndex, setDomFocusedIndex] = useState<number | null>(null);
   const [hoveredChannelId, setHoveredChannelId] = useState<number | null>(null);
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
   const focusedIndexRef = useRef(0);
   const itemsRef = useRef<T[]>(items);
   const onPlayRef = useRef(onPlay);
   const onToggleFavoriteRef = useRef(onToggleFavorite);
+
+  const focusedIndex = controlledFocusedIndex ?? uncontrolledFocusedIndex;
+  const setFocusedIndex = (next: number | ((prev: number) => number)) => {
+    const resolved =
+      typeof next === "function"
+        ? (next as (prev: number) => number)(focusedIndex)
+        : next;
+    if (controlledFocusedIndex === undefined) {
+      setUncontrolledFocusedIndex(resolved);
+    }
+    onFocusedIndexChange?.(resolved);
+  };
 
   const channelIds = useMemo(
     () => buildSnapshotRequestChannelIds(items, focusedIndex, SNAPSHOT_WINDOW_SIZE),
@@ -62,6 +95,30 @@ export function ChannelRowsWithGuide<T extends Channel>({
     const start = Math.floor(nowTs / step) * step;
     return { start, end: start + guideWindowMinutes * 60 * 1000 };
   }, [nowTs, guideWindowMinutes]);
+  const [scrollTop, setScrollTop] = useState(0);
+  const rowHeight = 78;
+  const overscan = 6;
+  const visibleCount = Math.ceil(virtualListHeight / rowHeight);
+  const rangeStart = virtualized
+    ? Math.max(0, Math.min(focusedIndex, Math.floor(scrollTop / rowHeight)) - overscan)
+    : 0;
+  const rangeEnd = virtualized
+    ? Math.min(items.length, Math.max(focusedIndex + overscan + 1, rangeStart + visibleCount + overscan * 2))
+    : items.length;
+  const visibleItems = virtualized
+    ? items.slice(rangeStart, rangeEnd).map((item, offset) => ({ item, index: rangeStart + offset }))
+    : items.map((item, index) => ({ item, index }));
+  const topSpacerHeight = virtualized ? rangeStart * rowHeight : 0;
+  const bottomSpacerHeight = virtualized ? Math.max(0, (items.length - rangeEnd) * rowHeight) : 0;
+  const verticalFocusGroup = useIndexFocusGroup({
+    itemCount: items.length,
+    currentIndex: focusedIndex,
+    setCurrentIndex: setFocusedIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: onMoveBeforeFirst ? "bubble" : "wrap",
+    forwardEdge: "wrap",
+  });
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowTs(Date.now()), 30_000);
@@ -80,6 +137,13 @@ export function ChannelRowsWithGuide<T extends Channel>({
   useEffect(() => {
     focusedIndexRef.current = focusedIndex;
   }, [focusedIndex]);
+
+  useEffect(() => {
+    if (!active || items.length === 0) return;
+    window.setTimeout(() => {
+      focusRowByIndex(focusedIndex);
+    }, 0);
+  }, [active, focusedIndex, items.length]);
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -185,6 +249,21 @@ export function ChannelRowsWithGuide<T extends Channel>({
     if (items.length === 0) return;
     const wrapped = ((nextIndex % items.length) + items.length) % items.length;
     setFocusedIndex(wrapped);
+    if (virtualized && listContainerRef.current) {
+      const desiredTop = Math.max(0, wrapped * rowHeight - rowHeight * 2);
+      const desiredBottom = wrapped * rowHeight + rowHeight * 3;
+      const viewportTop = listContainerRef.current.scrollTop;
+      const viewportBottom = viewportTop + virtualListHeight;
+      if (desiredTop < viewportTop || desiredBottom > viewportBottom) {
+        listContainerRef.current.scrollTop = desiredTop;
+        setScrollTop(desiredTop);
+      }
+      window.setTimeout(() => {
+        const rowNode = rowRefs.current[wrapped];
+        rowNode?.focus();
+      }, 0);
+      return;
+    }
     const rowNode = rowRefs.current[wrapped];
     rowNode?.focus();
     rowNode?.scrollIntoView({ block: "nearest" });
@@ -192,16 +271,15 @@ export function ChannelRowsWithGuide<T extends Channel>({
 
   useEffect(() => {
     confirmPressRef.current = createConfirmPressHandler({
-      onSingle: () => {
+      onGesture: (gesture) => {
         const current = itemsRef.current[focusedIndexRef.current];
-        if (current) {
+        if (!current) return;
+        if (gesture === ConfirmGesture.Single) {
           schedulePlay(current);
+          return;
         }
-      },
-      onLong: () => {
-        if (!onToggleFavoriteRef.current) return;
-        const current = itemsRef.current[focusedIndexRef.current];
-        if (current) {
+        if (isConfirmGestureOneOf(gesture, [ConfirmGesture.Double, ConfirmGesture.Long])) {
+          if (!onToggleFavoriteRef.current) return;
           triggerFavorite(current);
         }
       },
@@ -227,6 +305,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
       if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
         return;
       }
+      if (!active) return;
       if (items.length === 0) return;
       focusRowByIndex(focusedIndex);
     };
@@ -235,32 +314,30 @@ export function ChannelRowsWithGuide<T extends Channel>({
       if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
         return;
       }
+      if (!keyboardNavigationEnabled || !active) return;
       const key = detail?.key;
       const intent = detail?.intent ?? (key ? mapKeyToTvIntent(key) : null);
       if (!intent || items.length === 0) return;
-      if (intent === "MoveDown") {
-        event.preventDefault();
-        focusRowByIndex(focusedIndex + 1);
-        return;
-      }
-      if (intent === "MoveUp") {
-        if (focusedIndex === 0 && onMoveBeforeFirst) {
+      if (intent === TvIntent.MoveUp || intent === TvIntent.MoveDown) {
+        const result = verticalFocusGroup.handleIntent(intent);
+        if (!result.handled && intent === TvIntent.MoveUp && onMoveBeforeFirst) {
           event.preventDefault();
           onMoveBeforeFirst();
           return;
         }
-        event.preventDefault();
-        focusRowByIndex(focusedIndex - 1);
+        if (result.handled) {
+          event.preventDefault();
+        }
         return;
       }
       const current = items[focusedIndex];
       if (!current) return;
-      if (intent === "Confirm") {
+      if (intent === TvIntent.Confirm) {
         event.preventDefault();
         confirmPressRef.current?.onKeyDown(Boolean(detail?.repeat));
         return;
       }
-      if (intent === "SecondaryAction" && onToggleFavorite) {
+      if (intent === TvIntent.SecondaryAction && onToggleFavorite) {
         event.preventDefault();
         triggerFavorite(current);
       }
@@ -270,9 +347,10 @@ export function ChannelRowsWithGuide<T extends Channel>({
       if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
         return;
       }
+      if (!keyboardNavigationEnabled || !active) return;
       const key = detail?.key;
       const intent = detail?.intent ?? (key ? mapKeyToTvIntent(key) : null);
-      if (intent !== "Confirm") return;
+      if (intent !== TvIntent.Confirm) return;
       event.preventDefault();
       confirmPressRef.current?.onKeyUp();
     };
@@ -286,7 +364,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
       window.removeEventListener("tv-content-key", onContentKey as EventListener);
       window.removeEventListener("tv-content-keyup", onContentKeyUp as EventListener);
     };
-  }, [focusedIndex, items, onMoveBeforeFirst, onToggleFavorite]);
+  }, [active, focusedIndex, items, keyboardNavigationEnabled, onMoveBeforeFirst, onToggleFavorite]);
 
   useEffect(() => {
     return () => {
@@ -297,8 +375,17 @@ export function ChannelRowsWithGuide<T extends Channel>({
   }, []);
 
   return (
-    <>
-      {items.map((ch, index) => {
+    <div
+      ref={virtualized ? listContainerRef : null}
+      style={virtualized ? { overflowY: "auto", height: virtualListHeight } : undefined}
+      onScroll={
+        virtualized
+          ? (event) => setScrollTop((event.currentTarget as HTMLDivElement).scrollTop)
+          : undefined
+      }
+    >
+      {topSpacerHeight > 0 ? <div style={{ height: topSpacerHeight }} /> : null}
+      {visibleItems.map(({ item: ch, index }) => {
         const snapshot = snapshots[ch.id];
         const isActive =
           hoveredChannelId === ch.id || (isContentZoneActive && domFocusedIndex === index);
@@ -380,7 +467,8 @@ export function ChannelRowsWithGuide<T extends Channel>({
           </div>
         );
       })}
-    </>
+      {bottomSpacerHeight > 0 ? <div style={{ height: bottomSpacerHeight }} /> : null}
+    </div>
   );
 }
 

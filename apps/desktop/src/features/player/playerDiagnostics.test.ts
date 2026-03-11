@@ -21,7 +21,8 @@ describe("Player Diagnostics - Issue Scenarios", () => {
       // FIX: activeSlot is now 0 | 1 | 2 and drives UI visibility
       // Only the active slot should be visible.
 
-      const activeSlot = 2;
+      const activeSlots: Array<0 | 1 | 2> = [0, 1, 2];
+      const activeSlot = activeSlots[2];
 
       const prevOpacity = activeSlot === 0 ? 1 : 0;
       const activeOpacity = activeSlot === 1 ? 1 : 0;

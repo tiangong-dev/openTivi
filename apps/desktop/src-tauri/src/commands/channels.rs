@@ -55,3 +55,23 @@ pub fn get_channels_epg_snapshots(
         query.window_end_ts,
     )
 }
+
+#[tauri::command]
+pub fn search_epg(
+    state: State<AppState>,
+    query: SearchEpgQuery,
+) -> AppResult<Vec<EpgProgramSearchResultDto>> {
+    let conn = state.db.lock().unwrap();
+    crate::core::services::epg_service::search_programs(
+        &conn,
+        query.search.as_deref(),
+        query.state.as_deref(),
+        query.limit.unwrap_or(100),
+    )
+}
+
+#[tauri::command]
+pub fn get_channel(state: State<AppState>, channel_id: i64) -> AppResult<Option<ChannelListItemDto>> {
+    let conn = state.db.lock().unwrap();
+    crate::platform::db::repositories::channel_repo::get_enabled_channel_dto_by_id(&conn, channel_id)
+}

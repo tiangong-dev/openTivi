@@ -392,7 +392,7 @@ export function SourcesView({ locale }: Props) {
   };
 
   const m3uSources = useMemo(
-    () => sources.filter((s) => s.kind === "m3u" && (s.autoRefreshMinutes ?? 0) > 0),
+    () => sources.filter((s) => s.enabled && s.kind === "m3u" && (s.autoRefreshMinutes ?? 0) > 0),
     [sources],
   );
 
@@ -519,9 +519,13 @@ export function SourcesView({ locale }: Props) {
                         event.stopPropagation();
                         void handleRefresh(s.id);
                       }}
-                      disabled={loading}
+                      disabled={loading || !s.enabled}
                       tabIndex={-1}
-                      style={actionBtnStyle}
+                      style={{
+                        ...actionBtnStyle,
+                        opacity: s.enabled ? 1 : 0.5,
+                        cursor: s.enabled ? "pointer" : "not-allowed",
+                      }}
                     >
                       {t(locale, "sources.action.refresh")}
                     </button>

@@ -98,6 +98,13 @@ pub fn refresh_source(conn: &Connection, source_id: i64) -> AppResult<ImportSumm
     let source = crate::platform::db::repositories::source_repo::get_by_id(conn, source_id)?
         .ok_or_else(|| AppError::NotFound(format!("Source {} not found", source_id)))?;
 
+    if !source.enabled {
+        return Err(AppError::Validation(format!(
+            "Source {} is disabled",
+            source_id
+        )));
+    }
+
     match source.kind {
         SourceKind::M3u => import_m3u(
             conn,

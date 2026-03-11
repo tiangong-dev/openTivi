@@ -6,7 +6,9 @@ use crate::error::{AppError, AppResult};
 const HEALTH_FRESH_MINUTES: i64 = 10;
 
 pub fn resolve_playback(conn: &Connection, channel_id: i64) -> AppResult<PlaybackSourceDto> {
-    let channel = crate::platform::db::repositories::channel_repo::get_by_id(conn, channel_id)?
+    let channel = crate::platform::db::repositories::channel_repo::get_enabled_by_id(
+        conn, channel_id,
+    )?
         .ok_or_else(|| AppError::NotFound(format!("Channel {} not found", channel_id)))?;
 
     // Mark as recently watched (using the logical channel the user clicked)

@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_APP_START_VIEW,
   DEFAULT_GUIDE_WINDOW_MINUTES,
+  DEFAULT_PREFER_NATIVE_HLS,
   DEFAULT_PLAYER_VOLUME,
   resolveEpgReminders,
   resolveAppStartView,
   resolveGuideWindowMinutes,
   resolveInstantSwitchEnabled,
   resolvePlayerLastChannelId,
+  resolvePreferNativeHls,
   resolvePlayerVolume,
 } from "./settings";
 
@@ -30,6 +32,12 @@ describe("settings resolvers", () => {
   it("normalizes instant switch values", () => {
     expect(resolveInstantSwitchEnabled("true")).toBe(true);
     expect(resolveInstantSwitchEnabled("0")).toBe(false);
+  });
+
+  it("normalizes prefer native hls values", () => {
+    expect(resolvePreferNativeHls("1")).toBe(true);
+    expect(resolvePreferNativeHls(false)).toBe(false);
+    expect(resolvePreferNativeHls("bad")).toBe(DEFAULT_PREFER_NATIVE_HLS);
   });
 
   it("normalizes player volume", () => {

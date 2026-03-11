@@ -4,10 +4,13 @@ import { t, type Locale } from "../../lib/i18n";
 import { buildSnapshotRequestChannelIds } from "../../lib/epgSnapshots";
 import {
   DEFAULT_INSTANT_SWITCH_ENABLED,
+  DEFAULT_PREFER_NATIVE_HLS,
   DEFAULT_PLAYER_VOLUME,
   INSTANT_SWITCH_ENABLED_SETTING_KEY,
+  PREFER_NATIVE_HLS_SETTING_KEY,
   PLAYER_VOLUME_SETTING_KEY,
   resolveInstantSwitchEnabled,
+  resolvePreferNativeHls,
   resolvePlayerVolume,
 } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
@@ -23,6 +26,7 @@ import {
   formatNetworkSpeed,
   formatTime,
   getGuidePrograms,
+  getPlaybackKind,
   parseXmltvDate,
 } from "./playerUtils";
 import { useInstantChannelSwitch } from "./useInstantChannelSwitch";
@@ -62,6 +66,13 @@ interface Props {
   onChannelChange: (channel: Channel) => void;
 }
 
+interface DecoderDiagnosticsState {
+  engineLabel: string;
+  decoderLabel: string;
+  resolutionLabel: string;
+  framesLabel: string;
+}
+
 export function VideoPlayer({ channel, channels, locale, onClose, onChannelChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,12 +109,19 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [channelEpgLoading, setChannelEpgLoading] = useState(false);
   const [instantSwitchEnabled, setInstantSwitchEnabled] = useState(DEFAULT_INSTANT_SWITCH_ENABLED);
+  const [preferNativeHls, setPreferNativeHls] = useState(DEFAULT_PREFER_NATIVE_HLS);
   const [volume, setVolume] = useState(DEFAULT_PLAYER_VOLUME);
   const [playbackCandidates, setPlaybackCandidates] = useState<PlaybackSource[]>([]);
   const [candidateIndex, setCandidateIndex] = useState(0);
   const [retryCount, setRetryCount] = useState(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [runtimeLogs, setRuntimeLogs] = useState<string[]>([]);
+  const [decoderDiagnostics, setDecoderDiagnostics] = useState<DecoderDiagnosticsState>({
+    engineLabel: "--",
+    decoderLabel: "--",
+    resolutionLabel: "--",
+    framesLabel: "--",
+  });
   const volumeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
   const candidateIndexRef = useRef(0);
@@ -143,10 +161,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     destroySlot,
     setSlotMuted,
     getVideoBySlot,
+    getSlotPlaybackDebugInfo,
     appendRuntimeLog,
   } = useInstantChannelSwitch({
     proxyPort,
     locale,
+    preferNativeHls,
     onError: (message) => {
       if (!message) {
         setError(null);
@@ -184,8 +204,10 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
     void tauriInvoke<Setting[]>("get_settings").then((settings) => {
       const instantSwitchEnabledSetting = settings.find((s) => s.key === INSTANT_SWITCH_ENABLED_SETTING_KEY);
+      const preferNativeHlsSetting = settings.find((s) => s.key === PREFER_NATIVE_HLS_SETTING_KEY);
       const volumeSetting = settings.find((s) => s.key === PLAYER_VOLUME_SETTING_KEY);
       setInstantSwitchEnabled(resolveInstantSwitchEnabled(instantSwitchEnabledSetting?.value ?? DEFAULT_INSTANT_SWITCH_ENABLED));
+      setPreferNativeHls(resolvePreferNativeHls(preferNativeHlsSetting?.value ?? DEFAULT_PREFER_NATIVE_HLS));
       setVolume(resolvePlayerVolume(volumeSetting?.value ?? DEFAULT_PLAYER_VOLUME));
     });
   }, []);
@@ -463,6 +485,59 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       }
     };
   }, [channel.id, getVideoBySlot]);
+
+  useEffect(() => {
+    if (!showDiagnostics) return;
+
+    const readDiagnostics = () => {
+      const video = getVideoBySlot(activeSlotRef.current) as (HTMLVideoElement & {
+        webkitDecodedFrameCount?: number;
+        webkitDroppedFrameCount?: number;
+      }) | null;
+      const playbackInfo = getSlotPlaybackDebugInfo(activeSlotRef.current);
+      if (!video) {
+        setDecoderDiagnostics({
+          engineLabel: playbackInfo.engineLabel,
+          decoderLabel: playbackInfo.decoderLabel,
+          resolutionLabel: "--",
+          framesLabel: "--",
+        });
+        return;
+      }
+
+      let framesLabel = "--";
+      if (typeof video.getVideoPlaybackQuality === "function") {
+        const quality = video.getVideoPlaybackQuality();
+        const totalFrames = Number(quality.totalVideoFrames ?? 0);
+        const droppedFrames = Number(quality.droppedVideoFrames ?? 0);
+        if (totalFrames > 0 || droppedFrames > 0) {
+          framesLabel = `${totalFrames} decoded / ${droppedFrames} dropped`;
+        }
+      } else {
+        const decodedFrames = Number(video.webkitDecodedFrameCount ?? 0);
+        const droppedFrames = Number(video.webkitDroppedFrameCount ?? 0);
+        if (decodedFrames > 0 || droppedFrames > 0) {
+          framesLabel = `${decodedFrames} decoded / ${droppedFrames} dropped`;
+        }
+      }
+
+      const resolutionLabel =
+        video.videoWidth > 0 && video.videoHeight > 0
+          ? `${video.videoWidth}x${video.videoHeight}`
+          : "--";
+
+      setDecoderDiagnostics({
+        engineLabel: playbackInfo.engineLabel,
+        decoderLabel: playbackInfo.decoderLabel,
+        resolutionLabel,
+        framesLabel,
+      });
+    };
+
+    readDiagnostics();
+    const timer = window.setInterval(readDiagnostics, 1000);
+    return () => window.clearInterval(timer);
+  }, [activeSlotRef, channel.id, getSlotPlaybackDebugInfo, getVideoBySlot, showDiagnostics]);
 
   const showOverlay = useCallback(() => {
     setOverlayVisible(true);
@@ -922,7 +997,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           zIndex: activeSlot === 0 ? 1 : 0,
           pointerEvents: activeSlot === 0 ? "auto" : "none",
         }}
-        autoPlay
         muted={activeSlot !== 0}
       />
       <video
@@ -933,7 +1007,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           zIndex: activeSlot === 1 ? 1 : 0,
           pointerEvents: activeSlot === 1 ? "auto" : "none",
         }}
-        autoPlay
         muted={activeSlot !== 1}
       />
       <video
@@ -944,7 +1017,6 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           zIndex: activeSlot === 2 ? 1 : 0,
           pointerEvents: activeSlot === 2 ? "auto" : "none",
         }}
-        autoPlay
         muted={activeSlot !== 2}
       />
 
@@ -1199,7 +1271,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           <div style={diagnosticLineStyle}>{t(locale, "player.activeLine")}: {candidateIndex + 1}/{Math.max(playbackCandidates.length, 1)}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.retryCount")}: {retryCount}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.networkSpeed")}: {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}</div>
-          <div style={diagnosticLineStyle}>{t(locale, "player.streamKind")}: {currentPlaybackSource.streamUrl.includes(".m3u8") ? "HLS" : currentPlaybackSource.streamUrl.includes(".ts") ? "MPEG-TS" : "Native"}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.streamKind")}: {getPlaybackKind(currentPlaybackSource.streamUrl) === "hls" ? "HLS" : getPlaybackKind(currentPlaybackSource.streamUrl) === "mpegts" ? "MPEG-TS" : "Native"}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.playbackEngine")}: {decoderDiagnostics.engineLabel}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.decoderInfo")}: {decoderDiagnostics.decoderLabel}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.videoResolution")}: {decoderDiagnostics.resolutionLabel}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.videoFrames")}: {decoderDiagnostics.framesLabel}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.resolvedSource")}: #{currentPlaybackSource.sourceId}</div>
           <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-secondary)" }}>{t(locale, "player.runtimeLogs")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>

@@ -8,8 +8,10 @@ import {
   DEFAULT_APP_START_VIEW,
   DEFAULT_GUIDE_WINDOW_MINUTES,
   DEFAULT_INSTANT_SWITCH_ENABLED,
+  DEFAULT_PREFER_NATIVE_HLS,
   GUIDE_WINDOW_MINUTES_SETTING_KEY,
   INSTANT_SWITCH_ENABLED_SETTING_KEY,
+  PREFER_NATIVE_HLS_SETTING_KEY,
 } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
 import { TvIntent, type TvContentKeyDetail } from "../../lib/tvInput";
@@ -85,6 +87,7 @@ const settingCategories: { titleKey: TranslationKey; settings: SettingDef[] }[] 
     titleKey: "settings.category.playback",
     settings: [
       { key: INSTANT_SWITCH_ENABLED_SETTING_KEY, labelKey: "settings.player.instantSwitchEnabled", type: "toggle", defaultValue: DEFAULT_INSTANT_SWITCH_ENABLED },
+      { key: PREFER_NATIVE_HLS_SETTING_KEY, labelKey: "settings.player.preferNativeHls", type: "toggle", defaultValue: DEFAULT_PREFER_NATIVE_HLS },
     ],
   },
   {

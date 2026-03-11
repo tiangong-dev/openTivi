@@ -10,6 +10,7 @@ import { getPlaybackKind, toProxyUrl, type PlaybackKind } from "./playerUtils";
 export interface UseInstantChannelSwitchOptions {
   proxyPort: number | null;
   locale: Locale;
+  preferNativeHls: boolean;
   onError: (error: string | null) => void;
   onNetworkSpeed: (bps: number) => void;
 }
@@ -32,6 +33,11 @@ export interface InstantChannelSwitchEngine {
   destroySlot: (slot: 0 | 1 | 2) => void;
   setSlotMuted: (slot: 0 | 1 | 2, muted: boolean) => void;
   getVideoBySlot: (slot: 0 | 1 | 2) => HTMLVideoElement | null;
+  getSlotPlaybackDebugInfo: (slot: 0 | 1 | 2) => {
+    kind: PlaybackKind | null;
+    engineLabel: string;
+    decoderLabel: string;
+  };
   appendRuntimeLog: (event: string, data: Record<string, unknown>) => void;
 }
 
@@ -42,17 +48,55 @@ function loadHlsSlot(
   activeSlotRef: React.MutableRefObject<0 | 1 | 2>,
   hlsSlotsRef: React.MutableRefObject<[Hls | null, Hls | null, Hls | null]>,
   localeRef: React.MutableRefObject<Locale>,
+  preferNativeHls: boolean,
+  prewarm: boolean,
   markReady: () => void,
   onError: (error: string | null) => void,
   onNetworkSpeed: (bps: number) => void,
 ): void {
+   const canUseNativeHls = video.canPlayType("application/vnd.apple.mpegurl") !== "";
+
+   if (preferNativeHls && canUseNativeHls) {
+     video.addEventListener("loadeddata", markReady, { once: true });
+     video.src = proxiedUrl;
+     video.preload = prewarm ? "metadata" : "auto";
+     if (prewarm) {
+       video.load();
+       return;
+     }
+     video.play().catch(() => {
+       if (Hls.isSupported()) {
+         loadHlsSlot(
+           video,
+           proxiedUrl,
+           slot,
+           activeSlotRef,
+           hlsSlotsRef,
+           localeRef,
+           false,
+           prewarm,
+           markReady,
+           onError,
+           onNetworkSpeed,
+         );
+         return;
+       }
+       if (slot === 1) {
+         onError(t(localeRef.current, "player.hlsNotSupported"));
+       }
+     });
+     return;
+   }
+
    if (Hls.isSupported()) {
      const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
      hls.loadSource(proxiedUrl);
      hls.attachMedia(video);
      hls.on(Hls.Events.MANIFEST_PARSED, () => {
        markReady();
-       video.play().catch(() => {});
+       if (!prewarm) {
+         video.play().catch(() => {});
+       }
      });
      hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
        if (slot !== activeSlotRef.current) return;
@@ -79,9 +123,14 @@ function loadHlsSlot(
        }
      });
      hlsSlotsRef.current[slot] = hls;
-   } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+   } else if (canUseNativeHls) {
      video.src = proxiedUrl;
-     video.play().catch(() => {});
+     video.preload = prewarm ? "metadata" : "auto";
+     if (prewarm) {
+       video.load();
+     } else {
+       video.play().catch(() => {});
+     }
    } else if (slot === 1) {
      onError(t(localeRef.current, "player.hlsNotSupported"));
    }
@@ -94,6 +143,7 @@ function loadMpegtsSlot(
   activeSlotRef: React.MutableRefObject<0 | 1 | 2>,
   mpegtsSlotsRef: React.MutableRefObject<[mpegts.Player | null, mpegts.Player | null, mpegts.Player | null]>,
   localeRef: React.MutableRefObject<Locale>,
+  prewarm: boolean,
   markReady: () => void,
   onError: (error: string | null) => void,
   onNetworkSpeed: (bps: number) => void,
@@ -106,7 +156,9 @@ function loadMpegtsSlot(
      });
      player.attachMediaElement(video);
      player.load();
-     player.play();
+     if (!prewarm) {
+       player.play();
+     }
      player.on(mpegts.Events.STATISTICS_INFO, (stats) => {
        markReady();
        if (slot !== activeSlotRef.current) return;
@@ -133,11 +185,17 @@ function loadNativeSlot(
   activeSlotRef: React.MutableRefObject<0 | 1 | 2>,
   hlsSlotsRef: React.MutableRefObject<[Hls | null, Hls | null, Hls | null]>,
   localeRef: React.MutableRefObject<Locale>,
+  prewarm: boolean,
   markReady: () => void,
   onError: (error: string | null) => void,
 ): void {
    video.addEventListener("loadeddata", markReady, { once: true });
    video.src = proxiedUrl;
+   video.preload = prewarm ? "metadata" : "auto";
+   if (prewarm) {
+     video.load();
+     return;
+   }
    video.play().catch(() => {
      if (slot !== 1) return;
      if (Hls.isSupported()) {
@@ -157,6 +215,7 @@ function loadNativeSlot(
 export function useInstantChannelSwitch({
   proxyPort,
   locale,
+  preferNativeHls,
   onError,
   onNetworkSpeed,
 }: UseInstantChannelSwitchOptions): InstantChannelSwitchEngine {
@@ -204,6 +263,46 @@ export function useInstantChannelSwitch({
       if (slot === 0) return prevVideoRef.current;
       if (slot === 1) return activeVideoRef.current;
       return nextVideoRef.current;
+    },
+    [],
+  );
+
+  const getSlotPlaybackDebugInfo = useCallback(
+    (slot: 0 | 1 | 2) => {
+      const kind = slotKindRef.current[slot];
+      if (kind === "hls") {
+        if (hlsSlotsRef.current[slot]) {
+          return {
+            kind,
+            engineLabel: "hls.js",
+            decoderLabel: "MSE browser decoder",
+          };
+        }
+        return {
+          kind,
+          engineLabel: "Native HLS",
+          decoderLabel: "System media pipeline (inferred)",
+        };
+      }
+      if (kind === "mpegts") {
+        return {
+          kind,
+          engineLabel: "mpegts.js",
+          decoderLabel: "MSE browser decoder",
+        };
+      }
+      if (kind === "native") {
+        return {
+          kind,
+          engineLabel: "HTML5 native",
+          decoderLabel: "HTML5 media decoder",
+        };
+      }
+      return {
+        kind: null,
+        engineLabel: "--",
+        decoderLabel: "--",
+      };
     },
     [],
   );
@@ -281,6 +380,7 @@ export function useInstantChannelSwitch({
       // Start playback
       const activeVideo = getVideoBySlot(slot);
       if (activeVideo) {
+        mpegtsSlotsRef.current[slot]?.play();
         activeVideo.play().catch((err) => {
           console.error(`[InstantSwitch] Failed to play slot ${slot}:`, err);
         });
@@ -302,6 +402,7 @@ export function useInstantChannelSwitch({
       destroySlot(slot);
       slotReadyRef.current[slot] = false;
       video.muted = prewarm;
+      video.preload = prewarm ? "metadata" : "auto";
       const playbackUrl = streamUrlOverride ?? target.streamUrl;
       const proxiedUrl = toProxyUrl(playbackUrl, proxyPort);
       const kind = getPlaybackKind(playbackUrl);
@@ -323,17 +424,18 @@ export function useInstantChannelSwitch({
       if (kind === "hls") {
         loadHlsSlot(
           video, proxiedUrl, slot, activeSlotRef, hlsSlotsRef, localeRef,
+          preferNativeHls, prewarm,
           markReady, onErrorRef.current, onNetworkSpeedRef.current,
         );
       } else if (kind === "mpegts") {
         loadMpegtsSlot(
           video, proxiedUrl, slot, activeSlotRef, mpegtsSlotsRef, localeRef,
-          markReady, onErrorRef.current, onNetworkSpeedRef.current,
+          prewarm, markReady, onErrorRef.current, onNetworkSpeedRef.current,
         );
       } else {
         loadNativeSlot(
           video, proxiedUrl, slot, activeSlotRef, hlsSlotsRef, localeRef,
-          markReady, onErrorRef.current,
+          prewarm, markReady, onErrorRef.current,
         );
       }
 
@@ -342,7 +444,7 @@ export function useInstantChannelSwitch({
       slotChannelIdRef.current[slot] = target.id;
       return true;
       },
-      [appendRuntimeLog, destroySlot, getVideoBySlot, proxyPort],
+      [appendRuntimeLog, destroySlot, getVideoBySlot, preferNativeHls, proxyPort],
       );
 
       return {
@@ -358,6 +460,7 @@ export function useInstantChannelSwitch({
       destroySlot,
       setSlotMuted,
       getVideoBySlot,
+      getSlotPlaybackDebugInfo,
       appendRuntimeLog,
       };
       }

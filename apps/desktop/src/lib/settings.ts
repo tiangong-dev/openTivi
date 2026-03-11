@@ -2,6 +2,8 @@ export const GUIDE_WINDOW_MINUTES_SETTING_KEY = "epg.timelineWindowMinutes";
 export const DEFAULT_GUIDE_WINDOW_MINUTES = 180;
 export const INSTANT_SWITCH_ENABLED_SETTING_KEY = "player.instantSwitchEnabled";
 export const DEFAULT_INSTANT_SWITCH_ENABLED = false;
+export const PREFER_NATIVE_HLS_SETTING_KEY = "player.preferNativeHls";
+export const DEFAULT_PREFER_NATIVE_HLS = true;
 export const PLAYER_VOLUME_SETTING_KEY = "player.volume";
 export const DEFAULT_PLAYER_VOLUME = 0.8;
 export const PLAYER_LAST_CHANNEL_ID_SETTING_KEY = "player.lastChannelId";
@@ -31,6 +33,15 @@ export function resolveInstantSwitchEnabled(raw: unknown): boolean {
   if (typeof raw === "boolean") return raw;
   if (typeof raw === "string") return raw === "true" || raw === "1";
   return DEFAULT_INSTANT_SWITCH_ENABLED;
+}
+
+export function resolvePreferNativeHls(raw: unknown): boolean {
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "string") {
+    if (raw === "true" || raw === "1") return true;
+    if (raw === "false" || raw === "0") return false;
+  }
+  return DEFAULT_PREFER_NATIVE_HLS;
 }
 
 export function resolvePlayerVolume(raw: unknown): number {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveLinearFocusScope } from "./focusScope";
+import { resolveIndexFocusScope, resolveLinearFocusScope } from "./focusScope";
 import { TvIntent } from "./tvInput";
 
 describe("focus scope", () => {
@@ -57,5 +57,33 @@ describe("focus scope", () => {
         forwardEdge: "stay",
       }),
     ).toEqual({ handled: true, next: "b" });
+  });
+
+  it("resolves wrapped index navigation for vertical lists", () => {
+    expect(
+      resolveIndexFocusScope({
+        itemCount: 3,
+        currentIndex: 0,
+        intent: TvIntent.MoveUp,
+        backwardIntent: TvIntent.MoveUp,
+        forwardIntent: TvIntent.MoveDown,
+        backwardEdge: "wrap",
+        forwardEdge: "wrap",
+      }),
+    ).toEqual({ handled: true, next: 2 });
+  });
+
+  it("bubbles index navigation when the edge policy requires it", () => {
+    expect(
+      resolveIndexFocusScope({
+        itemCount: 2,
+        currentIndex: 0,
+        intent: TvIntent.MoveUp,
+        backwardIntent: TvIntent.MoveUp,
+        forwardIntent: TvIntent.MoveDown,
+        backwardEdge: "bubble",
+        forwardEdge: "wrap",
+      }),
+    ).toEqual({ handled: false, next: 0 });
   });
 });

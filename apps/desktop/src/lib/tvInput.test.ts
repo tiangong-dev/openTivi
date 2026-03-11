@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ConfirmGesture, createConfirmPressHandler, mapKeyToTvIntent, TvIntent } from "./tvInput";
+import {
+  ConfirmGesture,
+  createConfirmPressHandler,
+  isConfirmGestureOneOf,
+  isDirectionalIntent,
+  isHorizontalIntent,
+  isVerticalIntent,
+  mapKeyToTvIntent,
+  TvIntent,
+} from "./tvInput";
 
 describe("tv input", () => {
   it("maps keys to stable intent enums", () => {
@@ -40,5 +49,15 @@ describe("tv input", () => {
     expect(gestures).toEqual([ConfirmGesture.Long]);
 
     vi.useRealTimers();
+  });
+
+  it("categorizes directional intents and confirm gestures", () => {
+    expect(isDirectionalIntent(TvIntent.MoveLeft)).toBe(true);
+    expect(isHorizontalIntent(TvIntent.MoveLeft)).toBe(true);
+    expect(isHorizontalIntent(TvIntent.MoveUp)).toBe(false);
+    expect(isVerticalIntent(TvIntent.MoveDown)).toBe(true);
+    expect(isVerticalIntent(TvIntent.Confirm)).toBe(false);
+    expect(isConfirmGestureOneOf(ConfirmGesture.Long, [ConfirmGesture.Double, ConfirmGesture.Long])).toBe(true);
+    expect(isConfirmGestureOneOf(ConfirmGesture.Single, [ConfirmGesture.Double])).toBe(false);
   });
 });

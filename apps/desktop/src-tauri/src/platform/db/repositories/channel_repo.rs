@@ -191,37 +191,6 @@ pub fn list_groups(conn: &Connection, source_id: Option<i64>) -> AppResult<Vec<S
     Ok(groups)
 }
 
-pub fn get_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, channel_key, source_id, external_id, name, normalized_name, channel_number, group_name, tvg_id, tvg_name, logo_url, stream_url, container_extension, is_live FROM channels WHERE id = ?1",
-    )?;
-
-    let result = stmt.query_row([id], |row| {
-        Ok(Channel {
-            id: row.get(0)?,
-            channel_key: row.get(1)?,
-            source_id: row.get(2)?,
-            external_id: row.get(3)?,
-            name: row.get(4)?,
-            normalized_name: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
-            channel_number: row.get(6)?,
-            group_name: row.get(7)?,
-            tvg_id: row.get(8)?,
-            tvg_name: row.get(9)?,
-            logo_url: row.get(10)?,
-            stream_url: row.get(11)?,
-            container_extension: row.get(12)?,
-            is_live: row.get::<_, i64>(13)? != 0,
-        })
-    });
-
-    match result {
-        Ok(ch) => Ok(Some(ch)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.into()),
-    }
-}
-
 pub fn get_enabled_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel>> {
     let mut stmt = conn.prepare(
         "SELECT c.id, c.channel_key, c.source_id, c.external_id, c.name, c.normalized_name, c.channel_number, c.group_name, c.tvg_id, c.tvg_name, c.logo_url, c.stream_url, c.container_extension, c.is_live

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type Ref } from "react";
 
 import { getErrorMessage } from "../../lib/errors";
-import { useLinearFocusGroup } from "../../lib/focusScope";
+import { useIndexFocusGroup, useLinearFocusGroup } from "../../lib/focusScope";
 import { t, type Locale } from "../../lib/i18n";
 import {
   EPG_REMINDERS_SETTING_KEY,
@@ -12,6 +12,7 @@ import { tauriInvoke } from "../../lib/tauri";
 import {
   ConfirmGesture,
   createConfirmPressHandler,
+  isConfirmGestureOneOf,
   TvIntent,
   type TvContentKeyDetail,
 } from "../../lib/tvInput";
@@ -51,6 +52,12 @@ export enum ChannelsMode {
 const browseEntryOrder = [
   ChannelsFocusAnchor.FilterEntry,
   ChannelsFocusAnchor.EpgEntry,
+] as const;
+const browseAnchorOrder = [
+  ChannelsFocusAnchor.ChannelSearchEntry,
+  ChannelsFocusAnchor.FilterEntry,
+  ChannelsFocusAnchor.EpgEntry,
+  ChannelsFocusAnchor.ChannelList,
 ] as const;
 
 export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
@@ -147,6 +154,15 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     backwardEdge: "bubble",
     forwardEdge: "stay",
   });
+  const browseAnchorGroup = useLinearFocusGroup({
+    items: browseAnchorOrder,
+    current: focusAnchor,
+    setCurrent: setFocusAnchor,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "stay",
+    forwardEdge: "stay",
+  });
   const filterColumnGroup = useLinearFocusGroup({
     items: filterColumnOrder,
     current: filterColumn,
@@ -156,6 +172,33 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     backwardEdge: "stay",
     forwardEdge: "stay",
   });
+  const filterSourceGroup = useIndexFocusGroup({
+    itemCount: sourceOptions.length,
+    currentIndex: filterSourceIndex,
+    setCurrentIndex: setFilterSourceIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
+  const filterGroupOptionGroup = useIndexFocusGroup({
+    itemCount: groupOptions.length,
+    currentIndex: filterGroupIndex,
+    setCurrentIndex: setFilterGroupIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
+  const filterSortGroup = useIndexFocusGroup({
+    itemCount: sortOptions.length,
+    currentIndex: filterSortIndex,
+    setCurrentIndex: setFilterSortIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
   const epgRegionGroup = useLinearFocusGroup({
     items: epgRegionOrder,
     current: epgRegion,
@@ -164,6 +207,27 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     forwardIntent: TvIntent.MoveRight,
     backwardEdge: "stay",
     forwardEdge: "stay",
+  });
+  const epgStatusGroup = useIndexFocusGroup({
+    itemCount: epgStatusOptions.length,
+    currentIndex: Math.max(
+      0,
+      epgStatusOptions.findIndex((option) => option.value === epgStateFilter),
+    ),
+    setCurrentIndex: (nextIndex) => setEpgStateFilter(epgStatusOptions[nextIndex]?.value ?? "all"),
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
+  const epgResultsGroup = useIndexFocusGroup({
+    itemCount: epgResults.length,
+    currentIndex: epgResultIndex,
+    setCurrentIndex: setEpgResultIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
   });
 
   const loadChannels = async () => {
@@ -469,7 +533,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
               onPlay?.(currentChannel, channels);
               return;
             }
-            if (gesture === ConfirmGesture.Double || gesture === ConfirmGesture.Long) {
+            if (isConfirmGestureOneOf(gesture, [ConfirmGesture.Double, ConfirmGesture.Long])) {
               void toggleFavorite(currentChannel);
             }
             return;
@@ -521,7 +585,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
             setMode(ChannelsMode.EpgDetail);
             return;
           }
-          if (gesture === ConfirmGesture.Double || gesture === ConfirmGesture.Long) {
+          if (isConfirmGestureOneOf(gesture, [ConfirmGesture.Double, ConfirmGesture.Long])) {
             void toggleReminder(selectedProgram);
           }
           return;
@@ -575,6 +639,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     };
 
     const onContentKey = (event: Event) => {
+      if (event.defaultPrevented) return;
       const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
       if (detail?.view && detail.view !== "channels") {
         return;
@@ -597,57 +662,13 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
 
       if (mode === ChannelsMode.Browse) {
         if (focusAnchor === ChannelsFocusAnchor.ChannelList) {
-          if (intent === TvIntent.MoveDown) {
-            event.preventDefault();
-            if (channels.length === 0) return;
-            setFocusedChannelIndex((current) => (current + 1) % channels.length);
-            return;
-          }
-          if (intent === TvIntent.MoveUp) {
-            event.preventDefault();
-            if (channels.length === 0) return;
-            if (focusedChannelIndex === 0) {
-              setFocusAnchor(ChannelsFocusAnchor.EpgEntry);
-              return;
-            }
-            setFocusedChannelIndex((current) => Math.max(0, current - 1));
-            return;
-          }
-          if (intent === TvIntent.Confirm) {
-            event.preventDefault();
-            confirmPressRef.current?.onKeyDown(Boolean(detail?.repeat));
-            return;
-          }
-          if (intent === TvIntent.SecondaryAction && currentChannel) {
-            event.preventDefault();
-            void toggleFavorite(currentChannel);
-          }
           return;
         }
 
-        if (intent === TvIntent.MoveDown) {
-          event.preventDefault();
-          if (focusAnchor === ChannelsFocusAnchor.ChannelSearchEntry) {
-            setFocusAnchor(ChannelsFocusAnchor.FilterEntry);
-            return;
-          }
-          if (focusAnchor === ChannelsFocusAnchor.FilterEntry) {
-            setFocusAnchor(ChannelsFocusAnchor.EpgEntry);
-            return;
-          }
-          setFocusAnchor(ChannelsFocusAnchor.ChannelList);
-          return;
-        }
-
-        if (intent === TvIntent.MoveUp) {
-          event.preventDefault();
-          if (focusAnchor === ChannelsFocusAnchor.EpgEntry) {
-            setFocusAnchor(ChannelsFocusAnchor.FilterEntry);
-            return;
-          }
-          if (focusAnchor === ChannelsFocusAnchor.FilterEntry) {
-            setFocusAnchor(ChannelsFocusAnchor.ChannelSearchEntry);
-            return;
+        if (intent === TvIntent.MoveDown || intent === TvIntent.MoveUp) {
+          const result = browseAnchorGroup.handleIntent(intent);
+          if (result.handled) {
+            event.preventDefault();
           }
           return;
         }
@@ -686,36 +707,17 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
           event.preventDefault();
           return;
         }
-        if (intent === TvIntent.MoveUp) {
-          event.preventDefault();
-          if (filterColumn === "source") {
-            const nextIndex = (filterSourceIndex - 1 + sourceOptions.length) % sourceOptions.length;
-            setFilterSourceIndex(nextIndex);
-            return;
+        if (intent === TvIntent.MoveUp || intent === TvIntent.MoveDown) {
+          const activeGroup =
+            filterColumn === "source"
+              ? filterSourceGroup
+              : filterColumn === "group"
+                ? filterGroupOptionGroup
+                : filterSortGroup;
+          const result = activeGroup.handleIntent(intent);
+          if (result.handled) {
+            event.preventDefault();
           }
-          if (filterColumn === "group") {
-            const nextIndex = (filterGroupIndex - 1 + groupOptions.length) % groupOptions.length;
-            setFilterGroupIndex(nextIndex);
-            return;
-          }
-          const nextIndex = (filterSortIndex - 1 + sortOptions.length) % sortOptions.length;
-          setFilterSortIndex(nextIndex);
-          return;
-        }
-        if (intent === TvIntent.MoveDown) {
-          event.preventDefault();
-          if (filterColumn === "source") {
-            const nextIndex = (filterSourceIndex + 1) % sourceOptions.length;
-            setFilterSourceIndex(nextIndex);
-            return;
-          }
-          if (filterColumn === "group") {
-            const nextIndex = (filterGroupIndex + 1) % groupOptions.length;
-            setFilterGroupIndex(nextIndex);
-            return;
-          }
-          const nextIndex = (filterSortIndex + 1) % sortOptions.length;
-          setFilterSortIndex(nextIndex);
           return;
         }
         if (intent === TvIntent.Confirm) {
@@ -741,35 +743,16 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
           event.preventDefault();
           return;
         }
-        if (intent === TvIntent.MoveUp) {
-          event.preventDefault();
-          if (epgRegion === "status") {
-            const activeIndex = Math.max(
-              0,
-              epgStatusOptions.findIndex((option) => option.value === epgStateFilter),
-            );
-            const nextIndex = (activeIndex - 1 + epgStatusOptions.length) % epgStatusOptions.length;
-            setEpgStateFilter(epgStatusOptions[nextIndex]?.value ?? "all");
-            return;
-          }
-          if (epgRegion === "results" && epgResults.length > 0) {
-            setEpgResultIndex((current) => (current - 1 + epgResults.length) % epgResults.length);
-          }
-          return;
-        }
-        if (intent === TvIntent.MoveDown) {
-          event.preventDefault();
-          if (epgRegion === "status") {
-            const activeIndex = Math.max(
-              0,
-              epgStatusOptions.findIndex((option) => option.value === epgStateFilter),
-            );
-            const nextIndex = (activeIndex + 1) % epgStatusOptions.length;
-            setEpgStateFilter(epgStatusOptions[nextIndex]?.value ?? "all");
-            return;
-          }
-          if (epgRegion === "results" && epgResults.length > 0) {
-            setEpgResultIndex((current) => (current + 1) % epgResults.length);
+        if (intent === TvIntent.MoveUp || intent === TvIntent.MoveDown) {
+          const activeGroup =
+            epgRegion === "status"
+              ? epgStatusGroup
+              : epgRegion === "results"
+                ? epgResultsGroup
+                : null;
+          const result = activeGroup?.handleIntent(intent);
+          if (result?.handled) {
+            event.preventDefault();
           }
           return;
         }
@@ -803,6 +786,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     };
 
     const onContentKeyUp = (event: Event) => {
+      if (event.defaultPrevented) return;
       const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
       if (detail?.view && detail.view !== "channels") {
         return;
@@ -946,9 +930,10 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
           locale={locale}
           onPlay={onPlay}
           onToggleFavorite={toggleFavorite}
+          onMoveBeforeFirst={() => setFocusAnchor(ChannelsFocusAnchor.EpgEntry)}
           focusedIndex={focusedChannelIndex}
           onFocusedIndexChange={setFocusedChannelIndex}
-          keyboardNavigationEnabled={false}
+          keyboardNavigationEnabled
           active={isListActive}
           virtualized
           virtualListHeight={620}

@@ -14,7 +14,7 @@ export interface LinearFocusScopeConfig<T extends string> {
   forwardEdge?: FocusScopeEdgePolicy;
 }
 
-export interface FocusScopeResult<T extends string> {
+export interface FocusScopeResult<T> {
   handled: boolean;
   next: T;
 }

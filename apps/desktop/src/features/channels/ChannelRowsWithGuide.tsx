@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { useIndexFocusGroup } from "../../lib/focusScope";
 import { t, type Locale } from "../../lib/i18n";
 import {
   DEFAULT_GUIDE_WINDOW_MINUTES,
@@ -10,6 +11,7 @@ import { buildSnapshotRequestChannelIds } from "../../lib/epgSnapshots";
 import {
   ConfirmGesture,
   createConfirmPressHandler,
+  isConfirmGestureOneOf,
   mapKeyToTvIntent,
   TvIntent,
   type TvContentKeyDetail,
@@ -108,6 +110,15 @@ export function ChannelRowsWithGuide<T extends Channel>({
     : items.map((item, index) => ({ item, index }));
   const topSpacerHeight = virtualized ? rangeStart * rowHeight : 0;
   const bottomSpacerHeight = virtualized ? Math.max(0, (items.length - rangeEnd) * rowHeight) : 0;
+  const verticalFocusGroup = useIndexFocusGroup({
+    itemCount: items.length,
+    currentIndex: focusedIndex,
+    setCurrentIndex: setFocusedIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: onMoveBeforeFirst ? "bubble" : "wrap",
+    forwardEdge: "wrap",
+  });
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowTs(Date.now()), 30_000);
@@ -267,7 +278,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
           schedulePlay(current);
           return;
         }
-        if (gesture === ConfirmGesture.Double || gesture === ConfirmGesture.Long) {
+        if (isConfirmGestureOneOf(gesture, [ConfirmGesture.Double, ConfirmGesture.Long])) {
           if (!onToggleFavoriteRef.current) return;
           triggerFavorite(current);
         }
@@ -307,19 +318,16 @@ export function ChannelRowsWithGuide<T extends Channel>({
       const key = detail?.key;
       const intent = detail?.intent ?? (key ? mapKeyToTvIntent(key) : null);
       if (!intent || items.length === 0) return;
-      if (intent === TvIntent.MoveDown) {
-        event.preventDefault();
-        focusRowByIndex(focusedIndex + 1);
-        return;
-      }
-      if (intent === TvIntent.MoveUp) {
-        if (focusedIndex === 0 && onMoveBeforeFirst) {
+      if (intent === TvIntent.MoveUp || intent === TvIntent.MoveDown) {
+        const result = verticalFocusGroup.handleIntent(intent);
+        if (!result.handled && intent === TvIntent.MoveUp && onMoveBeforeFirst) {
           event.preventDefault();
           onMoveBeforeFirst();
           return;
         }
-        event.preventDefault();
-        focusRowByIndex(focusedIndex - 1);
+        if (result.handled) {
+          event.preventDefault();
+        }
         return;
       }
       const current = items[focusedIndex];

@@ -5,36 +5,44 @@ import { FavoritesView } from "../features/favorites/FavoritesView";
 import { RecentsView } from "../features/recents/RecentsView";
 import { SettingsView } from "../features/settings/SettingsView";
 import { VideoPlayer } from "../features/player/VideoPlayer";
+import {
+  APP_START_VIEW_SETTING_KEY,
+  DEFAULT_APP_START_VIEW,
+  resolveAppStartView,
+  type AppStartView,
+} from "../lib/settings";
 import { tauriInvoke } from "../lib/tauri";
 import { mapKeyToTvIntent, type TvContentKeyDetail } from "../lib/tvInput";
 import { detectDefaultLocale, LOCALE_SETTING_KEY, resolveLocale, t, type Locale } from "../lib/i18n";
 import type { Channel, Setting } from "../types/api";
 
-type View = "channels" | "favorites" | "recents" | "sources" | "settings";
+type View = AppStartView;
 type FocusZone = "nav" | "content";
 
 export function AppShell() {
-  const [activeView, setActiveView] = useState<View>("sources");
+  const [activeView, setActiveView] = useState<View>(DEFAULT_APP_START_VIEW);
   const [playingChannel, setPlayingChannel] = useState<Channel | null>(null);
   const [channelList, setChannelList] = useState<Channel[]>([]);
   const [locale, setLocale] = useState<Locale>(detectDefaultLocale());
   const [focusedNavIndex, setFocusedNavIndex] = useState(0);
-  const [hoveredNavKey, setHoveredNavKey] = useState<View | null>(null);
   const [focusZone, setFocusZone] = useState<FocusZone>("nav");
   const navButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const mainRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    const loadLocale = async () => {
+    const loadSettings = async () => {
       try {
         const settings = await tauriInvoke<Setting[]>("get_settings");
         const localeSetting = settings.find((s) => s.key === LOCALE_SETTING_KEY);
+        const startViewSetting = settings.find((s) => s.key === APP_START_VIEW_SETTING_KEY);
         setLocale(resolveLocale(localeSetting?.value));
+        setActiveView(resolveAppStartView(startViewSetting?.value));
       } catch {
         setLocale(detectDefaultLocale());
+        setActiveView(DEFAULT_APP_START_VIEW);
       }
     };
-    void loadLocale();
+    void loadSettings();
   }, []);
 
   const handlePlay = (ch: Channel, allChannels?: Channel[]) => {
@@ -54,15 +62,6 @@ export function AppShell() {
     { key: "sources", label: t(locale, "nav.sources") },
     { key: "settings", label: t(locale, "nav.settings") },
   ];
-  const hoveredNavIndex = hoveredNavKey ? navItems.findIndex((item) => item.key === hoveredNavKey) : -1;
-  const activeViewIndex = navItems.findIndex((item) => item.key === activeView);
-  const navVisualActiveIndex =
-    focusZone === "nav"
-      ? hoveredNavIndex >= 0
-        ? hoveredNavIndex
-        : focusedNavIndex
-      : activeViewIndex;
-
   useEffect(() => {
     setFocusedNavIndex((prev) => Math.min(prev, navItems.length - 1));
   }, [navItems.length]);
@@ -82,7 +81,6 @@ export function AppShell() {
   const focusNavByIndex = (nextIndex: number) => {
     if (navItems.length === 0) return;
     const wrapped = ((nextIndex % navItems.length) + navItems.length) % navItems.length;
-    setHoveredNavKey(null);
     setFocusedNavIndex(wrapped);
     navButtonRefs.current[wrapped]?.focus();
   };
@@ -252,11 +250,10 @@ export function AppShell() {
               setFocusedNavIndex(index);
               setFocusZone("nav");
             }}
-            onMouseEnter={() => setHoveredNavKey(item.key)}
-            onMouseLeave={() => setHoveredNavKey((prev) => (prev === item.key ? null : prev))}
             style={{
               ...navBtnStyle,
-              ...(index === navVisualActiveIndex ? navBtnActiveStyle : null),
+              ...(item.key === activeView ? navBtnActiveStyle : null),
+              ...(focusZone === "nav" && index === focusedNavIndex ? navBtnCursorStyle : null),
             }}
           >
             {item.label}
@@ -309,6 +306,10 @@ const navBtnStyle: React.CSSProperties = {
 const navBtnActiveStyle: React.CSSProperties = {
   backgroundColor: "var(--bg-tertiary)",
   boxShadow: "inset 2px 0 0 0 var(--accent)",
+};
+
+const navBtnCursorStyle: React.CSSProperties = {
+  backgroundColor: "rgba(255, 255, 255, 0.08)",
 };
 
 const mainStyle: React.CSSProperties = {

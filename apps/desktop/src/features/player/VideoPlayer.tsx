@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { t, type Locale } from "../../lib/i18n";
+import { buildSnapshotRequestChannelIds } from "../../lib/epgSnapshots";
 import { DEFAULT_INSTANT_SWITCH_ENABLED, INSTANT_SWITCH_ENABLED_SETTING_KEY, resolveInstantSwitchEnabled } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
 import { createConfirmPressHandler, mapKeyToTvIntent } from "../../lib/tvInput";
 import type { Channel, ChannelEpgSnapshot, EpgProgram, Setting } from "../../types/api";
 import {
-  buildNeighborWarmPlan,
   getAdjacentChannel,
   getPrevSlot,
   getNextSlot,
@@ -45,6 +45,7 @@ const OVERLAY_HIDE_MS = 4000;
 const OSD_DISPLAY_MS = 2000;
 const NEIGHBOR_WARM_DELAY_MS = 320;
 const INSTANT_SWITCH_SLOT_TTL_MS = 60000; // 1min - keep instant switch slots ready
+const CHANNEL_LIST_SNAPSHOT_WINDOW_SIZE = 20;
 
 interface Props {
   channel: Channel;
@@ -89,6 +90,15 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [channelEpgLoading, setChannelEpgLoading] = useState(false);
   const [instantSwitchEnabled, setInstantSwitchEnabled] = useState(DEFAULT_INSTANT_SWITCH_ENABLED);
+  const requestedChannelListSnapshotIds = useMemo(
+    () =>
+      buildSnapshotRequestChannelIds(
+        channels,
+        focusedChannelIndex,
+        CHANNEL_LIST_SNAPSHOT_WINDOW_SIZE,
+      ),
+    [channels, focusedChannelIndex],
+  );
 
   const {
     prevVideoRef,
@@ -242,7 +252,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
 
   useEffect(() => {
-    if (!showChannelListPanel || channels.length === 0) {
+    if (!showChannelListPanel || requestedChannelListSnapshotIds.length === 0) {
       return;
     }
     let cancelled = false;
@@ -250,7 +260,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     setChannelEpgLoading(true);
     tauriInvoke<ChannelEpgSnapshot[]>("get_channels_epg_snapshots", {
       query: {
-        channelIds: channels.map((item) => item.id),
+        channelIds: requestedChannelListSnapshotIds,
         windowStartTs: now - 15 * 60 * 1000,
         windowEndTs: now + 3 * 60 * 60 * 1000,
       },
@@ -275,7 +285,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     return () => {
       cancelled = true;
     };
-  }, [channels, showChannelListPanel]);
+  }, [requestedChannelListSnapshotIds, showChannelListPanel]);
 
   useEffect(() => {
     if (!showChannelListPanel) {

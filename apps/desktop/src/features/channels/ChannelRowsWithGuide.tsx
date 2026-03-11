@@ -6,6 +6,7 @@ import {
   GUIDE_WINDOW_MINUTES_SETTING_KEY,
   resolveGuideWindowMinutes,
 } from "../../lib/settings";
+import { buildSnapshotRequestChannelIds } from "../../lib/epgSnapshots";
 import { createConfirmPressHandler, mapKeyToTvIntent, type TvContentKeyDetail } from "../../lib/tvInput";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel, ChannelEpgSnapshot, Setting } from "../../types/api";
@@ -26,6 +27,8 @@ interface PrewarmIntentInput {
   source: "channel_list_outer";
   ttlMs?: number;
 }
+
+const SNAPSHOT_WINDOW_SIZE = 24;
 
 export function ChannelRowsWithGuide<T extends Channel>({
   items,
@@ -50,7 +53,10 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const onPlayRef = useRef(onPlay);
   const onToggleFavoriteRef = useRef(onToggleFavorite);
 
-  const channelIds = useMemo(() => items.map((c) => c.id), [items]);
+  const channelIds = useMemo(
+    () => buildSnapshotRequestChannelIds(items, focusedIndex, SNAPSHOT_WINDOW_SIZE),
+    [focusedIndex, items],
+  );
   const timelineWindow = useMemo(() => {
     const step = 30 * 60 * 1000;
     const start = Math.floor(nowTs / step) * step;

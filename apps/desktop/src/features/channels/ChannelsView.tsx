@@ -1,15 +1,23 @@
-import { useEffect, useRef, useState } from "react";
-import { tauriInvoke } from "../../lib/tauri";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type Ref } from "react";
+
 import { getErrorMessage } from "../../lib/errors";
+import { useLinearFocusGroup } from "../../lib/focusScope";
 import { t, type Locale } from "../../lib/i18n";
 import {
   EPG_REMINDERS_SETTING_KEY,
   resolveEpgReminders,
   type EpgReminder,
 } from "../../lib/settings";
+import { tauriInvoke } from "../../lib/tauri";
+import {
+  ConfirmGesture,
+  createConfirmPressHandler,
+  TvIntent,
+  type TvContentKeyDetail,
+} from "../../lib/tvInput";
 import type { Channel, EpgProgramSearchResult, Setting, Source } from "../../types/api";
-import { ChannelRowsWithGuide } from "./ChannelRowsWithGuide";
 import { formatTime, parseXmltvDate } from "../player/playerUtils";
+import { ChannelRowsWithGuide } from "./ChannelRowsWithGuide";
 
 interface Props {
   locale: Locale;
@@ -19,6 +27,31 @@ interface Props {
 
 type ChannelSort = "name" | "channelNumber" | "sourceThenChannel";
 type EpgStateFilter = "all" | "live" | "upcoming";
+type FilterColumn = "source" | "group" | "sort";
+type EpgRegion = "input" | "status" | "results";
+const filterColumnOrder = ["source", "group", "sort"] as const;
+const epgRegionOrder = ["input", "status", "results"] as const;
+
+export enum ChannelsFocusAnchor {
+  ChannelSearchEntry = "channelSearchEntry",
+  FilterEntry = "filterEntry",
+  EpgEntry = "epgEntry",
+  ChannelList = "channelList",
+}
+
+export enum ChannelsMode {
+  Browse = "browse",
+  ChannelSearchEditing = "channelSearchEditing",
+  Filters = "filters",
+  EpgBrowse = "epgBrowse",
+  EpgSearchEditing = "epgSearchEditing",
+  EpgDetail = "epgDetail",
+}
+
+const browseEntryOrder = [
+  ChannelsFocusAnchor.FilterEntry,
+  ChannelsFocusAnchor.EpgEntry,
+] as const;
 
 export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -28,15 +61,110 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<ChannelSort>("channelNumber");
   const [search, setSearch] = useState("");
-  const [isSearchEditing, setIsSearchEditing] = useState(false);
+  const [searchDraft, setSearchDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [epgSearch, setEpgSearch] = useState("");
+  const [epgSearchDraft, setEpgSearchDraft] = useState("");
   const [epgStateFilter, setEpgStateFilter] = useState<EpgStateFilter>("all");
   const [epgResults, setEpgResults] = useState<EpgProgramSearchResult[]>([]);
   const [epgLoading, setEpgLoading] = useState(false);
   const [epgDrawerItem, setEpgDrawerItem] = useState<EpgProgramSearchResult | null>(null);
   const [epgReminders, setEpgReminders] = useState<EpgReminder[]>([]);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [focusedChannelIndex, setFocusedChannelIndex] = useState(0);
+  const [focusAnchor, setFocusAnchor] = useState<ChannelsFocusAnchor>(ChannelsFocusAnchor.ChannelList);
+  const [mode, setMode] = useState<ChannelsMode>(ChannelsMode.Browse);
+  const [filterColumn, setFilterColumn] = useState<FilterColumn>("source");
+  const [filterSourceIndex, setFilterSourceIndex] = useState(0);
+  const [filterGroupIndex, setFilterGroupIndex] = useState(0);
+  const [filterSortIndex, setFilterSortIndex] = useState(0);
+  const [epgRegion, setEpgRegion] = useState<EpgRegion>("input");
+  const [epgResultIndex, setEpgResultIndex] = useState(0);
+  const [isContentZoneActive, setIsContentZoneActive] = useState(false);
+
+  const channelSearchEntryRef = useRef<HTMLButtonElement | null>(null);
+  const channelSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const filterEntryRef = useRef<HTMLButtonElement | null>(null);
+  const epgEntryRef = useRef<HTMLButtonElement | null>(null);
+  const epgSearchTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const epgSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const epgDetailActionRef = useRef<HTMLButtonElement | null>(null);
+  const sourceOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const groupOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const sortOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const epgStatusRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const epgResultRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
+
+  const sourceOptions = useMemo(
+    () => [
+      { value: null, label: t(locale, "channels.allSources") },
+      ...sources.map((source) => ({ value: source.id, label: source.name })),
+    ],
+    [locale, sources],
+  );
+  const groupOptions = useMemo(
+    () => [
+      { value: null, label: t(locale, "channels.all") },
+      ...groups.map((group) => ({ value: group, label: group })),
+    ],
+    [groups, locale],
+  );
+  const sortOptions = useMemo(
+    () => [
+      { value: "channelNumber" as const, label: t(locale, "channels.sort.channelNumber") },
+      { value: "name" as const, label: t(locale, "channels.sort.name") },
+      { value: "sourceThenChannel" as const, label: t(locale, "channels.sort.sourceThenChannel") },
+    ],
+    [locale],
+  );
+  const epgStatusOptions = useMemo(
+    () => [
+      { value: "all" as const, label: t(locale, "epg.filter.all") },
+      { value: "live" as const, label: t(locale, "epg.filter.live") },
+      { value: "upcoming" as const, label: t(locale, "epg.filter.upcoming") },
+    ],
+    [locale],
+  );
+  const currentChannel = channels[focusedChannelIndex] ?? null;
+  const isBrowseMode = mode === ChannelsMode.Browse;
+  const isSearchBarActive =
+    isContentZoneActive &&
+    (mode === ChannelsMode.ChannelSearchEditing ||
+      (isBrowseMode && focusAnchor === ChannelsFocusAnchor.ChannelSearchEntry));
+  const isListActive = isContentZoneActive && isBrowseMode && focusAnchor === ChannelsFocusAnchor.ChannelList;
+  const sourceIndex = Math.max(0, sourceOptions.findIndex((option) => option.value === selectedSourceId));
+  const groupIndex = Math.max(0, groupOptions.findIndex((option) => option.value === selectedGroup));
+  const sortIndex = Math.max(0, sortOptions.findIndex((option) => option.value === sortBy));
+  const browseEntryGroup = useLinearFocusGroup({
+    items: browseEntryOrder,
+    current:
+      focusAnchor === ChannelsFocusAnchor.FilterEntry || focusAnchor === ChannelsFocusAnchor.EpgEntry
+        ? focusAnchor
+        : ChannelsFocusAnchor.FilterEntry,
+    setCurrent: (next) => setFocusAnchor(next),
+    backwardIntent: TvIntent.MoveLeft,
+    forwardIntent: TvIntent.MoveRight,
+    backwardEdge: "bubble",
+    forwardEdge: "stay",
+  });
+  const filterColumnGroup = useLinearFocusGroup({
+    items: filterColumnOrder,
+    current: filterColumn,
+    setCurrent: setFilterColumn,
+    backwardIntent: TvIntent.MoveLeft,
+    forwardIntent: TvIntent.MoveRight,
+    backwardEdge: "stay",
+    forwardEdge: "stay",
+  });
+  const epgRegionGroup = useLinearFocusGroup({
+    items: epgRegionOrder,
+    current: epgRegion,
+    setCurrent: setEpgRegion,
+    backwardIntent: TvIntent.MoveLeft,
+    forwardIntent: TvIntent.MoveRight,
+    backwardEdge: "stay",
+    forwardEdge: "stay",
+  });
 
   const loadChannels = async () => {
     try {
@@ -59,16 +187,20 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
 
   const loadGroups = async (sourceId?: number | null) => {
     try {
-      const g = await tauriInvoke<string[]>("list_groups", { sourceId: sourceId ?? undefined });
-      setGroups(g);
-    } catch (_) {}
+      const next = await tauriInvoke<string[]>("list_groups", { sourceId: sourceId ?? undefined });
+      setGroups(next);
+    } catch {
+      setGroups([]);
+    }
   };
 
   const loadSources = async () => {
     try {
       const list = await tauriInvoke<Source[]>("list_sources");
       setSources(list.filter((item) => item.enabled && item.kind !== "xmltv"));
-    } catch (_) {}
+    } catch {
+      setSources([]);
+    }
   };
 
   useEffect(() => {
@@ -96,12 +228,37 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     setSelectedGroup((current) => (current && !groups.includes(current) ? null : current));
   }, [groups]);
 
-  const toggleFavorite = async (ch: Channel) => {
-    try {
-      await tauriInvoke("set_favorite", { input: { channelId: ch.id, favorite: !ch.isFavorite } });
-      loadChannels();
-    } catch (_) {}
-  };
+  useEffect(() => {
+    setSearchDraft(search);
+  }, [search]);
+
+  useEffect(() => {
+    setEpgSearchDraft(epgSearch);
+  }, [epgSearch]);
+
+  useEffect(() => {
+    setFocusedChannelIndex((current) => {
+      if (channels.length === 0) return 0;
+      return Math.max(0, Math.min(current, channels.length - 1));
+    });
+  }, [channels.length]);
+
+  useEffect(() => {
+    setEpgResultIndex((current) => {
+      if (epgResults.length === 0) return 0;
+      return Math.max(0, Math.min(current, epgResults.length - 1));
+    });
+  }, [epgResults.length]);
+
+  useEffect(() => {
+    if (mode === ChannelsMode.EpgDetail && epgDrawerItem) {
+      const index = epgResults.findIndex((item) => item.id === epgDrawerItem.id);
+      if (index < 0) {
+        setMode(ChannelsMode.EpgBrowse);
+        setEpgDrawerItem(null);
+      }
+    }
+  }, [epgDrawerItem, epgResults, mode]);
 
   const searchPrograms = async () => {
     setEpgLoading(true);
@@ -123,361 +280,1176 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     void searchPrograms();
   }, [epgSearch, epgStateFilter]);
 
+  const toggleFavorite = async (channel: Channel) => {
+    try {
+      await tauriInvoke("set_favorite", { input: { channelId: channel.id, favorite: !channel.isFavorite } });
+      await loadChannels();
+    } catch {
+      // Ignore favorite toggle failures in-place.
+    }
+  };
+
   const toggleReminder = async (program: EpgProgramSearchResult) => {
     const exists = epgReminders.some((item) => item.programId === program.id);
     const next = exists
       ? epgReminders.filter((item) => item.programId !== program.id)
-      : [...epgReminders, {
-          programId: program.id,
-          channelId: program.channelId,
-          title: program.title,
-          startAt: program.startAt,
-        }];
+      : [
+          ...epgReminders,
+          {
+            programId: program.id,
+            channelId: program.channelId,
+            title: program.title,
+            startAt: program.startAt,
+          },
+        ];
     setEpgReminders(next);
     await tauriInvoke("set_setting", {
       input: { key: EPG_REMINDERS_SETTING_KEY, value: next },
     }).catch(() => undefined);
   };
 
-  const focusSearchNavigationMode = () => {
-    setIsSearchEditing(false);
+  const focusCurrentTarget = () => {
+    if (!isContentZoneActive) return;
     window.setTimeout(() => {
-      searchInputRef.current?.focus();
+      if (mode === ChannelsMode.ChannelSearchEditing) {
+        channelSearchInputRef.current?.focus();
+        return;
+      }
+      if (mode === ChannelsMode.Filters) {
+        if (filterColumn === "source") {
+          sourceOptionRefs.current[filterSourceIndex]?.focus();
+          return;
+        }
+        if (filterColumn === "group") {
+          groupOptionRefs.current[filterGroupIndex]?.focus();
+          return;
+        }
+        sortOptionRefs.current[filterSortIndex]?.focus();
+        return;
+      }
+      if (mode === ChannelsMode.EpgSearchEditing) {
+        epgSearchInputRef.current?.focus();
+        return;
+      }
+      if (mode === ChannelsMode.EpgDetail) {
+        epgDetailActionRef.current?.focus();
+        return;
+      }
+      if (mode === ChannelsMode.EpgBrowse) {
+        if (epgRegion === "input") {
+          epgSearchTriggerRef.current?.focus();
+          return;
+        }
+        if (epgRegion === "status") {
+          const activeStatusIndex = Math.max(
+            0,
+            epgStatusOptions.findIndex((option) => option.value === epgStateFilter),
+          );
+          epgStatusRefs.current[activeStatusIndex]?.focus();
+          return;
+        }
+        epgResultRefs.current[epgResultIndex]?.focus();
+        return;
+      }
+      if (focusAnchor === ChannelsFocusAnchor.ChannelSearchEntry) {
+        channelSearchEntryRef.current?.focus();
+        return;
+      }
+      if (focusAnchor === ChannelsFocusAnchor.FilterEntry) {
+        filterEntryRef.current?.focus();
+        return;
+      }
+      if (focusAnchor === ChannelsFocusAnchor.EpgEntry) {
+        epgEntryRef.current?.focus();
+      }
     }, 0);
   };
 
+  useEffect(() => {
+    focusCurrentTarget();
+  }, [
+    epgRegion,
+    epgResultIndex,
+    epgResults.length,
+    epgStateFilter,
+    filterColumn,
+    filterGroupIndex,
+    filterSortIndex,
+    filterSourceIndex,
+    focusAnchor,
+    isContentZoneActive,
+    mode,
+  ]);
+
+  const focusBrowseAnchor = (anchor: ChannelsFocusAnchor) => {
+    setMode(ChannelsMode.Browse);
+    setFocusAnchor(anchor);
+  };
+
+  const openChannelSearch = () => {
+    setMode(ChannelsMode.ChannelSearchEditing);
+    setFocusAnchor(ChannelsFocusAnchor.ChannelSearchEntry);
+  };
+
+  const submitChannelSearch = () => {
+    setSearch(searchDraft.trim());
+    setFocusedChannelIndex(0);
+    setMode(ChannelsMode.Browse);
+    setFocusAnchor(ChannelsFocusAnchor.ChannelList);
+  };
+
+  const cancelChannelSearch = () => {
+    setSearchDraft(search);
+    focusBrowseAnchor(ChannelsFocusAnchor.ChannelSearchEntry);
+  };
+
+  const openFilters = () => {
+    setFilterColumn("source");
+    setFilterSourceIndex(sourceIndex);
+    setFilterGroupIndex(groupIndex);
+    setFilterSortIndex(sortIndex);
+    setMode(ChannelsMode.Filters);
+    setFocusAnchor(ChannelsFocusAnchor.FilterEntry);
+  };
+
+  const applyFilterSelection = () => {
+    if (filterColumn === "source") {
+      const option = sourceOptions[filterSourceIndex];
+      if (option) {
+        setSelectedSourceId(option.value);
+      }
+    } else if (filterColumn === "group") {
+      const option = groupOptions[filterGroupIndex];
+      if (option) {
+        setSelectedGroup(option.value);
+      }
+    } else {
+      const option = sortOptions[filterSortIndex];
+      if (option) {
+        setSortBy(option.value);
+      }
+    }
+    setFocusedChannelIndex(0);
+    setMode(ChannelsMode.Browse);
+    setFocusAnchor(ChannelsFocusAnchor.ChannelList);
+  };
+
+  const closeFilters = () => {
+    focusBrowseAnchor(ChannelsFocusAnchor.FilterEntry);
+  };
+
+  const openEpg = () => {
+    setMode(ChannelsMode.EpgBrowse);
+    setFocusAnchor(ChannelsFocusAnchor.EpgEntry);
+    setEpgRegion("input");
+    setEpgDrawerItem(null);
+  };
+
+  const submitEpgSearch = () => {
+    setEpgSearch(epgSearchDraft.trim());
+    setEpgRegion("results");
+    setMode(ChannelsMode.EpgBrowse);
+    setEpgResultIndex(0);
+  };
+
+  const closeEpg = () => {
+    setMode(ChannelsMode.Browse);
+    setFocusAnchor(ChannelsFocusAnchor.EpgEntry);
+    setEpgRegion("input");
+    setEpgDrawerItem(null);
+  };
+
+  useEffect(() => {
+    confirmPressRef.current = createConfirmPressHandler({
+      onGesture: (gesture) => {
+        if (mode === ChannelsMode.Browse) {
+          if (focusAnchor === ChannelsFocusAnchor.ChannelList) {
+            if (!currentChannel) return;
+            if (gesture === ConfirmGesture.Single) {
+              onPlay?.(currentChannel, channels);
+              return;
+            }
+            if (gesture === ConfirmGesture.Double || gesture === ConfirmGesture.Long) {
+              void toggleFavorite(currentChannel);
+            }
+            return;
+          }
+
+          if (gesture !== ConfirmGesture.Single) return;
+          if (focusAnchor === ChannelsFocusAnchor.ChannelSearchEntry) {
+            openChannelSearch();
+            return;
+          }
+          if (focusAnchor === ChannelsFocusAnchor.FilterEntry) {
+            openFilters();
+            return;
+          }
+          if (focusAnchor === ChannelsFocusAnchor.EpgEntry) {
+            openEpg();
+          }
+          return;
+        }
+
+        if (mode === ChannelsMode.Filters) {
+          if (gesture === ConfirmGesture.Single) {
+            applyFilterSelection();
+          }
+          return;
+        }
+
+        if (mode === ChannelsMode.EpgBrowse) {
+          if (epgRegion === "input") {
+            if (gesture === ConfirmGesture.Single) {
+              setMode(ChannelsMode.EpgSearchEditing);
+            }
+            return;
+          }
+          if (epgRegion === "status") {
+            if (gesture === ConfirmGesture.Single) {
+              const option = epgStatusOptions.find((candidate) => candidate.value === epgStateFilter);
+              if (option) {
+                setEpgStateFilter(option.value);
+              }
+              setEpgRegion("results");
+            }
+            return;
+          }
+          const selectedProgram = epgResults[epgResultIndex];
+          if (!selectedProgram) return;
+          if (gesture === ConfirmGesture.Single) {
+            setEpgDrawerItem(selectedProgram);
+            setMode(ChannelsMode.EpgDetail);
+            return;
+          }
+          if (gesture === ConfirmGesture.Double || gesture === ConfirmGesture.Long) {
+            void toggleReminder(selectedProgram);
+          }
+          return;
+        }
+
+        if (mode === ChannelsMode.EpgDetail) {
+          if (gesture === ConfirmGesture.Single && epgDrawerItem) {
+            void toggleReminder(epgDrawerItem);
+          }
+        }
+      },
+    });
+    return () => {
+      confirmPressRef.current?.clear();
+      confirmPressRef.current = null;
+    };
+  }, [
+    channels,
+    currentChannel,
+    epgDrawerItem,
+    epgRegion,
+    epgResultIndex,
+    epgResults,
+    epgStateFilter,
+    focusAnchor,
+    mode,
+    onPlay,
+    filterGroupIndex,
+    filterSortIndex,
+    filterSourceIndex,
+    sourceOptions,
+    groupOptions,
+    sortOptions,
+    epgStatusOptions,
+  ]);
+
+  useEffect(() => {
+    const onZoneChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ zone?: string; view?: string }>).detail;
+      const inThisView = !detail?.view || detail.view === "channels";
+      if (!inThisView) return;
+      setIsContentZoneActive(detail?.zone === "content");
+    };
+
+    const onFocusContent = (event: Event) => {
+      const detail = (event as CustomEvent<{ view?: string }>).detail;
+      if (detail?.view && detail.view !== "channels") {
+        return;
+      }
+      focusCurrentTarget();
+    };
+
+    const onContentKey = (event: Event) => {
+      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
+      if (detail?.view && detail.view !== "channels") {
+        return;
+      }
+      const intent = detail?.intent;
+      if (!intent) return;
+
+      if (mode === ChannelsMode.ChannelSearchEditing) {
+        if (intent === TvIntent.Back) {
+          event.preventDefault();
+          cancelChannelSearch();
+          return;
+        }
+        if (intent === TvIntent.Confirm) {
+          event.preventDefault();
+          submitChannelSearch();
+        }
+        return;
+      }
+
+      if (mode === ChannelsMode.Browse) {
+        if (focusAnchor === ChannelsFocusAnchor.ChannelList) {
+          if (intent === TvIntent.MoveDown) {
+            event.preventDefault();
+            if (channels.length === 0) return;
+            setFocusedChannelIndex((current) => (current + 1) % channels.length);
+            return;
+          }
+          if (intent === TvIntent.MoveUp) {
+            event.preventDefault();
+            if (channels.length === 0) return;
+            if (focusedChannelIndex === 0) {
+              setFocusAnchor(ChannelsFocusAnchor.EpgEntry);
+              return;
+            }
+            setFocusedChannelIndex((current) => Math.max(0, current - 1));
+            return;
+          }
+          if (intent === TvIntent.Confirm) {
+            event.preventDefault();
+            confirmPressRef.current?.onKeyDown(Boolean(detail?.repeat));
+            return;
+          }
+          if (intent === TvIntent.SecondaryAction && currentChannel) {
+            event.preventDefault();
+            void toggleFavorite(currentChannel);
+          }
+          return;
+        }
+
+        if (intent === TvIntent.MoveDown) {
+          event.preventDefault();
+          if (focusAnchor === ChannelsFocusAnchor.ChannelSearchEntry) {
+            setFocusAnchor(ChannelsFocusAnchor.FilterEntry);
+            return;
+          }
+          if (focusAnchor === ChannelsFocusAnchor.FilterEntry) {
+            setFocusAnchor(ChannelsFocusAnchor.EpgEntry);
+            return;
+          }
+          setFocusAnchor(ChannelsFocusAnchor.ChannelList);
+          return;
+        }
+
+        if (intent === TvIntent.MoveUp) {
+          event.preventDefault();
+          if (focusAnchor === ChannelsFocusAnchor.EpgEntry) {
+            setFocusAnchor(ChannelsFocusAnchor.FilterEntry);
+            return;
+          }
+          if (focusAnchor === ChannelsFocusAnchor.FilterEntry) {
+            setFocusAnchor(ChannelsFocusAnchor.ChannelSearchEntry);
+            return;
+          }
+          return;
+        }
+
+        if (
+          (focusAnchor === ChannelsFocusAnchor.FilterEntry || focusAnchor === ChannelsFocusAnchor.EpgEntry) &&
+          (intent === TvIntent.MoveLeft || intent === TvIntent.MoveRight)
+        ) {
+          const next = browseEntryGroup.handleIntent(intent);
+          if (next.handled) {
+            event.preventDefault();
+          }
+          return;
+        }
+
+        if (intent === TvIntent.Confirm) {
+          event.preventDefault();
+          confirmPressRef.current?.onKeyDown(Boolean(detail?.repeat));
+        }
+        return;
+      }
+
+      if (mode === ChannelsMode.Filters) {
+        if (intent === TvIntent.Back) {
+          event.preventDefault();
+          closeFilters();
+          return;
+        }
+        if (intent === TvIntent.MoveLeft) {
+          filterColumnGroup.handleIntent(intent);
+          event.preventDefault();
+          return;
+        }
+        if (intent === TvIntent.MoveRight) {
+          filterColumnGroup.handleIntent(intent);
+          event.preventDefault();
+          return;
+        }
+        if (intent === TvIntent.MoveUp) {
+          event.preventDefault();
+          if (filterColumn === "source") {
+            const nextIndex = (filterSourceIndex - 1 + sourceOptions.length) % sourceOptions.length;
+            setFilterSourceIndex(nextIndex);
+            return;
+          }
+          if (filterColumn === "group") {
+            const nextIndex = (filterGroupIndex - 1 + groupOptions.length) % groupOptions.length;
+            setFilterGroupIndex(nextIndex);
+            return;
+          }
+          const nextIndex = (filterSortIndex - 1 + sortOptions.length) % sortOptions.length;
+          setFilterSortIndex(nextIndex);
+          return;
+        }
+        if (intent === TvIntent.MoveDown) {
+          event.preventDefault();
+          if (filterColumn === "source") {
+            const nextIndex = (filterSourceIndex + 1) % sourceOptions.length;
+            setFilterSourceIndex(nextIndex);
+            return;
+          }
+          if (filterColumn === "group") {
+            const nextIndex = (filterGroupIndex + 1) % groupOptions.length;
+            setFilterGroupIndex(nextIndex);
+            return;
+          }
+          const nextIndex = (filterSortIndex + 1) % sortOptions.length;
+          setFilterSortIndex(nextIndex);
+          return;
+        }
+        if (intent === TvIntent.Confirm) {
+          event.preventDefault();
+          confirmPressRef.current?.onKeyDown(Boolean(detail?.repeat));
+        }
+        return;
+      }
+
+      if (mode === ChannelsMode.EpgBrowse) {
+        if (intent === TvIntent.Back) {
+          event.preventDefault();
+          closeEpg();
+          return;
+        }
+        if (intent === TvIntent.MoveLeft) {
+          epgRegionGroup.handleIntent(intent);
+          event.preventDefault();
+          return;
+        }
+        if (intent === TvIntent.MoveRight) {
+          epgRegionGroup.handleIntent(intent);
+          event.preventDefault();
+          return;
+        }
+        if (intent === TvIntent.MoveUp) {
+          event.preventDefault();
+          if (epgRegion === "status") {
+            const activeIndex = Math.max(
+              0,
+              epgStatusOptions.findIndex((option) => option.value === epgStateFilter),
+            );
+            const nextIndex = (activeIndex - 1 + epgStatusOptions.length) % epgStatusOptions.length;
+            setEpgStateFilter(epgStatusOptions[nextIndex]?.value ?? "all");
+            return;
+          }
+          if (epgRegion === "results" && epgResults.length > 0) {
+            setEpgResultIndex((current) => (current - 1 + epgResults.length) % epgResults.length);
+          }
+          return;
+        }
+        if (intent === TvIntent.MoveDown) {
+          event.preventDefault();
+          if (epgRegion === "status") {
+            const activeIndex = Math.max(
+              0,
+              epgStatusOptions.findIndex((option) => option.value === epgStateFilter),
+            );
+            const nextIndex = (activeIndex + 1) % epgStatusOptions.length;
+            setEpgStateFilter(epgStatusOptions[nextIndex]?.value ?? "all");
+            return;
+          }
+          if (epgRegion === "results" && epgResults.length > 0) {
+            setEpgResultIndex((current) => (current + 1) % epgResults.length);
+          }
+          return;
+        }
+        if (intent === TvIntent.Confirm) {
+          event.preventDefault();
+          confirmPressRef.current?.onKeyDown(Boolean(detail?.repeat));
+          return;
+        }
+        if (intent === TvIntent.SecondaryAction && epgRegion === "results") {
+          event.preventDefault();
+          const selectedProgram = epgResults[epgResultIndex];
+          if (selectedProgram) {
+            void toggleReminder(selectedProgram);
+          }
+        }
+        return;
+      }
+
+      if (mode === ChannelsMode.EpgDetail) {
+        if (intent === TvIntent.Back) {
+          event.preventDefault();
+          setMode(ChannelsMode.EpgBrowse);
+          setEpgRegion("results");
+          return;
+        }
+        if (intent === TvIntent.Confirm) {
+          event.preventDefault();
+          confirmPressRef.current?.onKeyDown(Boolean(detail?.repeat));
+        }
+      }
+    };
+
+    const onContentKeyUp = (event: Event) => {
+      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
+      if (detail?.view && detail.view !== "channels") {
+        return;
+      }
+      if (detail?.intent !== TvIntent.Confirm) return;
+      if (
+        mode === ChannelsMode.ChannelSearchEditing ||
+        mode === ChannelsMode.EpgSearchEditing
+      ) {
+        return;
+      }
+      event.preventDefault();
+      confirmPressRef.current?.onKeyUp();
+    };
+
+    window.addEventListener("tv-focus-zone", onZoneChange as EventListener);
+    window.addEventListener("tv-focus-content", onFocusContent as EventListener);
+    window.addEventListener("tv-content-key", onContentKey as EventListener);
+    window.addEventListener("tv-content-keyup", onContentKeyUp as EventListener);
+    return () => {
+      window.removeEventListener("tv-focus-zone", onZoneChange as EventListener);
+      window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
+      window.removeEventListener("tv-content-key", onContentKey as EventListener);
+      window.removeEventListener("tv-content-keyup", onContentKeyUp as EventListener);
+    };
+  }, [
+    channels.length,
+    currentChannel,
+    epgRegion,
+    epgResultIndex,
+    epgResults,
+    epgStateFilter,
+    filterColumn,
+    focusAnchor,
+    focusedChannelIndex,
+    filterGroupIndex,
+    filterSortIndex,
+    filterSourceIndex,
+    mode,
+    sourceOptions,
+    groupOptions,
+    sortOptions,
+    epgStatusOptions,
+  ]);
+
+  const renderEntryButton = (
+    ref: Ref<HTMLButtonElement>,
+    title: string,
+    subtitle: string,
+    active: boolean,
+    onClick: () => void,
+    value?: string,
+  ) => (
+    <button
+      ref={ref}
+      type="button"
+      data-tv-focusable={active ? "true" : undefined}
+      style={{ ...entryButtonStyle, ...(active ? entryButtonActiveStyle : null) }}
+      onClick={onClick}
+    >
+      <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
+      <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{subtitle}</div>
+      {value ? <div style={entryValueStyle}>{value}</div> : null}
+    </button>
+  );
+
   return (
-    <div style={{ padding: 24, display: "flex", gap: 16, height: "100%" }}>
-      {(groups.length > 0 || sources.length > 0) && (
-        <div style={{ width: 220, flexShrink: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 18 }}>
-          {sources.length > 0 && (
-            <div>
-              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
-                {t(locale, "channels.sources")}
-              </div>
-              <button
-                onClick={() => setSelectedSourceId(null)}
-                style={{
-                  ...groupBtnStyle,
-                  backgroundColor: selectedSourceId === null ? "var(--bg-tertiary)" : "transparent",
+    <div style={pageStyle}>
+      <div style={searchBarWrapStyle}>
+        <div style={searchBarHeaderStyle}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>{t(locale, "channels.searchEntry")}</div>
+        </div>
+        {mode === ChannelsMode.ChannelSearchEditing ? (
+          <input
+            ref={channelSearchInputRef}
+            value={searchDraft}
+            onChange={(event) => setSearchDraft(event.target.value)}
+            placeholder={t(locale, "channels.searchPlaceholder")}
+            style={{
+              ...searchInputStyle,
+              ...(isSearchBarActive ? searchBarActiveStyle : null),
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                submitChannelSearch();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                cancelChannelSearch();
+              }
+            }}
+          />
+        ) : (
+          <button
+            ref={channelSearchEntryRef}
+            type="button"
+            data-tv-focusable={isBrowseMode && focusAnchor === ChannelsFocusAnchor.ChannelSearchEntry ? "true" : undefined}
+            style={{
+              ...searchBarFieldButtonStyle,
+              ...(isSearchBarActive ? searchBarActiveStyle : null),
+            }}
+            onClick={openChannelSearch}
+          >
+            {search || t(locale, "channels.searchPlaceholder")}
+          </button>
+        )}
+      </div>
+
+      <div style={entryStackStyle}>
+        {renderEntryButton(
+          filterEntryRef,
+          t(locale, "channels.filterEntry"),
+          `${sourceOptions[sourceIndex]?.label ?? t(locale, "channels.allSources")} · ${groupOptions[groupIndex]?.label ?? t(locale, "channels.all")} · ${sortOptions[sortIndex]?.label ?? ""}`,
+          isContentZoneActive && isBrowseMode && focusAnchor === ChannelsFocusAnchor.FilterEntry,
+          openFilters,
+        )}
+        {renderEntryButton(
+          epgEntryRef,
+          t(locale, "epg.explorer.title"),
+          `${t(locale, "epg.explorer.reminders")}: ${epgReminders.length}`,
+          isContentZoneActive && isBrowseMode && focusAnchor === ChannelsFocusAnchor.EpgEntry,
+          openEpg,
+          epgSearch || undefined,
+        )}
+      </div>
+
+      {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
+
+      {channels.length === 0 && !error ? (
+        <div style={emptyStateStyle}>
+          {t(locale, "channels.emptyPrefix")}
+          <b>{t(locale, "channels.emptySources")}</b>
+          {t(locale, "channels.emptySuffix")}
+        </div>
+      ) : null}
+
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <ChannelRowsWithGuide
+          items={channels}
+          locale={locale}
+          onPlay={onPlay}
+          onToggleFavorite={toggleFavorite}
+          focusedIndex={focusedChannelIndex}
+          onFocusedIndexChange={setFocusedChannelIndex}
+          keyboardNavigationEnabled={false}
+          active={isListActive}
+          virtualized
+          virtualListHeight={620}
+        />
+      </div>
+
+      {mode === ChannelsMode.Filters ? (
+        <div style={overlayStyle}>
+          <div style={{ ...panelStyle, maxWidth: 980 }}>
+            <div style={panelHeaderStyle}>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{t(locale, "channels.filterEntry")}</div>
+            </div>
+            <div style={filterColumnsStyle}>
+              <FilterColumnSection
+                title={t(locale, "channels.sources")}
+                items={sourceOptions.map((option) => option.label)}
+                selectedIndex={filterSourceIndex}
+                active={filterColumn === "source"}
+                refs={sourceOptionRefs}
+                onSelect={(index) => {
+                  setFilterSourceIndex(index);
+                  setFilterColumn("source");
+                  const option = sourceOptions[index];
+                  if (option) {
+                    setSelectedSourceId(option.value);
+                    setFocusedChannelIndex(0);
+                    setMode(ChannelsMode.Browse);
+                    setFocusAnchor(ChannelsFocusAnchor.ChannelList);
+                  }
                 }}
-              >
-                {t(locale, "channels.allSources")}
-              </button>
-              {sources.map((source) => (
+              />
+              <FilterColumnSection
+                title={t(locale, "channels.groups")}
+                items={groupOptions.map((option) => option.label)}
+                selectedIndex={filterGroupIndex}
+                active={filterColumn === "group"}
+                refs={groupOptionRefs}
+                onSelect={(index) => {
+                  setFilterGroupIndex(index);
+                  setFilterColumn("group");
+                  const option = groupOptions[index];
+                  if (option) {
+                    setSelectedGroup(option.value);
+                    setFocusedChannelIndex(0);
+                    setMode(ChannelsMode.Browse);
+                    setFocusAnchor(ChannelsFocusAnchor.ChannelList);
+                  }
+                }}
+              />
+              <FilterColumnSection
+                title={t(locale, "channels.sort")}
+                items={sortOptions.map((option) => option.label)}
+                selectedIndex={filterSortIndex}
+                active={filterColumn === "sort"}
+                refs={sortOptionRefs}
+                onSelect={(index) => {
+                  setFilterSortIndex(index);
+                  setFilterColumn("sort");
+                  const option = sortOptions[index];
+                  if (option) {
+                    setSortBy(option.value);
+                    setFocusedChannelIndex(0);
+                    setMode(ChannelsMode.Browse);
+                    setFocusAnchor(ChannelsFocusAnchor.ChannelList);
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {mode === ChannelsMode.EpgBrowse || mode === ChannelsMode.EpgSearchEditing || mode === ChannelsMode.EpgDetail ? (
+        <div style={overlayStyle}>
+          <div style={{ ...panelStyle, maxWidth: 1120 }}>
+            <div style={panelHeaderStyle}>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{t(locale, "epg.explorer.title")}</div>
+              <div style={panelHintStyle}>
+                {t(locale, "epg.explorer.reminders")}: {epgReminders.length}
+              </div>
+            </div>
+            <div style={epgLayoutStyle}>
+              <div style={epgColumnStyle}>
                 <button
-                  key={source.id}
-                  onClick={() => setSelectedSourceId(source.id)}
+                  ref={epgSearchTriggerRef}
+                  type="button"
+                  data-tv-focusable={mode === ChannelsMode.EpgBrowse && epgRegion === "input" ? "true" : undefined}
+                  onClick={() => setMode(ChannelsMode.EpgSearchEditing)}
                   style={{
-                    ...groupBtnStyle,
-                    backgroundColor: selectedSourceId === source.id ? "var(--bg-tertiary)" : "transparent",
+                    ...entryButtonStyle,
+                    ...(mode === ChannelsMode.EpgBrowse && epgRegion === "input" ? entryButtonActiveStyle : null),
                   }}
                 >
-                  {source.name}
+                  <div style={entryValueStyle}>{epgSearch || t(locale, "epg.searchPlaceholder")}</div>
                 </button>
-              ))}
-            </div>
-          )}
-
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
-            {t(locale, "channels.groups")}
-          </div>
-          <button
-            onClick={() => setSelectedGroup(null)}
-            style={{
-              ...groupBtnStyle,
-              backgroundColor: selectedGroup === null ? "var(--bg-tertiary)" : "transparent",
-            }}
-          >
-            {t(locale, "channels.all")}
-          </button>
-          <div>
-            {groups.map((g) => (
-              <button
-                key={g}
-                onClick={() => setSelectedGroup(g)}
-                style={{
-                  ...groupBtnStyle,
-                  backgroundColor: selectedGroup === g ? "var(--bg-tertiary)" : "transparent",
-                }}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Channel list */}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <input
-            ref={searchInputRef}
-            data-tv-navigation-priority={isSearchEditing ? undefined : "true"}
-            data-tv-focusable="true"
-            style={{ ...searchStyle, flex: "1 1 320px" }}
-            placeholder={t(locale, "channels.searchPlaceholder")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onBlur={() => setIsSearchEditing(false)}
-            onKeyDown={(event) => {
-              if (!isSearchEditing && event.key === "Enter") {
-                event.preventDefault();
-                setIsSearchEditing(true);
-                return;
-              }
-              if (isSearchEditing && event.key === "Escape") {
-                event.preventDefault();
-                setIsSearchEditing(false);
-              }
-            }}
-          />
-          <label style={sortLabelStyle}>
-            {t(locale, "channels.sort")}
-            <select
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value as ChannelSort)}
-              style={selectStyle}
-            >
-              <option value="channelNumber">{t(locale, "channels.sort.channelNumber")}</option>
-              <option value="name">{t(locale, "channels.sort.name")}</option>
-              <option value="sourceThenChannel">{t(locale, "channels.sort.sourceThenChannel")}</option>
-            </select>
-          </label>
-        </div>
-
-        {error && <div style={{ color: "var(--danger)", marginTop: 8 }}>{error}</div>}
-
-        {channels.length === 0 && !error && (
-          <div style={{ color: "var(--text-secondary)", marginTop: 24, textAlign: "center" }}>
-            {t(locale, "channels.emptyPrefix")}<b>{t(locale, "channels.emptySources")}</b>{t(locale, "channels.emptySuffix")}
-          </div>
-        )}
-
-        <div style={epgPanelStyle}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 600 }}>{t(locale, "epg.explorer.title")}</div>
-              <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                {t(locale, "epg.explorer.subtitle")}
+                {mode === ChannelsMode.EpgSearchEditing ? (
+                  <input
+                    ref={epgSearchInputRef}
+                    value={epgSearchDraft}
+                    onChange={(event) => setEpgSearchDraft(event.target.value)}
+                    placeholder={t(locale, "epg.searchPlaceholder")}
+                    style={searchInputStyle}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        submitEpgSearch();
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setEpgSearchDraft(epgSearch);
+                        setMode(ChannelsMode.EpgBrowse);
+                        setEpgRegion("input");
+                      }
+                    }}
+                  />
+                ) : null}
+                <div style={chipRowStyle}>
+                  {epgStatusOptions.map((option, index) => {
+                    const active =
+                      mode === ChannelsMode.EpgBrowse &&
+                      epgRegion === "status" &&
+                      epgStateFilter === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        ref={(node) => {
+                          epgStatusRefs.current[index] = node;
+                        }}
+                        type="button"
+                        data-tv-focusable={active ? "true" : undefined}
+                        onClick={() => {
+                          setEpgStateFilter(option.value);
+                          setEpgRegion("results");
+                        }}
+                        style={{
+                          ...filterChipStyle,
+                          backgroundColor: epgStateFilter === option.value ? "var(--accent)" : "var(--bg-tertiary)",
+                          color: epgStateFilter === option.value ? "#fff" : "var(--text-primary)",
+                          ...(active ? { boxShadow: "inset 0 0 0 1px #fff" } : null),
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-              {t(locale, "epg.explorer.reminders")}: {epgReminders.length}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-            <input
-              value={epgSearch}
-              onChange={(event) => setEpgSearch(event.target.value)}
-              placeholder={t(locale, "epg.searchPlaceholder")}
-              style={{ ...searchStyle, flex: "1 1 260px" }}
-            />
-            {(["all", "live", "upcoming"] as EpgStateFilter[]).map((filter) => (
-              <button
-                key={filter}
-                type="button"
-                onClick={() => setEpgStateFilter(filter)}
-                style={{
-                  ...filterChipStyle,
-                  backgroundColor: epgStateFilter === filter ? "var(--accent)" : "var(--bg-tertiary)",
-                  color: epgStateFilter === filter ? "#fff" : "var(--text-primary)",
-                }}
-              >
-                {t(locale, `epg.filter.${filter}`)}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: epgDrawerItem ? "1fr minmax(260px, 320px)" : "1fr", gap: 12, marginTop: 12 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
-              {epgLoading ? <div style={{ color: "var(--text-secondary)" }}>{t(locale, "guide.loading")}</div> : null}
-              {!epgLoading && epgResults.length === 0 ? (
-                <div style={{ color: "var(--text-secondary)" }}>{t(locale, "epg.empty")}</div>
-              ) : null}
-              {epgResults.map((program) => {
-                const isLive = isProgramLive(program);
-                const reminded = epgReminders.some((item) => item.programId === program.id);
-                return (
-                  <div key={program.id} style={epgResultCardStyle}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600 }}>{program.title}</div>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                          {program.channelNumber ? `${program.channelNumber} · ` : ""}
-                          {program.channelName}
+              <div style={epgResultsStyle}>
+                {epgLoading ? <div style={panelHintStyle}>{t(locale, "guide.loading")}</div> : null}
+                {!epgLoading && epgResults.length === 0 ? <div style={panelHintStyle}>{t(locale, "epg.empty")}</div> : null}
+                {epgResults.map((program, index) => {
+                  const active =
+                    mode === ChannelsMode.EpgBrowse &&
+                    epgRegion === "results" &&
+                    epgResultIndex === index;
+                  const reminded = epgReminders.some((item) => item.programId === program.id);
+                  return (
+                    <button
+                      key={program.id}
+                      ref={(node) => {
+                        epgResultRefs.current[index] = node;
+                      }}
+                      type="button"
+                      data-tv-focusable={active ? "true" : undefined}
+                      onClick={() => {
+                        setEpgResultIndex(index);
+                        setEpgDrawerItem(program);
+                        setMode(ChannelsMode.EpgDetail);
+                      }}
+                      style={{ ...epgResultCardStyle, ...(active ? entryButtonActiveStyle : null) }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700 }}>{program.title}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                            {program.channelNumber ? `${program.channelNumber} · ` : ""}
+                            {program.channelName}
+                          </div>
                         </div>
+                        <span style={statusTagStyle}>{t(locale, isProgramLive(program) ? "epg.filter.live" : "epg.filter.upcoming")}</span>
                       </div>
-                      <span style={{ ...statusTagStyle, backgroundColor: isLive ? "#14532d" : "#1e3a8a" }}>
-                        {t(locale, isLive ? "epg.filter.live" : "epg.filter.upcoming")}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                      {formatTime(program.startAt)} - {formatTime(program.endAt)}
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button type="button" style={miniButtonStyle} onClick={() => setEpgDrawerItem(program)}>
-                        {t(locale, "epg.details")}
-                      </button>
-                      <button type="button" style={miniButtonStyle} onClick={() => void toggleReminder(program)}>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                        {formatTime(program.startAt)} - {formatTime(program.endAt)}
+                      </div>
+                      <div style={{ fontSize: 12, color: reminded ? "var(--accent)" : "var(--text-secondary)" }}>
                         {reminded ? t(locale, "epg.reminder.cancel") : t(locale, "epg.reminder.set")}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {epgDrawerItem ? (
-              <div style={epgDrawerStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {mode === ChannelsMode.EpgDetail && epgDrawerItem ? (
+                <div style={epgDetailStyle}>
                   <div>
-                    <div style={{ fontSize: 16, fontWeight: 700 }}>{epgDrawerItem.title}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                      {epgDrawerItem.channelName}
-                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>{epgDrawerItem.title}</div>
+                    <div style={panelHintStyle}>{epgDrawerItem.channelName}</div>
                   </div>
-                  <button type="button" style={miniButtonStyle} onClick={() => setEpgDrawerItem(null)}>
-                    {t(locale, "sources.edit.cancel")}
+                  <div style={panelHintStyle}>
+                    {formatTime(epgDrawerItem.startAt)} - {formatTime(epgDrawerItem.endAt)}
+                  </div>
+                  {epgDrawerItem.category ? (
+                    <div style={{ fontSize: 12, color: "var(--accent)" }}>{epgDrawerItem.category}</div>
+                  ) : null}
+                  <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+                    {epgDrawerItem.description || t(locale, "epg.noDescription")}
+                  </div>
+                  <button
+                    ref={epgDetailActionRef}
+                    type="button"
+                    data-tv-focusable={mode === ChannelsMode.EpgDetail ? "true" : undefined}
+                    onClick={() => void toggleReminder(epgDrawerItem)}
+                    style={{ ...entryButtonStyle, ...(mode === ChannelsMode.EpgDetail ? entryButtonActiveStyle : null) }}
+                  >
+                    {epgReminders.some((item) => item.programId === epgDrawerItem.id)
+                      ? t(locale, "epg.reminder.cancel")
+                      : t(locale, "epg.reminder.set")}
                   </button>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                  {formatTime(epgDrawerItem.startAt)} - {formatTime(epgDrawerItem.endAt)}
-                </div>
-                {epgDrawerItem.category ? (
-                  <div style={{ fontSize: 12, color: "var(--accent)" }}>{epgDrawerItem.category}</div>
-                ) : null}
-                <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                  {epgDrawerItem.description || t(locale, "epg.noDescription")}
-                </div>
-                <button type="button" style={submitBtnStyleSmall} onClick={() => void toggleReminder(epgDrawerItem)}>
-                  {epgReminders.some((item) => item.programId === epgDrawerItem.id)
-                    ? t(locale, "epg.reminder.cancel")
-                    : t(locale, "epg.reminder.set")}
-                </button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         </div>
+      ) : null}
+    </div>
+  );
+}
 
-        <div style={{ flex: 1, marginTop: 8 }}>
-          <ChannelRowsWithGuide
-            items={channels}
-            locale={locale}
-            onPlay={onPlay}
-            onToggleFavorite={toggleFavorite}
-            onMoveBeforeFirst={focusSearchNavigationMode}
-            virtualized
-            virtualListHeight={620}
-          />
-        </div>
+function FilterColumnSection({
+  title,
+  items,
+  selectedIndex,
+  active,
+  refs,
+  onSelect,
+}: {
+  title: string;
+  items: string[];
+  selectedIndex: number;
+  active: boolean;
+  refs: MutableRefObject<Array<HTMLButtonElement | null>>;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <div style={filterColumnStyle}>
+      <div style={filterColumnTitleStyle}>{title}</div>
+      <div style={filterListStyle}>
+        {items.map((item, index) => (
+          <button
+            key={`${title}-${item}-${index}`}
+            ref={(node) => {
+              refs.current[index] = node;
+            }}
+            type="button"
+            data-tv-focusable={active && selectedIndex === index ? "true" : undefined}
+            onClick={() => onSelect(index)}
+            style={{
+              ...filterOptionStyle,
+              ...(selectedIndex === index ? filterOptionSelectedStyle : null),
+              ...(active && selectedIndex === index ? entryButtonActiveStyle : null),
+            }}
+          >
+            {item}
+          </button>
+        ))}
       </div>
     </div>
   );
 }
 
-const groupBtnStyle: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  padding: "6px 10px",
-  border: "none",
-  color: "var(--text-primary)",
-  fontSize: 13,
-  cursor: "pointer",
-  textAlign: "left",
-  borderRadius: 4,
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
+const pageStyle: CSSProperties = {
+  position: "relative",
+  padding: 24,
+  display: "flex",
+  flexDirection: "column",
+  gap: 16,
+  height: "100%",
 };
 
-const searchStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  backgroundColor: "var(--bg-tertiary)",
-  border: "1px solid var(--border)",
-  borderRadius: 4,
-  color: "var(--text-primary)",
-  fontSize: 14,
+const entryStackStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 12,
 };
 
-const sortLabelStyle: React.CSSProperties = {
+const searchBarWrapStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+};
+
+const searchBarHeaderStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  color: "var(--text-secondary)",
-  fontSize: 13,
+  justifyContent: "space-between",
+  gap: 12,
 };
 
-const selectStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  backgroundColor: "var(--bg-tertiary)",
+const searchBarFieldStyle: CSSProperties = {
+  minHeight: 42,
+  display: "flex",
+  alignItems: "center",
+  padding: "0 12px",
+  borderRadius: 8,
   border: "1px solid var(--border)",
-  borderRadius: 4,
-  color: "var(--text-primary)",
+  backgroundColor: "transparent",
+  color: "var(--text-secondary)",
   fontSize: 14,
 };
 
-const epgPanelStyle: React.CSSProperties = {
-  marginTop: 16,
-  padding: 16,
-  borderRadius: 10,
-  border: "1px solid var(--border)",
-  backgroundColor: "rgba(15, 23, 42, 0.35)",
+const searchBarFieldButtonStyle: CSSProperties = {
+  ...searchBarFieldStyle,
+  width: "100%",
+  textAlign: "left",
+  outline: "none",
+  cursor: "pointer",
 };
 
-const filterChipStyle: React.CSSProperties = {
+const searchBarActiveStyle: CSSProperties = {
+  boxShadow: "inset 0 0 0 2px var(--accent)",
+  color: "var(--text-primary)",
+};
+
+const entryButtonStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  gap: 6,
+  padding: "14px 16px",
+  borderRadius: 10,
+  border: "1px solid var(--border)",
+  backgroundColor: "rgba(15, 23, 42, 0.48)",
+  color: "var(--text-primary)",
+  textAlign: "left",
+  outline: "none",
+};
+
+const entryButtonActiveStyle: CSSProperties = {
+  boxShadow: "inset 0 0 0 2px var(--accent)",
+  backgroundColor: "rgba(30, 41, 59, 0.8)",
+};
+
+const entryValueStyle: CSSProperties = {
+  fontSize: 12,
+  color: "var(--accent)",
+  minHeight: 16,
+};
+
+const emptyStateStyle: CSSProperties = {
+  color: "var(--text-secondary)",
+  textAlign: "center",
+};
+
+const overlayStyle: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  backgroundColor: "rgba(2, 6, 23, 0.65)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 24,
+};
+
+const panelStyle: CSSProperties = {
+  width: "100%",
+  maxWidth: 720,
+  borderRadius: 16,
+  border: "1px solid var(--border)",
+  backgroundColor: "#020817",
+  boxShadow: "0 18px 50px rgba(0, 0, 0, 0.38)",
+  padding: 20,
+  display: "flex",
+  flexDirection: "column",
+  gap: 16,
+};
+
+const panelHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const panelHintStyle: CSSProperties = {
+  fontSize: 12,
+  color: "var(--text-secondary)",
+};
+
+const searchInputStyle: CSSProperties = {
+  padding: "12px 14px",
+  backgroundColor: "var(--bg-tertiary)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  color: "var(--text-primary)",
+  fontSize: 15,
+};
+
+const filterColumnsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 12,
+};
+
+const filterColumnStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+};
+
+const filterColumnTitleStyle: CSSProperties = {
+  fontSize: 13,
+  color: "var(--text-secondary)",
+  textTransform: "uppercase",
+};
+
+const filterListStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  maxHeight: 360,
+  overflowY: "auto",
+};
+
+const filterOptionStyle: CSSProperties = {
+  padding: "10px 12px",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  backgroundColor: "var(--bg-tertiary)",
+  color: "var(--text-primary)",
+  textAlign: "left",
+  outline: "none",
+};
+
+const filterOptionSelectedStyle: CSSProperties = {
+  backgroundColor: "rgba(37, 99, 235, 0.2)",
+};
+
+const epgLayoutStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "280px minmax(0, 1fr) minmax(260px, 320px)",
+  gap: 16,
+  alignItems: "start",
+};
+
+const epgColumnStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+};
+
+const chipRowStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+};
+
+const filterChipStyle: CSSProperties = {
   padding: "8px 10px",
   borderRadius: 999,
   border: "1px solid var(--border)",
   fontSize: 12,
-  cursor: "pointer",
+  outline: "none",
 };
 
-const epgResultCardStyle: React.CSSProperties = {
+const epgResultsStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  maxHeight: 460,
+  overflowY: "auto",
+};
+
+const epgResultCardStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 8,
   padding: 12,
-  borderRadius: 8,
+  borderRadius: 10,
+  border: "1px solid var(--border)",
+  backgroundColor: "rgba(15, 23, 42, 0.55)",
+  color: "var(--text-primary)",
+  textAlign: "left",
+  outline: "none",
+};
+
+const epgDetailStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  padding: 12,
+  borderRadius: 10,
   border: "1px solid var(--border)",
   backgroundColor: "rgba(15, 23, 42, 0.55)",
 };
 
-const statusTagStyle: React.CSSProperties = {
+const statusTagStyle: CSSProperties = {
   borderRadius: 999,
   padding: "2px 8px",
   fontSize: 11,
   color: "#fff",
   height: "fit-content",
-};
-
-const miniButtonStyle: React.CSSProperties = {
-  padding: "6px 10px",
-  borderRadius: 6,
-  border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-tertiary)",
-  color: "var(--text-primary)",
-  cursor: "pointer",
-  fontSize: 12,
-};
-
-const epgDrawerStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-  padding: 14,
-  borderRadius: 10,
-  border: "1px solid var(--border)",
-  backgroundColor: "rgba(2, 6, 23, 0.7)",
-};
-
-const submitBtnStyleSmall: React.CSSProperties = {
-  padding: "8px 12px",
-  backgroundColor: "var(--accent)",
-  border: "none",
-  borderRadius: 6,
-  color: "#fff",
-  fontSize: 13,
-  cursor: "pointer",
-  alignSelf: "flex-start",
+  backgroundColor: "#1e3a8a",
 };
 
 function sortChannels(items: Channel[], sortBy: ChannelSort): Channel[] {

@@ -7,7 +7,13 @@ import {
   resolveGuideWindowMinutes,
 } from "../../lib/settings";
 import { buildSnapshotRequestChannelIds } from "../../lib/epgSnapshots";
-import { createConfirmPressHandler, mapKeyToTvIntent, type TvContentKeyDetail } from "../../lib/tvInput";
+import {
+  ConfirmGesture,
+  createConfirmPressHandler,
+  mapKeyToTvIntent,
+  TvIntent,
+  type TvContentKeyDetail,
+} from "../../lib/tvInput";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel, ChannelEpgSnapshot, Setting } from "../../types/api";
 
@@ -18,6 +24,10 @@ interface Props<T extends Channel = Channel> {
   onToggleFavorite?: (channel: T) => void;
   renderMeta?: (channel: T) => ReactNode;
   onMoveBeforeFirst?: () => void;
+  focusedIndex?: number;
+  onFocusedIndexChange?: (index: number) => void;
+  keyboardNavigationEnabled?: boolean;
+  active?: boolean;
   virtualized?: boolean;
   virtualListHeight?: number;
 }
@@ -39,6 +49,10 @@ export function ChannelRowsWithGuide<T extends Channel>({
   onToggleFavorite,
   renderMeta,
   onMoveBeforeFirst,
+  focusedIndex: controlledFocusedIndex,
+  onFocusedIndexChange,
+  keyboardNavigationEnabled = true,
+  active = true,
   virtualized = false,
   virtualListHeight = 560,
 }: Props<T>) {
@@ -46,7 +60,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const [loading, setLoading] = useState(false);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [guideWindowMinutes, setGuideWindowMinutes] = useState(DEFAULT_GUIDE_WINDOW_MINUTES);
-  const [focusedIndex, setFocusedIndex] = useState(0);
+  const [uncontrolledFocusedIndex, setUncontrolledFocusedIndex] = useState(0);
   const [domFocusedIndex, setDomFocusedIndex] = useState<number | null>(null);
   const [hoveredChannelId, setHoveredChannelId] = useState<number | null>(null);
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
@@ -57,6 +71,18 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const itemsRef = useRef<T[]>(items);
   const onPlayRef = useRef(onPlay);
   const onToggleFavoriteRef = useRef(onToggleFavorite);
+
+  const focusedIndex = controlledFocusedIndex ?? uncontrolledFocusedIndex;
+  const setFocusedIndex = (next: number | ((prev: number) => number)) => {
+    const resolved =
+      typeof next === "function"
+        ? (next as (prev: number) => number)(focusedIndex)
+        : next;
+    if (controlledFocusedIndex === undefined) {
+      setUncontrolledFocusedIndex(resolved);
+    }
+    onFocusedIndexChange?.(resolved);
+  };
 
   const channelIds = useMemo(
     () => buildSnapshotRequestChannelIds(items, focusedIndex, SNAPSHOT_WINDOW_SIZE),
@@ -100,6 +126,13 @@ export function ChannelRowsWithGuide<T extends Channel>({
   useEffect(() => {
     focusedIndexRef.current = focusedIndex;
   }, [focusedIndex]);
+
+  useEffect(() => {
+    if (!active || items.length === 0) return;
+    window.setTimeout(() => {
+      focusRowByIndex(focusedIndex);
+    }, 0);
+  }, [active, focusedIndex, items.length]);
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -227,16 +260,15 @@ export function ChannelRowsWithGuide<T extends Channel>({
 
   useEffect(() => {
     confirmPressRef.current = createConfirmPressHandler({
-      onSingle: () => {
+      onGesture: (gesture) => {
         const current = itemsRef.current[focusedIndexRef.current];
-        if (current) {
+        if (!current) return;
+        if (gesture === ConfirmGesture.Single) {
           schedulePlay(current);
+          return;
         }
-      },
-      onLong: () => {
-        if (!onToggleFavoriteRef.current) return;
-        const current = itemsRef.current[focusedIndexRef.current];
-        if (current) {
+        if (gesture === ConfirmGesture.Double || gesture === ConfirmGesture.Long) {
+          if (!onToggleFavoriteRef.current) return;
           triggerFavorite(current);
         }
       },
@@ -262,6 +294,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
       if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
         return;
       }
+      if (!active) return;
       if (items.length === 0) return;
       focusRowByIndex(focusedIndex);
     };
@@ -270,15 +303,16 @@ export function ChannelRowsWithGuide<T extends Channel>({
       if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
         return;
       }
+      if (!keyboardNavigationEnabled || !active) return;
       const key = detail?.key;
       const intent = detail?.intent ?? (key ? mapKeyToTvIntent(key) : null);
       if (!intent || items.length === 0) return;
-      if (intent === "MoveDown") {
+      if (intent === TvIntent.MoveDown) {
         event.preventDefault();
         focusRowByIndex(focusedIndex + 1);
         return;
       }
-      if (intent === "MoveUp") {
+      if (intent === TvIntent.MoveUp) {
         if (focusedIndex === 0 && onMoveBeforeFirst) {
           event.preventDefault();
           onMoveBeforeFirst();
@@ -290,12 +324,12 @@ export function ChannelRowsWithGuide<T extends Channel>({
       }
       const current = items[focusedIndex];
       if (!current) return;
-      if (intent === "Confirm") {
+      if (intent === TvIntent.Confirm) {
         event.preventDefault();
         confirmPressRef.current?.onKeyDown(Boolean(detail?.repeat));
         return;
       }
-      if (intent === "SecondaryAction" && onToggleFavorite) {
+      if (intent === TvIntent.SecondaryAction && onToggleFavorite) {
         event.preventDefault();
         triggerFavorite(current);
       }
@@ -305,9 +339,10 @@ export function ChannelRowsWithGuide<T extends Channel>({
       if (detail?.view && !["channels", "favorites", "recents"].includes(detail.view)) {
         return;
       }
+      if (!keyboardNavigationEnabled || !active) return;
       const key = detail?.key;
       const intent = detail?.intent ?? (key ? mapKeyToTvIntent(key) : null);
-      if (intent !== "Confirm") return;
+      if (intent !== TvIntent.Confirm) return;
       event.preventDefault();
       confirmPressRef.current?.onKeyUp();
     };
@@ -321,7 +356,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
       window.removeEventListener("tv-content-key", onContentKey as EventListener);
       window.removeEventListener("tv-content-keyup", onContentKeyUp as EventListener);
     };
-  }, [focusedIndex, items, onMoveBeforeFirst, onToggleFavorite]);
+  }, [active, focusedIndex, items, keyboardNavigationEnabled, onMoveBeforeFirst, onToggleFavorite]);
 
   useEffect(() => {
     return () => {

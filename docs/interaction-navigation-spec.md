@@ -52,17 +52,23 @@ Business logic consumes normalized intents only.
 
 Normalize raw input events into intents:
 
-- `MoveUp`
-- `MoveDown`
-- `MoveLeft`
-- `MoveRight`
-- `Confirm`
-- `Back`
-- `SecondaryAction`
-- `PlayPause` (optional)
+- `TvIntent.MoveUp`
+- `TvIntent.MoveDown`
+- `TvIntent.MoveLeft`
+- `TvIntent.MoveRight`
+- `TvIntent.Confirm`
+- `TvIntent.Back`
+- `TvIntent.SecondaryAction`
+- `TvIntent.PlayPause` (optional)
 - `PageUp` / `PageDown` (optional)
 - `LongPressConfirm` (optional)
 - `RepeatMove` (optional)
+
+Confirm gestures are normalized separately:
+
+- `ConfirmGesture.Single`
+- `ConfirmGesture.Double`
+- `ConfirmGesture.Long`
 
 ### 4.2 Focus Engine Layer
 
@@ -130,6 +136,12 @@ Defines a navigable collection:
 - item order
 - edge policy (`clamp`, `loop`, `jump-zone`)
 
+Nested scopes are allowed:
+
+- a child scope handles directional movement first
+- when movement exceeds the child scope edge and that edge policy is `bubble`, the intent is passed to the parent scope
+- desktop implementation reference: [focus-group-wrapper.md](/Users/caoyunlong/code/opentivi/docs/focus-group-wrapper.md)
+
 ---
 
 ## 6. Navigation Rules (Normative)
@@ -180,6 +192,10 @@ For searchable TV pages:
 - `Confirm` (or explicit edit action) enters text editing mode,
 - `Back`/`Esc` exits text editing mode and returns to navigation mode,
 - directional keys in navigation-priority inputs must continue to drive focus movement.
+
+Exception:
+
+- when a page intentionally focuses a real text input to use the user's own IME keyboard, directional keys may be temporarily handled by the input method or text field until edit mode exits.
 
 ---
 
@@ -240,6 +256,8 @@ Any client implementation is compliant only if:
 5. In source page, delete action opens confirmation dialog; confirm executes delete, cancel restores previous focus.
 6. In settings list, `Confirm` opens modal editor; modal supports keyboard value changes and `Esc` close.
 7. In channels page search, navigation mode and text edit mode can switch without losing directional navigation.
+8. In channels page, content order is `channelSearchEntry -> filterEntry -> epgEntry -> channelList`.
+9. In channels page, every feature remains reachable by directional navigation plus `Confirm`/`Back`; text entry itself uses the user's own IME keyboard.
 
 ---
 

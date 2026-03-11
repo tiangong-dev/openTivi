@@ -11,7 +11,7 @@ import {
   resolvePlayerVolume,
 } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
-import { createConfirmPressHandler, mapKeyToTvIntent } from "../../lib/tvInput";
+import { ConfirmGesture, createConfirmPressHandler, mapKeyToTvIntent, TvIntent } from "../../lib/tvInput";
 import type { Channel, ChannelEpgSnapshot, EpgProgram, PlaybackSource, Setting } from "../../types/api";
 import {
   getAdjacentChannel,
@@ -723,28 +723,32 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   useEffect(() => {
     confirmPressRef.current = createConfirmPressHandler({
-      onSingle: () => {
-        const inChannelPanel = showChannelListPanelRef.current;
-        if (inChannelPanel) {
-          const candidate = channelsRef.current[focusedChannelIndexRef.current];
-          if (candidate) {
-            onChannelChange(candidate);
+      onGesture: (gesture) => {
+        if (gesture === ConfirmGesture.Single) {
+          const inChannelPanel = showChannelListPanelRef.current;
+          if (inChannelPanel) {
+            const candidate = channelsRef.current[focusedChannelIndexRef.current];
+            if (candidate) {
+              onChannelChange(candidate);
+            }
+            setChannelListPanel(false);
+            showOverlay();
+            return;
           }
-          setChannelListPanel(false);
+          setChannelListPanel(true);
+          startChannelListAutoHide();
           showOverlay();
           return;
         }
-        setChannelListPanel(true);
-        startChannelListAutoHide();
-        showOverlay();
-      },
-      onDouble: () => {
-        setGuidePanelVisible((v) => !v);
-        showOverlay();
-      },
-      onLong: () => {
-        togglePlayPause();
-        showOverlay();
+        if (gesture === ConfirmGesture.Double) {
+          setGuidePanelVisible((v) => !v);
+          showOverlay();
+          return;
+        }
+        if (gesture === ConfirmGesture.Long) {
+          togglePlayPause();
+          showOverlay();
+        }
       },
     });
     return () => {
@@ -761,18 +765,18 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         touchChannelListAutoHide();
       }
       if (inNavZone) {
-        if (intent === "MoveUp" || intent === "MoveDown") {
+        if (intent === TvIntent.MoveUp || intent === TvIntent.MoveDown) {
           e.preventDefault();
           const buttons = getNavButtons();
           if (buttons.length === 0) return;
           const currentIndex = Math.max(0, buttons.findIndex((item) => item === document.activeElement));
-          const offset = intent === "MoveDown" ? 1 : -1;
+          const offset = intent === TvIntent.MoveDown ? 1 : -1;
           const nextIndex = (currentIndex + offset + buttons.length) % buttons.length;
           buttons[nextIndex]?.focus();
           showOverlay();
           return;
         }
-        if (intent === "MoveRight") {
+        if (intent === TvIntent.MoveRight) {
           e.preventDefault();
           setPlayerFocusZone("player");
           if (showChannelListPanelRef.current) {
@@ -781,11 +785,11 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           showOverlay();
           return;
         }
-        if (intent === "Confirm") {
+        if (intent === TvIntent.Confirm) {
           return;
         }
       }
-      if (intent === "Back") {
+      if (intent === TvIntent.Back) {
         e.preventDefault();
         if (showChannelListPanelRef.current) {
           setChannelListPanel(false);
@@ -795,20 +799,20 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         showOverlay();
         return;
       }
-      if (intent === "MoveLeft") {
+      if (intent === TvIntent.MoveLeft) {
         e.preventDefault();
         setPlayerFocusZone("nav");
         focusActiveNavButton();
         showOverlay();
         return;
       }
-      if (intent === "MoveRight") {
+      if (intent === TvIntent.MoveRight) {
         e.preventDefault();
         setGuidePanelVisible((v) => !v);
         showOverlay();
         return;
       }
-      if (intent === "MoveUp") {
+      if (intent === TvIntent.MoveUp) {
         e.preventDefault();
         if (showChannelListPanelRef.current) {
           const size = channelsRef.current.length;
@@ -822,7 +826,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         showOverlay();
         return;
       }
-      if (intent === "MoveDown") {
+      if (intent === TvIntent.MoveDown) {
         e.preventDefault();
         if (showChannelListPanelRef.current) {
           const size = channelsRef.current.length;
@@ -836,12 +840,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         showOverlay();
         return;
       }
-      if (intent === "Confirm") {
+      if (intent === TvIntent.Confirm) {
         e.preventDefault();
         confirmPressRef.current?.onKeyDown(e.repeat);
         return;
       }
-      if (intent === "SecondaryAction") {
+      if (intent === TvIntent.SecondaryAction) {
         e.preventDefault();
         if (document.fullscreenElement) {
           void document.exitFullscreen();
@@ -870,7 +874,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     const onKeyUp = (e: KeyboardEvent) => {
       const intent = mapKeyToTvIntent(e.key);
       if (playerFocusZoneRef.current === "nav") return;
-      if (intent === "Confirm") {
+      if (intent === TvIntent.Confirm) {
         e.preventDefault();
         confirmPressRef.current?.onKeyUp();
         return;

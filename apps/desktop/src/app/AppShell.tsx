@@ -14,7 +14,7 @@ import {
   type AppStartView,
 } from "../lib/settings";
 import { tauriInvoke } from "../lib/tauri";
-import { mapKeyToTvIntent, type TvContentKeyDetail } from "../lib/tvInput";
+import { mapKeyToTvIntent, TvIntent, type TvContentKeyDetail } from "../lib/tvInput";
 import { detectDefaultLocale, LOCALE_SETTING_KEY, resolveLocale, t, type Locale } from "../lib/i18n";
 import type { Channel, Setting } from "../types/api";
 
@@ -171,17 +171,17 @@ export function AppShell() {
       if (isTypingTarget()) return;
       const intent = mapKeyToTvIntent(event.key);
       if (focusZone === "nav") {
-        if (intent === "MoveDown") {
+        if (intent === TvIntent.MoveDown) {
           event.preventDefault();
           focusNavByIndex(focusedNavIndex + 1);
           return;
         }
-        if (intent === "MoveUp") {
+        if (intent === TvIntent.MoveUp) {
           event.preventDefault();
           focusNavByIndex(focusedNavIndex - 1);
           return;
         }
-        if (intent === "Confirm") {
+        if (intent === TvIntent.Confirm) {
           event.preventDefault();
           const selected = navItems[focusedNavIndex];
           if (selected) {
@@ -189,13 +189,13 @@ export function AppShell() {
           }
           return;
         }
-        if (intent === "MoveRight") {
+        if (intent === TvIntent.MoveRight) {
           event.preventDefault();
           setFocusZone("content");
         }
         return;
       }
-      if (intent === "MoveLeft") {
+      if (intent === TvIntent.MoveLeft) {
         event.preventDefault();
         const handledByContent = dispatchContentKey(event.key, event.repeat);
         if (!handledByContent) {
@@ -205,12 +205,12 @@ export function AppShell() {
         return;
       }
       if (
-        intent === "MoveUp" ||
-        intent === "MoveDown" ||
-        intent === "MoveRight" ||
-        intent === "Confirm" ||
-        intent === "SecondaryAction" ||
-        intent === "Back" ||
+        intent === TvIntent.MoveUp ||
+        intent === TvIntent.MoveDown ||
+        intent === TvIntent.MoveRight ||
+        intent === TvIntent.Confirm ||
+        intent === TvIntent.SecondaryAction ||
+        intent === TvIntent.Back ||
         event.key === "Delete" ||
         event.key === "r" ||
         event.key === "R"
@@ -223,7 +223,7 @@ export function AppShell() {
       if (event.defaultPrevented) return;
       if (isTypingTarget()) return;
       if (focusZone !== "content") return;
-      if (mapKeyToTvIntent(event.key) !== "Confirm") return;
+      if (mapKeyToTvIntent(event.key) !== TvIntent.Confirm) return;
       event.preventDefault();
       dispatchContentKeyUp(event.key);
     };

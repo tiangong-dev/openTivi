@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
 import { t, type Locale } from "../../lib/i18n";
+import { TvIntent, type TvContentKeyDetail } from "../../lib/tvInput";
 import type { Source, ImportSummary } from "../../types/api";
 
 type ImportTab = "m3u" | "xtream" | "xmltv";
@@ -128,19 +129,20 @@ export function SourcesView({ locale }: Props) {
     };
 
     const onContentKey = (event: Event) => {
-      const detail = (event as CustomEvent<{ key?: string; view?: string }>).detail;
+      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
       if (detail?.view && detail.view !== "sources") {
         return;
       }
+      const intent = detail?.intent;
       const key = detail?.key;
-      if (!key) return;
+      if (!intent && !key) return;
       if (deleteConfirmSource) {
-        if (key === "ArrowLeft" || key === "ArrowRight") {
+        if (intent === TvIntent.MoveLeft || intent === TvIntent.MoveRight) {
           event.preventDefault();
           setDeleteConfirmAction((prev) => (prev === "cancel" ? "delete" : "cancel"));
           return;
         }
-        if (key === "Enter" || key === " ") {
+        if (intent === TvIntent.Confirm) {
           event.preventDefault();
           if (deleteConfirmAction === "delete") {
             void executeDeleteConfirmed();
@@ -154,23 +156,23 @@ export function SourcesView({ locale }: Props) {
       }
 
       if (showAddModal) {
-        if (key === "ArrowLeft" || key === "ArrowRight") {
+        if (intent === TvIntent.MoveLeft || intent === TvIntent.MoveRight) {
           event.preventDefault();
           const tabs: ImportTab[] = ["m3u", "xtream", "xmltv"];
           const currentIndex = tabs.findIndex((tab) => tab === activeTab);
-          const direction = key === "ArrowRight" ? 1 : -1;
+          const direction = intent === TvIntent.MoveRight ? 1 : -1;
           const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
           const nextTab = tabs[nextIndex];
           setActiveTab(nextTab);
           window.setTimeout(() => addTabRefs.current[nextTab]?.focus(), 0);
           return;
         }
-        if (key === "ArrowDown" || key === "Enter" || key === " ") {
+        if (intent === TvIntent.MoveDown || intent === TvIntent.Confirm) {
           event.preventDefault();
           addModalFirstInputRef.current?.focus();
           return;
         }
-        if (key === "ArrowUp") {
+        if (intent === TvIntent.MoveUp) {
           event.preventDefault();
           addTabRefs.current[activeTab]?.focus();
         }
@@ -179,7 +181,7 @@ export function SourcesView({ locale }: Props) {
 
       if (editing) return;
 
-      if (key === "ArrowDown") {
+      if (intent === TvIntent.MoveDown) {
         event.preventDefault();
         if (focusTarget === "add") {
           if (filteredSources.length > 0) {
@@ -195,7 +197,7 @@ export function SourcesView({ locale }: Props) {
         return;
       }
 
-      if (key === "ArrowUp") {
+      if (intent === TvIntent.MoveUp) {
         event.preventDefault();
         if (focusTarget === "add") {
           if (filteredSources.length > 0) {
@@ -211,7 +213,7 @@ export function SourcesView({ locale }: Props) {
         return;
       }
 
-      if (key === "Enter" || key === " ") {
+      if (intent === TvIntent.Confirm) {
         event.preventDefault();
         if (focusTarget === "add") {
           setShowAddModal(true);

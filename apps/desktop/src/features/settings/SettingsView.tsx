@@ -11,6 +11,7 @@ import {
   INSTANT_SWITCH_ENABLED_SETTING_KEY,
 } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
+import { TvIntent, type TvContentKeyDetail } from "../../lib/tvInput";
 import type { AppUpdateInfo, Setting } from "../../types/api";
 
 interface Props {
@@ -182,24 +183,24 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       focusSettingByIndex(currentIndex >= 0 ? currentIndex : 0);
     };
     const onContentKey = (event: Event) => {
-      const detail = (event as CustomEvent<{ key?: string; view?: string }>).detail;
+      const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
       if (detail?.view && detail.view !== "settings") {
         return;
       }
-      const key = detail?.key;
-      if (!key || orderedSettings.length === 0) return;
+      const intent = detail?.intent;
+      if (!intent || orderedSettings.length === 0) return;
       if (editingSetting) {
-        if (key === "ArrowRight") {
+        if (intent === TvIntent.MoveRight) {
           event.preventDefault();
           triggerSetting(editingSetting, 1);
           return;
         }
-        if (key === "ArrowLeft") {
+        if (intent === TvIntent.MoveLeft) {
           event.preventDefault();
           triggerSetting(editingSetting, -1);
           return;
         }
-        if (key === "Enter" || key === " ") {
+        if (intent === TvIntent.Confirm) {
           event.preventDefault();
           triggerSetting(editingSetting, 1);
           return;
@@ -212,17 +213,17 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       const normalizedIndex = currentIndex >= 0 ? currentIndex : 0;
       const current = orderedSettings[normalizedIndex];
       if (!current) return;
-      if (key === "ArrowDown") {
+      if (intent === TvIntent.MoveDown) {
         event.preventDefault();
         focusSettingByIndex(normalizedIndex + 1);
         return;
       }
-      if (key === "ArrowUp") {
+      if (intent === TvIntent.MoveUp) {
         event.preventDefault();
         focusSettingByIndex(normalizedIndex - 1);
         return;
       }
-      if (key === "Enter" || key === " ") {
+      if (intent === TvIntent.Confirm) {
         event.preventDefault();
         setEditingSettingKey(current.key);
       }

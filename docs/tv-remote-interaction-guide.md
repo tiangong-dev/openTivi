@@ -16,10 +16,10 @@ This follows KISS (small, direct flow) and Unix-style separation (adapter vs act
 
 ### 2.1 Core intents
 
-- `MoveUp` / `MoveDown` / `MoveLeft` / `MoveRight`
-- `Confirm`
-- `Back`
-- `SecondaryAction`
+- `TvIntent.MoveUp` / `TvIntent.MoveDown` / `TvIntent.MoveLeft` / `TvIntent.MoveRight`
+- `TvIntent.Confirm`
+- `TvIntent.Back`
+- `TvIntent.SecondaryAction`
 
 ### 2.2 Default key mapping
 
@@ -30,11 +30,19 @@ This follows KISS (small, direct flow) and Unix-style separation (adapter vs act
 
 ### 2.3 Confirm gesture semantics
 
-- `Confirm Single` -> primary action
-- `Confirm Double` -> secondary action shortcut
-- `Confirm Long` -> secondary action fallback for TV usability
+- `ConfirmGesture.Single` -> primary action
+- `ConfirmGesture.Double` -> secondary action shortcut
+- `ConfirmGesture.Long` -> secondary action fallback for TV usability
 
 Implementation note: gesture parsing happens in `createConfirmPressHandler` and is independent from UI components.
+
+## 2.4 Enum Contract
+
+- `TvIntent` and `ConfirmGesture` are the source of truth for action semantics.
+- UI modules must consume enum values, not scattered string literals.
+- Documentation and tests should reference the same enum names.
+- Focus groups can be nested. A child group handles movement first, and only bubbles to its parent when the move exceeds that group's configured edge.
+- React pages should prefer the shared wrapper in [focus-group-wrapper.md](/Users/caoyunlong/code/opentivi/docs/focus-group-wrapper.md) instead of hand-written edge logic.
 
 ---
 
@@ -50,6 +58,21 @@ Rationale:
 
 - keeps single confirm on the main path (play)
 - no longer relies on double-click as the only favorite path
+
+## 3.1 Channels Page Structure
+
+- `channelSearchEntry`
+- `filterEntry`
+- `epgEntry`
+- `channelList`
+
+Rules:
+
+- default entry lands on `channelList`
+- `Up/Down` moves within this fixed order
+- `ConfirmGesture.Single` on an entry opens its mode
+- `Back` exits the active mode first; otherwise it returns to NAV
+- text entry uses the user's own IME keyboard after entering edit mode via confirm
 
 ---
 
@@ -92,6 +115,10 @@ No module mixes adapter logic and business action logic.
 1. In channel list: move 3 rows down, single confirm plays row #4.
 2. In channel list: double confirm toggles favorite state.
 3. In channel list: long confirm toggles favorite state.
-4. In player: left opens channel panel, single confirm plays focused channel.
-5. In player: long confirm toggles play/pause.
-6. In player: back closes panel first, back again exits player.
+4. In channels page: move up from the first row to `epgEntry`, then to `filterEntry`, then to `channelSearchEntry`.
+5. In channels page: confirm on search entry focuses a real input and text entry is handled by the system IME.
+6. In channels page: filter panel can change source, group, and sort using only directional keys, confirm, and back.
+7. In channels page: EPG panel can search, change state filter, open detail, and toggle reminder using only directional keys, confirm gestures, and back.
+8. In player: left opens channel panel, single confirm plays focused channel.
+9. In player: long confirm toggles play/pause.
+10. In player: back closes panel first, back again exits player.

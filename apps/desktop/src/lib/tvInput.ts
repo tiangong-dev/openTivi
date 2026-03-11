@@ -1,12 +1,19 @@
-export type TvIntent =
-  | "MoveUp"
-  | "MoveDown"
-  | "MoveLeft"
-  | "MoveRight"
-  | "Confirm"
-  | "Back"
-  | "SecondaryAction"
-  | "PlayPause";
+export enum TvIntent {
+  MoveUp = "MoveUp",
+  MoveDown = "MoveDown",
+  MoveLeft = "MoveLeft",
+  MoveRight = "MoveRight",
+  Confirm = "Confirm",
+  Back = "Back",
+  SecondaryAction = "SecondaryAction",
+  PlayPause = "PlayPause",
+}
+
+export enum ConfirmGesture {
+  Single = "Single",
+  Double = "Double",
+  Long = "Long",
+}
 
 export interface TvContentKeyDetail {
   key?: string;
@@ -18,33 +25,31 @@ export interface TvContentKeyDetail {
 export function mapKeyToTvIntent(key: string): TvIntent | null {
   switch (key) {
     case "ArrowUp":
-      return "MoveUp";
+      return TvIntent.MoveUp;
     case "ArrowDown":
-      return "MoveDown";
+      return TvIntent.MoveDown;
     case "ArrowLeft":
-      return "MoveLeft";
+      return TvIntent.MoveLeft;
     case "ArrowRight":
-      return "MoveRight";
+      return TvIntent.MoveRight;
     case "Enter":
     case " ":
-      return "Confirm";
+      return TvIntent.Confirm;
     case "Escape":
     case "Backspace":
-      return "Back";
+      return TvIntent.Back;
     case "f":
     case "F":
-      return "SecondaryAction";
+      return TvIntent.SecondaryAction;
     case "MediaPlayPause":
-      return "PlayPause";
+      return TvIntent.PlayPause;
     default:
       return null;
   }
 }
 
 interface ConfirmPressCallbacks {
-  onSingle: () => void;
-  onDouble?: () => void;
-  onLong?: () => void;
+  onGesture: (gesture: ConfirmGesture) => void;
 }
 
 interface ConfirmPressOptions {
@@ -65,7 +70,7 @@ export function createConfirmPressHandler(
 ): ConfirmPressHandler {
   const doublePressWindowMs = options?.doublePressWindowMs ?? 280;
   const longPressMs = options?.longPressMs ?? 520;
-  const singleDelayMs = options?.singleDelayMs ?? (callbacks.onDouble ? doublePressWindowMs : 0);
+  const singleDelayMs = options?.singleDelayMs ?? doublePressWindowMs;
 
   let isPressing = false;
   let longTriggered = false;
@@ -75,14 +80,14 @@ export function createConfirmPressHandler(
 
   const clearSingleTimer = () => {
     if (singleTimer !== null) {
-      window.clearTimeout(singleTimer);
+      globalThis.clearTimeout(singleTimer);
       singleTimer = null;
     }
   };
 
   const clearLongTimer = () => {
     if (longTimer !== null) {
-      window.clearTimeout(longTimer);
+      globalThis.clearTimeout(longTimer);
       longTimer = null;
     }
   };
@@ -90,7 +95,7 @@ export function createConfirmPressHandler(
   const fireSingle = () => {
     clearSingleTimer();
     lastTapAt = 0;
-    callbacks.onSingle();
+    callbacks.onGesture(ConfirmGesture.Single);
   };
 
   return {
@@ -99,14 +104,12 @@ export function createConfirmPressHandler(
       isPressing = true;
       longTriggered = false;
       clearLongTimer();
-      if (callbacks.onLong) {
-        longTimer = window.setTimeout(() => {
-          if (!isPressing) return;
-          longTriggered = true;
-          clearSingleTimer();
-          callbacks.onLong?.();
-        }, longPressMs);
-      }
+      longTimer = globalThis.setTimeout(() => {
+        if (!isPressing) return;
+        longTriggered = true;
+        clearSingleTimer();
+        callbacks.onGesture(ConfirmGesture.Long);
+      }, longPressMs);
     },
     onKeyUp() {
       if (!isPressing) return;
@@ -120,22 +123,17 @@ export function createConfirmPressHandler(
         return;
       }
 
-      if (!callbacks.onDouble) {
-        fireSingle();
-        return;
-      }
-
       const now = Date.now();
       if (lastTapAt > 0 && now - lastTapAt <= doublePressWindowMs) {
         lastTapAt = 0;
         clearSingleTimer();
-        callbacks.onDouble();
+        callbacks.onGesture(ConfirmGesture.Double);
         return;
       }
 
       lastTapAt = now;
       clearSingleTimer();
-      singleTimer = window.setTimeout(() => {
+      singleTimer = globalThis.setTimeout(() => {
         fireSingle();
       }, singleDelayMs);
     },

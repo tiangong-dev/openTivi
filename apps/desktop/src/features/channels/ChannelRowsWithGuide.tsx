@@ -18,6 +18,8 @@ interface Props<T extends Channel = Channel> {
   onToggleFavorite?: (channel: T) => void;
   renderMeta?: (channel: T) => ReactNode;
   onMoveBeforeFirst?: () => void;
+  virtualized?: boolean;
+  virtualListHeight?: number;
 }
 
 interface PrewarmIntentInput {
@@ -37,6 +39,8 @@ export function ChannelRowsWithGuide<T extends Channel>({
   onToggleFavorite,
   renderMeta,
   onMoveBeforeFirst,
+  virtualized = false,
+  virtualListHeight = 560,
 }: Props<T>) {
   const [snapshots, setSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [loading, setLoading] = useState(false);
@@ -47,6 +51,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const [hoveredChannelId, setHoveredChannelId] = useState<number | null>(null);
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
   const focusedIndexRef = useRef(0);
   const itemsRef = useRef<T[]>(items);
@@ -62,6 +67,21 @@ export function ChannelRowsWithGuide<T extends Channel>({
     const start = Math.floor(nowTs / step) * step;
     return { start, end: start + guideWindowMinutes * 60 * 1000 };
   }, [nowTs, guideWindowMinutes]);
+  const [scrollTop, setScrollTop] = useState(0);
+  const rowHeight = 78;
+  const overscan = 6;
+  const visibleCount = Math.ceil(virtualListHeight / rowHeight);
+  const rangeStart = virtualized
+    ? Math.max(0, Math.min(focusedIndex, Math.floor(scrollTop / rowHeight)) - overscan)
+    : 0;
+  const rangeEnd = virtualized
+    ? Math.min(items.length, Math.max(focusedIndex + overscan + 1, rangeStart + visibleCount + overscan * 2))
+    : items.length;
+  const visibleItems = virtualized
+    ? items.slice(rangeStart, rangeEnd).map((item, offset) => ({ item, index: rangeStart + offset }))
+    : items.map((item, index) => ({ item, index }));
+  const topSpacerHeight = virtualized ? rangeStart * rowHeight : 0;
+  const bottomSpacerHeight = virtualized ? Math.max(0, (items.length - rangeEnd) * rowHeight) : 0;
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowTs(Date.now()), 30_000);
@@ -185,6 +205,21 @@ export function ChannelRowsWithGuide<T extends Channel>({
     if (items.length === 0) return;
     const wrapped = ((nextIndex % items.length) + items.length) % items.length;
     setFocusedIndex(wrapped);
+    if (virtualized && listContainerRef.current) {
+      const desiredTop = Math.max(0, wrapped * rowHeight - rowHeight * 2);
+      const desiredBottom = wrapped * rowHeight + rowHeight * 3;
+      const viewportTop = listContainerRef.current.scrollTop;
+      const viewportBottom = viewportTop + virtualListHeight;
+      if (desiredTop < viewportTop || desiredBottom > viewportBottom) {
+        listContainerRef.current.scrollTop = desiredTop;
+        setScrollTop(desiredTop);
+      }
+      window.setTimeout(() => {
+        const rowNode = rowRefs.current[wrapped];
+        rowNode?.focus();
+      }, 0);
+      return;
+    }
     const rowNode = rowRefs.current[wrapped];
     rowNode?.focus();
     rowNode?.scrollIntoView({ block: "nearest" });
@@ -297,8 +332,17 @@ export function ChannelRowsWithGuide<T extends Channel>({
   }, []);
 
   return (
-    <>
-      {items.map((ch, index) => {
+    <div
+      ref={virtualized ? listContainerRef : null}
+      style={virtualized ? { overflowY: "auto", height: virtualListHeight } : undefined}
+      onScroll={
+        virtualized
+          ? (event) => setScrollTop((event.currentTarget as HTMLDivElement).scrollTop)
+          : undefined
+      }
+    >
+      {topSpacerHeight > 0 ? <div style={{ height: topSpacerHeight }} /> : null}
+      {visibleItems.map(({ item: ch, index }) => {
         const snapshot = snapshots[ch.id];
         const isActive =
           hoveredChannelId === ch.id || (isContentZoneActive && domFocusedIndex === index);
@@ -380,7 +424,8 @@ export function ChannelRowsWithGuide<T extends Channel>({
           </div>
         );
       })}
-    </>
+      {bottomSpacerHeight > 0 ? <div style={{ height: bottomSpacerHeight }} /> : null}
+    </div>
   );
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
 import { t, type Locale } from "../../lib/i18n";
-import type { Channel } from "../../types/api";
+import type { Channel, Source } from "../../types/api";
 import { ChannelRowsWithGuide } from "./ChannelRowsWithGuide";
 
 interface Props {
@@ -11,10 +11,15 @@ interface Props {
   onPlay?: (channel: Channel, allChannels?: Channel[]) => void;
 }
 
+type ChannelSort = "name" | "channelNumber" | "sourceThenChannel";
+
 export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
+  const [sources, setSources] = useState<Source[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<ChannelSort>("channelNumber");
   const [search, setSearch] = useState("");
   const [isSearchEditing, setIsSearchEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,34 +29,50 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     try {
       const list = await tauriInvoke<Channel[]>("list_channels", {
         query: {
+          sourceId: selectedSourceId,
           groupName: selectedGroup,
           search: search || undefined,
           favoritesOnly,
-          limit: 500,
+          limit: 5000,
           offset: 0,
         },
       });
-      setChannels(list);
+      setChannels(sortChannels(list, sortBy));
       setError(null);
     } catch (e) {
       setError(getErrorMessage(e));
     }
   };
 
-  const loadGroups = async () => {
+  const loadGroups = async (sourceId?: number | null) => {
     try {
-      const g = await tauriInvoke<string[]>("list_groups", {});
+      const g = await tauriInvoke<string[]>("list_groups", { sourceId: sourceId ?? undefined });
       setGroups(g);
     } catch (_) {}
   };
 
+  const loadSources = async () => {
+    try {
+      const list = await tauriInvoke<Source[]>("list_sources");
+      setSources(list.filter((item) => item.enabled && item.kind !== "xmltv"));
+    } catch (_) {}
+  };
+
   useEffect(() => {
-    loadGroups();
+    void loadGroups(selectedSourceId);
+  }, [selectedSourceId]);
+
+  useEffect(() => {
+    void loadSources();
   }, []);
 
   useEffect(() => {
-    loadChannels();
-  }, [selectedGroup, search, favoritesOnly]);
+    void loadChannels();
+  }, [favoritesOnly, search, selectedGroup, selectedSourceId, sortBy]);
+
+  useEffect(() => {
+    setSelectedGroup((current) => (current && !groups.includes(current) ? null : current));
+  }, [groups]);
 
   const toggleFavorite = async (ch: Channel) => {
     try {
@@ -69,9 +90,37 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
 
   return (
     <div style={{ padding: 24, display: "flex", gap: 16, height: "100%" }}>
-      {/* Group sidebar */}
-      {groups.length > 0 && (
-        <div style={{ width: 180, flexShrink: 0, overflowY: "auto" }}>
+      {(groups.length > 0 || sources.length > 0) && (
+        <div style={{ width: 220, flexShrink: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 18 }}>
+          {sources.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
+                {t(locale, "channels.sources")}
+              </div>
+              <button
+                onClick={() => setSelectedSourceId(null)}
+                style={{
+                  ...groupBtnStyle,
+                  backgroundColor: selectedSourceId === null ? "var(--bg-tertiary)" : "transparent",
+                }}
+              >
+                {t(locale, "channels.allSources")}
+              </button>
+              {sources.map((source) => (
+                <button
+                  key={source.id}
+                  onClick={() => setSelectedSourceId(source.id)}
+                  style={{
+                    ...groupBtnStyle,
+                    backgroundColor: selectedSourceId === source.id ? "var(--bg-tertiary)" : "transparent",
+                  }}
+                >
+                  {source.name}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
             {t(locale, "channels.groups")}
           </div>
@@ -84,44 +133,60 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
           >
             {t(locale, "channels.all")}
           </button>
-          {groups.map((g) => (
-            <button
-              key={g}
-              onClick={() => setSelectedGroup(g)}
-              style={{
-                ...groupBtnStyle,
-                backgroundColor: selectedGroup === g ? "var(--bg-tertiary)" : "transparent",
-              }}
-            >
-              {g}
-            </button>
-          ))}
+          <div>
+            {groups.map((g) => (
+              <button
+                key={g}
+                onClick={() => setSelectedGroup(g)}
+                style={{
+                  ...groupBtnStyle,
+                  backgroundColor: selectedGroup === g ? "var(--bg-tertiary)" : "transparent",
+                }}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {/* Channel list */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <input
-          ref={searchInputRef}
-          data-tv-navigation-priority={isSearchEditing ? undefined : "true"}
-          data-tv-focusable="true"
-          style={searchStyle}
-          placeholder={t(locale, "channels.searchPlaceholder")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onBlur={() => setIsSearchEditing(false)}
-          onKeyDown={(event) => {
-            if (!isSearchEditing && event.key === "Enter") {
-              event.preventDefault();
-              setIsSearchEditing(true);
-              return;
-            }
-            if (isSearchEditing && event.key === "Escape") {
-              event.preventDefault();
-              setIsSearchEditing(false);
-            }
-          }}
-        />
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            ref={searchInputRef}
+            data-tv-navigation-priority={isSearchEditing ? undefined : "true"}
+            data-tv-focusable="true"
+            style={{ ...searchStyle, flex: "1 1 320px" }}
+            placeholder={t(locale, "channels.searchPlaceholder")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onBlur={() => setIsSearchEditing(false)}
+            onKeyDown={(event) => {
+              if (!isSearchEditing && event.key === "Enter") {
+                event.preventDefault();
+                setIsSearchEditing(true);
+                return;
+              }
+              if (isSearchEditing && event.key === "Escape") {
+                event.preventDefault();
+                setIsSearchEditing(false);
+              }
+            }}
+          />
+          <label style={sortLabelStyle}>
+            {t(locale, "channels.sort")}
+            <select
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value as ChannelSort)}
+              style={selectStyle}
+            >
+              <option value="channelNumber">{t(locale, "channels.sort.channelNumber")}</option>
+              <option value="name">{t(locale, "channels.sort.name")}</option>
+              <option value="sourceThenChannel">{t(locale, "channels.sort.sourceThenChannel")}</option>
+            </select>
+          </label>
+        </div>
 
         {error && <div style={{ color: "var(--danger)", marginTop: 8 }}>{error}</div>}
 
@@ -131,13 +196,15 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
           </div>
         )}
 
-        <div style={{ flex: 1, overflowY: "auto", marginTop: 8 }}>
+        <div style={{ flex: 1, marginTop: 8 }}>
           <ChannelRowsWithGuide
             items={channels}
             locale={locale}
             onPlay={onPlay}
             onToggleFavorite={toggleFavorite}
             onMoveBeforeFirst={focusSearchNavigationMode}
+            virtualized
+            virtualListHeight={620}
           />
         </div>
       </div>
@@ -169,3 +236,54 @@ const searchStyle: React.CSSProperties = {
   fontSize: 14,
 };
 
+const sortLabelStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  color: "var(--text-secondary)",
+  fontSize: 13,
+};
+
+const selectStyle: React.CSSProperties = {
+  padding: "8px 10px",
+  backgroundColor: "var(--bg-tertiary)",
+  border: "1px solid var(--border)",
+  borderRadius: 4,
+  color: "var(--text-primary)",
+  fontSize: 14,
+};
+
+function sortChannels(items: Channel[], sortBy: ChannelSort): Channel[] {
+  return [...items].sort((a, b) => {
+    if (sortBy === "name") {
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+    }
+    if (sortBy === "sourceThenChannel") {
+      const sourceCompare = a.sourceId - b.sourceId;
+      if (sourceCompare !== 0) return sourceCompare;
+      return compareChannelNumbers(a, b) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+    }
+    return compareChannelNumbers(a, b) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
+function compareChannelNumbers(a: Channel, b: Channel): number {
+  const parsedA = parseChannelNumber(a.channelNumber);
+  const parsedB = parseChannelNumber(b.channelNumber);
+  if (parsedA === null && parsedB === null) return 0;
+  if (parsedA === null) return 1;
+  if (parsedB === null) return -1;
+  if (parsedA !== parsedB) return parsedA - parsedB;
+  return (a.channelNumber ?? "").localeCompare(b.channelNumber ?? "", undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function parseChannelNumber(value?: string): number | null {
+  if (!value) return null;
+  const match = value.match(/\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}

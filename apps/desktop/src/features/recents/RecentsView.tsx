@@ -51,6 +51,8 @@ export function RecentsView({ locale, onPlay }: Props) {
           locale={locale}
           onPlay={onPlay}
           onToggleFavorite={toggleFavorite}
+          keyboardNavigationEnabled
+          active
           renderMeta={(ch) => (
             <>
               {t(locale, "recents.played")} {ch.playCount} · {t(locale, "recents.lastWatched")} {formatRelativeTime(ch.lastWatchedAt, locale)}

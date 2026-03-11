@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useIndexFocusGroup } from "../lib/focusScope";
 import { SourcesView } from "../features/sources/SourcesView";
 import { ChannelsView } from "../features/channels/ChannelsView";
 import { FavoritesView } from "../features/favorites/FavoritesView";
@@ -79,6 +80,15 @@ export function AppShell() {
     { key: "sources", label: t(locale, "nav.sources") },
     { key: "settings", label: t(locale, "nav.settings") },
   ];
+  const navFocusGroup = useIndexFocusGroup({
+    itemCount: navItems.length,
+    currentIndex: focusedNavIndex,
+    setCurrentIndex: setFocusedNavIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
   useEffect(() => {
     setFocusedNavIndex((prev) => Math.min(prev, navItems.length - 1));
   }, [navItems.length]);
@@ -171,14 +181,12 @@ export function AppShell() {
       if (isTypingTarget()) return;
       const intent = mapKeyToTvIntent(event.key);
       if (focusZone === "nav") {
-        if (intent === TvIntent.MoveDown) {
-          event.preventDefault();
-          focusNavByIndex(focusedNavIndex + 1);
-          return;
-        }
-        if (intent === TvIntent.MoveUp) {
-          event.preventDefault();
-          focusNavByIndex(focusedNavIndex - 1);
+        if (intent === TvIntent.MoveDown || intent === TvIntent.MoveUp) {
+          const result = navFocusGroup.handleIntent(intent);
+          if (result.handled) {
+            event.preventDefault();
+            focusNavByIndex(result.next);
+          }
           return;
         }
         if (intent === TvIntent.Confirm) {
@@ -233,7 +241,7 @@ export function AppShell() {
       window.removeEventListener("keydown", onWindowKeyDown);
       window.removeEventListener("keyup", onWindowKeyUp);
     };
-  }, [activeView, focusZone, focusedNavIndex, navItems, playingChannel]);
+  }, [activeView, focusZone, focusedNavIndex, navFocusGroup, navItems, playingChannel]);
 
   const renderView = () => {
     switch (activeView) {

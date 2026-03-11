@@ -23,7 +23,7 @@ interface Props {
 interface SettingDef {
   key: string;
   labelKey: TranslationKey;
-  type: "toggle" | "select" | "range";
+  type: "toggle" | "select" | "range" | "action";
   defaultValue: unknown;
   options?: { labelKey: TranslationKey; value: string; labelParams?: Record<string, string | number> }[];
   min?: number;
@@ -40,7 +40,20 @@ const minuteOptions = [60, 90, 120, 150, 180, 240, 300, 360].map((minutes) => ({
   labelParams: { minutes },
 }));
 
+const CHECK_UPDATE_SETTING_KEY = "__check_update__";
+
 const settingCategories: { titleKey: TranslationKey; settings: SettingDef[] }[] = [
+  {
+    titleKey: "settings.update.title",
+    settings: [
+      {
+        key: CHECK_UPDATE_SETTING_KEY,
+        labelKey: "settings.update.checkNow",
+        type: "action",
+        defaultValue: null,
+      },
+    ],
+  },
   {
     titleKey: "settings.category.general",
     settings: [
@@ -88,17 +101,22 @@ const settingCategories: { titleKey: TranslationKey; settings: SettingDef[] }[] 
   },
 ];
 
+interface SettingOption {
+  label: string;
+  value: string;
+}
+
 export function SettingsView({ locale, onLocaleChange }: Props) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [copiedReleaseUrl, setCopiedReleaseUrl] = useState(false);
   const [flash, setFlash] = useState(false);
   const [focusedSettingKey, setFocusedSettingKey] = useState<string | null>(null);
   const [editingSettingKey, setEditingSettingKey] = useState<string | null>(null);
   const [editAction, setEditAction] = useState<SettingEditAction>("increase");
+  const [editOptionIndex, setEditOptionIndex] = useState(0);
   const [domFocusedSettingKey, setDomFocusedSettingKey] = useState<string | null>(null);
   const [hoveredSettingKey, setHoveredSettingKey] = useState<string | null>(null);
   const [isContentZoneActive, setIsContentZoneActive] = useState(false);
@@ -108,6 +126,22 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   const closeModalBtnRef = useRef<HTMLButtonElement | null>(null);
   const orderedSettings = useMemo(() => settingCategories.flatMap((cat) => cat.settings), []);
   const editingSetting = orderedSettings.find((item) => item.key === editingSettingKey) ?? null;
+  const editingOptions = useMemo(() => {
+    if (!editingSetting) return [] as SettingOption[];
+    if (editingSetting.type === "toggle") {
+      return [
+        { label: t(locale, "settings.value.on"), value: "true" },
+        { label: t(locale, "settings.value.off"), value: "false" },
+      ];
+    }
+    if (editingSetting.type === "select") {
+      return (editingSetting.options ?? []).map((option) => ({
+        label: t(locale, option.labelKey, option.labelParams),
+        value: option.value,
+      }));
+    }
+    return [] as SettingOption[];
+  }, [editingSetting, locale]);
   const focusedSettingIndex = Math.max(
     0,
     focusedSettingKey ? orderedSettings.findIndex((item) => item.key === focusedSettingKey) : 0,
@@ -135,6 +169,15 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
     backwardEdge: "stay",
     forwardEdge: "stay",
   });
+  const editOptionGroup = useIndexFocusGroup({
+    itemCount: editingOptions.length,
+    currentIndex: editOptionIndex,
+    setCurrentIndex: setEditOptionIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
 
   const loadSettings = async () => {
     try {
@@ -153,7 +196,6 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   const checkAppUpdate = async () => {
     setCheckingUpdate(true);
     setUpdateError(null);
-    setCopiedReleaseUrl(false);
     try {
       const info = await tauriInvoke<AppUpdateInfo>("check_app_update");
       setUpdateInfo(info);
@@ -161,17 +203,6 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       setUpdateError(getErrorMessage(e));
     } finally {
       setCheckingUpdate(false);
-    }
-  };
-
-  const copyReleaseUrl = async () => {
-    if (!updateInfo?.releaseUrl) return;
-    try {
-      await navigator.clipboard.writeText(updateInfo.releaseUrl);
-      setCopiedReleaseUrl(true);
-      setTimeout(() => setCopiedReleaseUrl(false), 2000);
-    } catch (e) {
-      setUpdateError(getErrorMessage(e));
     }
   };
 
@@ -188,12 +219,23 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
 
   useEffect(() => {
     if (!editingSetting) return;
-    setEditAction("increase");
-  }, [editingSetting]);
+    if (editingSetting.type === "range" || editingSetting.type === "action") {
+      setEditAction("increase");
+      return;
+    }
+    const currentValue = editingSetting.type === "toggle" ? String(Boolean(getValue(editingSetting))) : String(getValue(editingSetting));
+    const currentIndex = Math.max(0, editingOptions.findIndex((option) => option.value === currentValue));
+    setEditOptionIndex(currentIndex);
+  }, [editingOptions, editingSetting]);
 
   useEffect(() => {
     if (!editingSetting) return;
     window.setTimeout(() => {
+      if (editingSetting.type !== "range" && editingSetting.type !== "action") {
+        const node = document.querySelector<HTMLButtonElement>(`[data-setting-option-index="${editOptionIndex}"]`);
+        node?.focus();
+        return;
+      }
       if (editAction === "decrease") {
         decreaseModalBtnRef.current?.focus();
         return;
@@ -204,7 +246,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       }
       increaseModalBtnRef.current?.focus();
     }, 0);
-  }, [editAction, editingSetting]);
+  }, [editAction, editingSetting, editOptionIndex]);
 
   useEffect(() => {
     const onZoneChange = (event: Event) => {
@@ -229,6 +271,11 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       }
       if (editingSetting) {
         window.setTimeout(() => {
+          if (editingSetting.type !== "range" && editingSetting.type !== "action") {
+            const node = document.querySelector<HTMLButtonElement>(`[data-setting-option-index="${editOptionIndex}"]`);
+            node?.focus();
+            return;
+          }
           if (editAction === "decrease") {
             decreaseModalBtnRef.current?.focus();
             return;
@@ -259,6 +306,24 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
         if (intent === TvIntent.Back) {
           event.preventDefault();
           closeEditingSetting(editingSetting.key);
+          return;
+        }
+        if (editingSetting.type !== "range") {
+          if (intent === TvIntent.MoveUp || intent === TvIntent.MoveDown) {
+            const result = editOptionGroup.handleIntent(intent);
+            if (result.handled) {
+              event.preventDefault();
+            }
+            return;
+          }
+          if (intent === TvIntent.Confirm) {
+            event.preventDefault();
+            const option = editingOptions[editOptionIndex];
+            if (!option) return;
+            const nextValue = editingSetting.type === "toggle" ? option.value === "true" : option.value;
+            void saveSetting(editingSetting.key, nextValue);
+            closeEditingSetting(editingSetting.key);
+          }
           return;
         }
         if (intent === TvIntent.MoveRight || intent === TvIntent.MoveLeft) {
@@ -295,6 +360,10 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       }
       if (intent === TvIntent.Confirm) {
         event.preventDefault();
+        if (current.type === "action") {
+          void checkAppUpdate();
+          return;
+        }
         setEditingSettingKey(current.key);
       }
     };
@@ -304,7 +373,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       window.removeEventListener("tv-focus-content", onFocusContent as EventListener);
       window.removeEventListener("tv-content-key", onContentKey as EventListener);
     };
-  }, [editAction, editActionGroup, editingSetting, focusedSettingIndex, orderedSettings, settingsListGroup]);
+  }, [editAction, editActionGroup, editOptionGroup, editOptionIndex, editingOptions, editingSetting, focusedSettingIndex, orderedSettings, settingsListGroup]);
 
   useEffect(() => {
     if (!editingSetting) return;
@@ -363,6 +432,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
     const index = orderedSettings.findIndex((item) => item.key === settingKey);
     setEditingSettingKey(null);
     setEditAction("increase");
+    setEditOptionIndex(0);
     window.setTimeout(() => {
       if (index >= 0) {
         focusSettingByIndex(index);
@@ -395,6 +465,10 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       void saveSetting(def.key, !Boolean(getValue(def)));
       return;
     }
+    if (def.type === "action") {
+      void checkAppUpdate();
+      return;
+    }
     if (def.type === "select") {
       cycleSelect(def, direction);
       return;
@@ -407,11 +481,23 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
     if (def.type === "toggle") {
       return Boolean(value) ? t(locale, "settings.value.on") : t(locale, "settings.value.off");
     }
+    if (def.type === "action") {
+      if (checkingUpdate) return t(locale, "settings.update.checking");
+      if (!updateInfo) return t(locale, "settings.update.checked");
+      return updateInfo.hasUpdate ? t(locale, "settings.update.availableShort") : t(locale, "settings.update.upToDateShort");
+    }
     if (def.type === "range") {
       return `${Number(value)}`;
     }
     const option = def.options?.find((item) => item.value === String(value));
     return option ? t(locale, option.labelKey, option.labelParams) : String(value);
+  };
+
+  const displaySettingLabel = (def: SettingDef): string => {
+    if (def.key === CHECK_UPDATE_SETTING_KEY) {
+      return t(locale, "settings.update.checkNowWithVersion", { version: updateInfo?.currentVersion ?? "-" });
+    }
+    return t(locale, def.labelKey);
   };
 
   return (
@@ -420,40 +506,6 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
 
       {error && <div style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div>}
       <div style={hintStyle}>{t(locale, "settings.hint.tv")}</div>
-
-      <div style={updateCardStyle}>
-        <div style={updateHeaderStyle}>
-          <div style={updateTitleStyle}>{t(locale, "settings.update.title")}</div>
-          <button type="button" onClick={() => void checkAppUpdate()} style={updateActionBtnStyle} disabled={checkingUpdate}>
-            {checkingUpdate ? t(locale, "settings.update.checking") : t(locale, "settings.update.checkNow")}
-          </button>
-        </div>
-        <div style={updateLineStyle}>
-          {t(locale, "settings.update.currentVersion", { version: updateInfo?.currentVersion ?? "-" })}
-        </div>
-        <div style={updateLineStyle}>
-          {t(locale, "settings.update.latestVersion", { version: updateInfo?.latestVersion ?? "-" })}
-        </div>
-        {updateInfo && (
-          <div style={{ ...updateLineStyle, color: updateInfo.hasUpdate ? "var(--accent)" : "var(--text-secondary)" }}>
-            {updateInfo.hasUpdate
-              ? t(locale, "settings.update.available", { version: updateInfo.latestVersion })
-              : t(locale, "settings.update.upToDate")}
-          </div>
-        )}
-        {updateInfo?.publishedAt && (
-          <div style={updateLineStyle}>{t(locale, "settings.update.publishedAt", { value: updateInfo.publishedAt })}</div>
-        )}
-        {updateInfo?.hasUpdate && (
-          <div style={{ marginTop: 8 }}>
-            <div style={releaseUrlStyle}>{updateInfo.releaseUrl}</div>
-            <button type="button" onClick={() => void copyReleaseUrl()} style={{ ...updateActionBtnStyle, marginTop: 8 }}>
-              {copiedReleaseUrl ? t(locale, "settings.update.copied") : t(locale, "settings.update.copyLink")}
-            </button>
-          </div>
-        )}
-        {updateError && <div style={{ color: "var(--danger)", marginTop: 8 }}>{updateError}</div>}
-      </div>
 
       {settingCategories.map((cat) => (
         <div key={cat.titleKey} style={{ marginBottom: 24 }}>
@@ -490,15 +542,22 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
               }}
               onMouseEnter={() => setHoveredSettingKey(def.key)}
               onMouseLeave={() => setHoveredSettingKey((prev) => (prev === def.key ? null : prev))}
-              onClick={() => setEditingSettingKey(def.key)}
+              onClick={() => {
+                if (def.type === "action") {
+                  void checkAppUpdate();
+                  return;
+                }
+                setEditingSettingKey(def.key);
+              }}
             >
-              <span style={rowLabelStyle}>{t(locale, def.labelKey)}</span>
+              <span style={rowLabelStyle}>{displaySettingLabel(def)}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={rowValueStyle}>{displaySettingValue(def)}</span>
                 <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>{">"}</span>
               </div>
             </div>
           ))}
+          {cat.titleKey === "settings.update.title" && updateError ? <div style={{ color: "var(--danger)", marginTop: 8 }}>{updateError}</div> : null}
         </div>
       ))}
 
@@ -509,55 +568,88 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
               {t(locale, "settings.edit.title", { label: t(locale, editingSetting.labelKey) })}
             </h3>
             <div style={{ color: "var(--text-secondary)", fontSize: 12, marginBottom: 10 }}>
-              {t(locale, "settings.edit.hint")}
+              {t(locale, editingSetting.type === "range" ? "settings.edit.hintRange" : "settings.edit.hintSelect")}
             </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
-              <button
-                ref={decreaseModalBtnRef}
-                type="button"
-                onClick={() => triggerSetting(editingSetting, -1)}
-                data-tv-focusable={editAction === "decrease" ? "true" : undefined}
-                style={{
-                  ...modalActionBtnStyle,
-                  ...(editAction === "decrease" ? modalActionBtnActiveStyle : null),
-                }}
-              >
-                {t(locale, "settings.edit.decrease")}
-              </button>
-              <span style={{ minWidth: 140, textAlign: "center", color: "var(--accent)", fontWeight: 600 }}>
-                {displaySettingValue(editingSetting)}
-              </span>
-              <button
-                ref={increaseModalBtnRef}
-                type="button"
-                onClick={() => triggerSetting(editingSetting, 1)}
-                data-tv-focusable={editAction === "increase" ? "true" : undefined}
-                style={{
-                  ...modalActionBtnStyle,
-                  ...(editAction === "increase" ? modalActionBtnActiveStyle : null),
-                }}
-              >
-                {t(locale, "settings.edit.increase")}
-              </button>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-              <button
-                ref={closeModalBtnRef}
-                type="button"
-                onClick={() => {
-                  closeEditingSetting(editingSetting.key);
-                }}
-                data-tv-focusable={editAction === "done" ? "true" : undefined}
-                style={{
-                  ...modalActionBtnStyle,
-                  backgroundColor: "var(--bg-tertiary)",
-                  color: "var(--text-primary)",
-                  ...(editAction === "done" ? modalActionBtnActiveStyle : null),
-                }}
-              >
-                {t(locale, "settings.edit.done")}
-              </button>
-            </div>
+            {editingSetting.type === "range" ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                  <button
+                    ref={decreaseModalBtnRef}
+                    type="button"
+                    onClick={() => triggerSetting(editingSetting, -1)}
+                    data-tv-focusable={editAction === "decrease" ? "true" : undefined}
+                    style={{
+                      ...modalActionBtnStyle,
+                      ...(editAction === "decrease" ? modalActionBtnActiveStyle : null),
+                    }}
+                  >
+                    {t(locale, "settings.edit.decrease")}
+                  </button>
+                  <span style={{ minWidth: 140, textAlign: "center", color: "var(--accent)", fontWeight: 600 }}>
+                    {displaySettingValue(editingSetting)}
+                  </span>
+                  <button
+                    ref={increaseModalBtnRef}
+                    type="button"
+                    onClick={() => triggerSetting(editingSetting, 1)}
+                    data-tv-focusable={editAction === "increase" ? "true" : undefined}
+                    style={{
+                      ...modalActionBtnStyle,
+                      ...(editAction === "increase" ? modalActionBtnActiveStyle : null),
+                    }}
+                  >
+                    {t(locale, "settings.edit.increase")}
+                  </button>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+                  <button
+                    ref={closeModalBtnRef}
+                    type="button"
+                    onClick={() => {
+                      closeEditingSetting(editingSetting.key);
+                    }}
+                    data-tv-focusable={editAction === "done" ? "true" : undefined}
+                    style={{
+                      ...modalActionBtnStyle,
+                      backgroundColor: "var(--bg-tertiary)",
+                      color: "var(--text-primary)",
+                      ...(editAction === "done" ? modalActionBtnActiveStyle : null),
+                    }}
+                  >
+                    {t(locale, "settings.edit.done")}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {editingOptions.map((option, index) => {
+                  const selected = String(getValue(editingSetting)) === option.value
+                    || (editingSetting.type === "toggle" && String(Boolean(getValue(editingSetting))) === option.value);
+                  const active = editOptionIndex === index;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      data-setting-option-index={index}
+                      data-tv-focusable={active ? "true" : undefined}
+                      onClick={() => {
+                        const nextValue = editingSetting.type === "toggle" ? option.value === "true" : option.value;
+                        void saveSetting(editingSetting.key, nextValue);
+                        closeEditingSetting(editingSetting.key);
+                      }}
+                      style={{
+                        ...modalOptionStyle,
+                        ...(selected ? modalOptionSelectedStyle : null),
+                        ...(active ? modalOptionActiveStyle : null),
+                      }}
+                    >
+                      <span style={modalRadioStyle}>{selected ? "●" : "○"}</span>
+                      <span>{option.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -630,6 +722,35 @@ const modalActionBtnActiveStyle: React.CSSProperties = {
   boxShadow: "inset 0 0 0 1px #fff",
 };
 
+const modalOptionStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 6,
+  border: "1px solid var(--border)",
+  backgroundColor: "var(--bg-primary)",
+  color: "var(--text-primary)",
+  cursor: "pointer",
+  textAlign: "left",
+};
+
+const modalOptionSelectedStyle: React.CSSProperties = {
+  color: "var(--accent)",
+};
+
+const modalOptionActiveStyle: React.CSSProperties = {
+  backgroundColor: "var(--bg-tertiary)",
+  boxShadow: "inset 0 0 0 1px var(--accent)",
+};
+
+const modalRadioStyle: React.CSSProperties = {
+  width: 16,
+  color: "var(--accent)",
+  fontSize: 14,
+};
+
 const flashStyle: React.CSSProperties = {
   backgroundColor: "var(--accent)",
   color: "#fff",
@@ -638,48 +759,4 @@ const flashStyle: React.CSSProperties = {
   fontSize: 13,
   marginBottom: 12,
   textAlign: "center",
-};
-
-const updateCardStyle: React.CSSProperties = {
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  padding: 12,
-  marginBottom: 18,
-  backgroundColor: "var(--bg-secondary)",
-};
-
-const updateHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  marginBottom: 8,
-};
-
-const updateTitleStyle: React.CSSProperties = {
-  fontSize: 14,
-  fontWeight: 600,
-};
-
-const updateLineStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "var(--text-secondary)",
-  marginBottom: 4,
-  wordBreak: "break-word",
-};
-
-const releaseUrlStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "var(--accent)",
-  wordBreak: "break-all",
-  fontFamily: "monospace",
-};
-
-const updateActionBtnStyle: React.CSSProperties = {
-  padding: "6px 10px",
-  borderRadius: 4,
-  border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-tertiary)",
-  color: "var(--text-primary)",
-  cursor: "pointer",
 };

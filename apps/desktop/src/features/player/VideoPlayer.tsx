@@ -26,9 +26,10 @@ import {
   formatNetworkSpeed,
   formatTime,
   getGuidePrograms,
-  getPlaybackKind,
+  inferPlaybackKindFromUrl,
   parseXmltvDate,
 } from "./playerUtils";
+import { formatRuntimeLogEntry } from "./playerRuntimeLogs";
 import { useInstantChannelSwitch } from "./useInstantChannelSwitch";
 import {
   bottomBarStyle,
@@ -202,6 +203,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     },
     onNetworkSpeed: setNetworkSpeedBps,
   });
+  const activePlaybackKind = getSlotPlaybackDebugInfo(activeSlot).kind
+    ?? inferPlaybackKindFromUrl(currentPlaybackSource.streamUrl);
+  const formattedRuntimeLogs = useMemo(
+    () => runtimeLogs.map((entry) => formatRuntimeLogEntry(entry)),
+    [runtimeLogs],
+  );
 
   const GUIDE_AUTO_HIDE_MS = 3500;
   const CHANNEL_LIST_AUTO_HIDE_MS = 5000;
@@ -1285,7 +1292,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           <div style={diagnosticLineStyle}>{t(locale, "player.activeLine")}: {candidateIndex + 1}/{Math.max(playbackCandidates.length, 1)}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.retryCount")}: {retryCount}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.networkSpeed")}: {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}</div>
-          <div style={diagnosticLineStyle}>{t(locale, "player.streamKind")}: {getPlaybackKind(currentPlaybackSource.streamUrl) === "hls" ? "HLS" : getPlaybackKind(currentPlaybackSource.streamUrl) === "mpegts" ? "MPEG-TS" : "Native"}</div>
+          <div style={diagnosticLineStyle}>{t(locale, "player.streamKind")}: {activePlaybackKind === "hls" ? "HLS" : activePlaybackKind === "mpegts" ? "MPEG-TS" : "Native"}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.playbackEngine")}: {decoderDiagnostics.engineLabel}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.decoderInfo")}: {decoderDiagnostics.decoderLabel}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.videoResolution")}: {decoderDiagnostics.resolutionLabel}</div>
@@ -1293,12 +1300,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           <div style={diagnosticLineStyle}>{t(locale, "player.resolvedSource")}: #{currentPlaybackSource.sourceId}</div>
           <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-secondary)" }}>{t(locale, "player.runtimeLogs")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-            {runtimeLogs.map((entry, index) => (
+            {formattedRuntimeLogs.map((entry, index) => (
               <div key={`${entry}-${index}`} style={{ fontSize: 11, lineHeight: 1.4, color: "#cbd5e1", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                 {entry}
               </div>
             ))}
-            {runtimeLogs.length === 0 && <div style={{ fontSize: 11, color: "#94a3b8" }}>—</div>}
+            {formattedRuntimeLogs.length === 0 && <div style={{ fontSize: 11, color: "#94a3b8" }}>—</div>}
           </div>
         </div>
       )}

@@ -5,7 +5,7 @@ import mpegts from "mpegts.js";
 import { t, type Locale } from "../../lib/i18n";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel } from "../../types/api";
-import { getPlaybackKind, toProxyUrl, type PlaybackKind } from "./playerUtils";
+import { inferPlaybackKindFromUrl, toProxyUrl, type PlaybackKind } from "./playerUtils";
 
 const HLS_ACTIVE_CONFIG: Partial<Hls["config"]> = {
   lowLatencyMode: true,
@@ -43,6 +43,7 @@ const MPEGTS_PREWARM_CONFIG = {
 
 const LIVE_EDGE_SAFETY_SECONDS = 0.4;
 const LIVE_EDGE_SYNC_THRESHOLD_SECONDS = 4;
+const PLAYBACK_KIND_PROBE_TIMEOUT_MS = 1200;
 
 export interface UseInstantChannelSwitchOptions {
   proxyPort: number | null;
@@ -270,6 +271,8 @@ export function useInstantChannelSwitch({
   const activeSlotRef = useRef<0 | 1 | 2>(1);
   const slotReadyRef = useRef<[boolean, boolean, boolean]>([false, false, false]);
   const localeRef = useRef(locale);
+  const probedPlaybackKindsRef = useRef<Record<string, PlaybackKind>>({});
+  const pendingPlaybackKindProbesRef = useRef<Record<string, Promise<PlaybackKind>>>({});
 
   const onErrorRef = useRef(onError);
   const onNetworkSpeedRef = useRef(onNetworkSpeed);
@@ -291,6 +294,46 @@ export function useInstantChannelSwitch({
   useEffect(() => {
     onNetworkSpeedRef.current = onNetworkSpeed;
   }, [onNetworkSpeed]);
+
+  const resolvePlaybackKind = useCallback((playbackUrl: string) => {
+    const cached = probedPlaybackKindsRef.current[playbackUrl];
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
+    const pending = pendingPlaybackKindProbesRef.current[playbackUrl];
+    if (pending) {
+      return Promise.race<PlaybackKind>([
+        pending,
+        new Promise((resolve) => {
+          window.setTimeout(() => resolve(inferPlaybackKindFromUrl(playbackUrl)), PLAYBACK_KIND_PROBE_TIMEOUT_MS);
+        }),
+      ]);
+    }
+
+    const probe = tauriInvoke<string>("probe_playback_kind", { streamUrl: playbackUrl })
+      .then((raw) => {
+        const kind: PlaybackKind =
+          raw === "hls" || raw === "mpegts" || raw === "native"
+            ? raw
+            : inferPlaybackKindFromUrl(playbackUrl);
+        probedPlaybackKindsRef.current[playbackUrl] = kind;
+        return kind;
+      })
+      .catch(() => inferPlaybackKindFromUrl(playbackUrl))
+      .finally(() => {
+        delete pendingPlaybackKindProbesRef.current[playbackUrl];
+      });
+
+    pendingPlaybackKindProbesRef.current[playbackUrl] = probe;
+
+    return Promise.race<PlaybackKind>([
+      probe,
+      new Promise((resolve) => {
+        window.setTimeout(() => resolve(inferPlaybackKindFromUrl(playbackUrl)), PLAYBACK_KIND_PROBE_TIMEOUT_MS);
+      }),
+    ]);
+  }, []);
 
   const appendRuntimeLog = useCallback((event: string, data: Record<string, unknown>) => {
     void tauriInvoke("append_runtime_log", {
@@ -493,7 +536,6 @@ export function useInstantChannelSwitch({
       video.preload = prewarm ? "metadata" : "auto";
       const playbackUrl = streamUrlOverride ?? target.streamUrl;
       const proxiedUrl = toProxyUrl(playbackUrl, proxyPort);
-      const kind = getPlaybackKind(playbackUrl);
       const markReady = () => {
         if (slotChannelIdRef.current[slot] === target.id) {
           if (!prewarm) {
@@ -511,34 +553,108 @@ export function useInstantChannelSwitch({
           });
         }
       };
-
-      if (kind === "hls") {
-        loadHlsSlot(
-          video, proxiedUrl, slot, activeSlotRef, hlsSlotsRef, localeRef,
-          preferNativeHls, prewarm,
-          markReady, onErrorRef.current, onNetworkSpeedRef.current,
-        );
-      } else if (kind === "mpegts") {
-        loadMpegtsSlot(
-          video, proxiedUrl, slot, activeSlotRef, mpegtsSlotsRef, localeRef,
-          prewarm, markReady, onErrorRef.current, onNetworkSpeedRef.current,
-        );
-      } else {
-        loadNativeSlot(
-          video, proxiedUrl, slot, activeSlotRef, hlsSlotsRef, localeRef,
-          prewarm, markReady, onErrorRef.current,
-        );
-      }
-
-      slotKindRef.current[slot] = kind;
-      slotUrlRef.current[slot] = proxiedUrl;
       slotChannelIdRef.current[slot] = target.id;
+      slotUrlRef.current[slot] = proxiedUrl;
+      const initialKind =
+        probedPlaybackKindsRef.current[playbackUrl] ?? inferPlaybackKindFromUrl(playbackUrl);
+
+      appendRuntimeLog("playback_kind_initial", {
+        slot,
+        channelId: target.id,
+        prewarm,
+        streamUrl: playbackUrl,
+        kind: initialKind,
+        source: probedPlaybackKindsRef.current[playbackUrl] ? "probe-cache" : "url-infer",
+      });
+
+      attachPlaybackKindToSlot(
+        initialKind,
+        video,
+        proxiedUrl,
+        slot,
+        activeSlotRef,
+        hlsSlotsRef,
+        mpegtsSlotsRef,
+        localeRef,
+        preferNativeHls,
+        prewarm,
+        markReady,
+        onErrorRef.current,
+        onNetworkSpeedRef.current,
+      );
+      slotKindRef.current[slot] = initialKind;
+
+      void resolvePlaybackKind(playbackUrl).then((kind) => {
+        if (slotChannelIdRef.current[slot] !== target.id || slotUrlRef.current[slot] !== proxiedUrl) {
+          return;
+        }
+
+        appendRuntimeLog("playback_kind_probe", {
+          slot,
+          channelId: target.id,
+          prewarm,
+          streamUrl: playbackUrl,
+          initialKind,
+          resolvedKind: kind,
+          changed: kind !== initialKind,
+        });
+
+        if (kind === slotKindRef.current[slot]) {
+          return;
+        }
+
+        const shouldCorrectSlot = prewarm || slot !== activeSlotRef.current || !slotReadyRef.current[slot];
+        if (!shouldCorrectSlot) {
+          appendRuntimeLog("playback_kind_correction_skipped", {
+            slot,
+            channelId: target.id,
+            prewarm,
+            streamUrl: playbackUrl,
+            fromKind: slotKindRef.current[slot],
+            toKind: kind,
+            reason: "slot_already_active_and_ready",
+          });
+          return;
+        }
+
+        destroySlot(slot);
+        slotReadyRef.current[slot] = false;
+        video.muted = prewarm;
+        video.preload = prewarm ? "metadata" : "auto";
+        slotChannelIdRef.current[slot] = target.id;
+        slotUrlRef.current[slot] = proxiedUrl;
+        attachPlaybackKindToSlot(
+          kind,
+          video,
+          proxiedUrl,
+          slot,
+          activeSlotRef,
+          hlsSlotsRef,
+          mpegtsSlotsRef,
+          localeRef,
+          preferNativeHls,
+          prewarm,
+          markReady,
+          onErrorRef.current,
+          onNetworkSpeedRef.current,
+        );
+        slotKindRef.current[slot] = kind;
+        appendRuntimeLog("playback_kind_corrected", {
+          slot,
+          channelId: target.id,
+          prewarm,
+          streamUrl: playbackUrl,
+          fromKind: initialKind,
+          toKind: kind,
+        });
+      });
+
       return true;
       },
-      [appendRuntimeLog, destroySlot, getVideoBySlot, preferNativeHls, proxyPort, syncSlotToLiveEdge],
+      [appendRuntimeLog, destroySlot, getVideoBySlot, preferNativeHls, proxyPort, resolvePlaybackKind, syncSlotToLiveEdge],
       );
 
-      return {
+  return {
       prevVideoRef,
       activeVideoRef,
       nextVideoRef,
@@ -555,3 +671,64 @@ export function useInstantChannelSwitch({
       appendRuntimeLog,
       };
       }
+
+function attachPlaybackKindToSlot(
+  kind: PlaybackKind,
+  video: HTMLVideoElement,
+  proxiedUrl: string,
+  slot: 0 | 1 | 2,
+  activeSlotRef: React.MutableRefObject<0 | 1 | 2>,
+  hlsSlotsRef: React.MutableRefObject<[Hls | null, Hls | null, Hls | null]>,
+  mpegtsSlotsRef: React.MutableRefObject<[mpegts.Player | null, mpegts.Player | null, mpegts.Player | null]>,
+  localeRef: React.MutableRefObject<Locale>,
+  preferNativeHls: boolean,
+  prewarm: boolean,
+  markReady: () => void,
+  onError: (error: string | null) => void,
+  onNetworkSpeed: (bps: number) => void,
+): void {
+  if (kind === "hls") {
+    loadHlsSlot(
+      video,
+      proxiedUrl,
+      slot,
+      activeSlotRef,
+      hlsSlotsRef,
+      localeRef,
+      preferNativeHls,
+      prewarm,
+      markReady,
+      onError,
+      onNetworkSpeed,
+    );
+    return;
+  }
+
+  if (kind === "mpegts") {
+    loadMpegtsSlot(
+      video,
+      proxiedUrl,
+      slot,
+      activeSlotRef,
+      mpegtsSlotsRef,
+      localeRef,
+      prewarm,
+      markReady,
+      onError,
+      onNetworkSpeed,
+    );
+    return;
+  }
+
+  loadNativeSlot(
+    video,
+    proxiedUrl,
+    slot,
+    activeSlotRef,
+    hlsSlotsRef,
+    localeRef,
+    prewarm,
+    markReady,
+    onError,
+  );
+}

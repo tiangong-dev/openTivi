@@ -19,3 +19,8 @@ pub fn list_playback_candidates(
     let conn = state.db.lock().unwrap();
     crate::core::services::playback_service::list_playback_candidates(&conn, channel_id)
 }
+
+#[tauri::command]
+pub async fn probe_playback_kind(stream_url: String) -> String {
+    crate::core::services::playback_service::probe_playback_kind(&stream_url).await
+}

@@ -54,16 +54,27 @@ export function toProxyUrl(originalUrl: string, port: number): string {
 
 function isHls(url: string): boolean {
   const lower = url.toLowerCase();
-  return lower.includes(".m3u8") || lower.includes("format=m3u8");
+  return (
+    lower.includes(".m3u8")
+    || lower.includes("format=m3u8")
+    || lower.includes("playlist.m3u")
+    || lower.includes("type=hls")
+    || lower.includes("output=m3u8")
+    || lower.includes("extension=m3u8")
+  );
 }
 
 function isMpegTs(url: string): boolean {
   const lower = url.toLowerCase();
-  return lower.endsWith(".ts") || lower.includes("container=ts");
+  return lower.endsWith(".ts") || lower.includes("container=ts") || lower.includes("type=mpegts");
 }
 
-export function getPlaybackKind(url: string): PlaybackKind {
+export function inferPlaybackKindFromUrl(url: string): PlaybackKind {
   if (isHls(url)) return "hls";
   if (isMpegTs(url)) return "mpegts";
   return "native";
+}
+
+export function getPlaybackKind(url: string): PlaybackKind {
+  return inferPlaybackKindFromUrl(url);
 }

@@ -36,6 +36,7 @@ pub fn run() {
             commands::settings::set_setting,
             commands::playback::resolve_playback,
             commands::playback::list_playback_candidates,
+            commands::playback::probe_playback_kind,
             commands::prewarm::prewarm_report_primary,
             commands::prewarm::prewarm_submit_intents,
             commands::prewarm::prewarm_clear_source,

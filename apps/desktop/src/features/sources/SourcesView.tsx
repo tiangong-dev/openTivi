@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useIndexFocusGroup, useLinearFocusGroup } from "../../lib/focusScope";
 import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
 import { t, type Locale } from "../../lib/i18n";
@@ -8,6 +9,9 @@ import type { Source, ImportSummary } from "../../types/api";
 type ImportTab = "m3u" | "xtream" | "xmltv";
 type SourceFocusTarget = "add" | "list";
 type SourceFilter = "all" | "enabled" | "disabled" | "backoff" | "error";
+
+const importTabOrder = ["m3u", "xtream", "xmltv"] as const;
+const deleteConfirmActions = ["cancel", "delete"] as const;
 
 interface Props {
   locale: Locale;
@@ -44,6 +48,33 @@ export function SourcesView({ locale }: Props) {
     () => sources.filter((source) => matchesSourceFilter(source, sourceFilter)),
     [sourceFilter, sources],
   );
+  const sourceListGroup = useIndexFocusGroup({
+    itemCount: filteredSources.length,
+    currentIndex: focusedSourceIndex,
+    setCurrentIndex: setFocusedSourceIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "bubble",
+    forwardEdge: "bubble",
+  });
+  const addModalTabGroup = useLinearFocusGroup({
+    items: importTabOrder,
+    current: activeTab,
+    setCurrent: setActiveTab,
+    backwardIntent: TvIntent.MoveLeft,
+    forwardIntent: TvIntent.MoveRight,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
+  const deleteConfirmActionGroup = useLinearFocusGroup({
+    items: deleteConfirmActions,
+    current: deleteConfirmAction,
+    setCurrent: setDeleteConfirmAction,
+    backwardIntent: TvIntent.MoveLeft,
+    forwardIntent: TvIntent.MoveRight,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
 
   const loadSources = async () => {
     try {
@@ -129,6 +160,7 @@ export function SourcesView({ locale }: Props) {
     };
 
     const onContentKey = (event: Event) => {
+      if (event.defaultPrevented) return;
       const detail = (event as CustomEvent<TvContentKeyDetail>).detail;
       if (detail?.view && detail.view !== "sources") {
         return;
@@ -138,8 +170,10 @@ export function SourcesView({ locale }: Props) {
       if (!intent && !key) return;
       if (deleteConfirmSource) {
         if (intent === TvIntent.MoveLeft || intent === TvIntent.MoveRight) {
-          event.preventDefault();
-          setDeleteConfirmAction((prev) => (prev === "cancel" ? "delete" : "cancel"));
+          const result = deleteConfirmActionGroup.handleIntent(intent);
+          if (result.handled) {
+            event.preventDefault();
+          }
           return;
         }
         if (intent === TvIntent.Confirm) {
@@ -157,14 +191,11 @@ export function SourcesView({ locale }: Props) {
 
       if (showAddModal) {
         if (intent === TvIntent.MoveLeft || intent === TvIntent.MoveRight) {
-          event.preventDefault();
-          const tabs: ImportTab[] = ["m3u", "xtream", "xmltv"];
-          const currentIndex = tabs.findIndex((tab) => tab === activeTab);
-          const direction = intent === TvIntent.MoveRight ? 1 : -1;
-          const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
-          const nextTab = tabs[nextIndex];
-          setActiveTab(nextTab);
-          window.setTimeout(() => addTabRefs.current[nextTab]?.focus(), 0);
+          const result = addModalTabGroup.handleIntent(intent);
+          if (result.handled) {
+            event.preventDefault();
+            window.setTimeout(() => addTabRefs.current[result.next]?.focus(), 0);
+          }
           return;
         }
         if (intent === TvIntent.MoveDown || intent === TvIntent.Confirm) {
@@ -181,35 +212,20 @@ export function SourcesView({ locale }: Props) {
 
       if (editing) return;
 
-      if (intent === TvIntent.MoveDown) {
+      if (intent === TvIntent.MoveDown || intent === TvIntent.MoveUp) {
         event.preventDefault();
         if (focusTarget === "add") {
           if (filteredSources.length > 0) {
-            focusSourceByIndex(0);
+            focusSourceByIndex(intent === TvIntent.MoveDown ? 0 : filteredSources.length - 1);
           }
           return;
         }
-        if (focusedSourceIndex === filteredSources.length - 1) {
+        const result = sourceListGroup.handleIntent(intent);
+        if (!result.handled) {
           focusAddButton();
-        } else {
-          focusSourceByIndex(focusedSourceIndex + 1);
-        }
-        return;
-      }
-
-      if (intent === TvIntent.MoveUp) {
-        event.preventDefault();
-        if (focusTarget === "add") {
-          if (filteredSources.length > 0) {
-            focusSourceByIndex(filteredSources.length - 1);
-          }
           return;
         }
-        if (focusedSourceIndex === 0) {
-          focusAddButton();
-        } else {
-          focusSourceByIndex(focusedSourceIndex - 1);
-        }
+        focusSourceByIndex(result.next);
         return;
       }
 

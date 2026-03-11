@@ -474,20 +474,37 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     }, OVERLAY_HIDE_MS);
   }, [channel.id, error]);
 
-  useEffect(() => {
-    showOverlay();
-    setShowGuidePanel(true);
+  const startGuideAutoHide = useCallback(() => {
     if (guideAutoHideTimerRef.current) {
       clearTimeout(guideAutoHideTimerRef.current);
     }
     guideAutoHideTimerRef.current = setTimeout(() => {
       setShowGuidePanel(false);
+      guideAutoHideTimerRef.current = null;
     }, GUIDE_AUTO_HIDE_MS);
+  }, [GUIDE_AUTO_HIDE_MS]);
+
+  const setGuidePanelVisible = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    setShowGuidePanel((prev) => {
+      const resolved = typeof next === "function" ? (next as (value: boolean) => boolean)(prev) : next;
+      if (resolved) {
+        startGuideAutoHide();
+      } else if (guideAutoHideTimerRef.current) {
+        clearTimeout(guideAutoHideTimerRef.current);
+        guideAutoHideTimerRef.current = null;
+      }
+      return resolved;
+    });
+  }, [startGuideAutoHide]);
+
+  useEffect(() => {
+    showOverlay();
+    setGuidePanelVisible(true);
     return () => {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
       if (guideAutoHideTimerRef.current) clearTimeout(guideAutoHideTimerRef.current);
     };
-  }, [GUIDE_AUTO_HIDE_MS, channel.id, showOverlay]);
+  }, [channel.id, setGuidePanelVisible, showOverlay]);
 
   useEffect(() => {
     if (error) setOverlayVisible(true);
@@ -722,7 +739,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         showOverlay();
       },
       onDouble: () => {
-        setShowGuidePanel((v) => !v);
+        setGuidePanelVisible((v) => !v);
         showOverlay();
       },
       onLong: () => {
@@ -734,7 +751,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       confirmPressRef.current?.clear();
       confirmPressRef.current = null;
     };
-  }, [onChannelChange, setChannelListPanel, showOverlay, startChannelListAutoHide, togglePlayPause]);
+  }, [onChannelChange, setChannelListPanel, setGuidePanelVisible, showOverlay, startChannelListAutoHide, togglePlayPause]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -787,7 +804,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       }
       if (intent === "MoveRight") {
         e.preventDefault();
-        setShowGuidePanel((v) => !v);
+        setGuidePanelVisible((v) => !v);
         showOverlay();
         return;
       }
@@ -872,6 +889,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     onClose,
     setChannelListPanel,
     setFocusedIndex,
+    setGuidePanelVisible,
     showOverlay,
     switchChannel,
     touchChannelListAutoHide,
@@ -975,7 +993,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
             ☰
           </button>
           <button
-            onClick={() => setShowGuidePanel((v) => !v)}
+            onClick={() => setGuidePanelVisible((v) => !v)}
             style={overlayBtnStyle}
             title={t(locale, "player.toggleGuideShortcut")}
           >
@@ -996,8 +1014,8 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       <div
         style={{
           ...bottomBarStyle,
-          opacity: 1,
-          pointerEvents: "none",
+          opacity: overlayVisible ? 1 : 0,
+          pointerEvents: overlayVisible ? "auto" : "none",
         }}
       >
         {epgNow && (
@@ -1026,7 +1044,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         <div style={{ fontSize: 12, opacity: 0.7 }}>
           {t(locale, "player.activeLine")}: {candidateIndex + 1}/{Math.max(playbackCandidates.length, 1)} · {t(locale, "player.retryCount")}: {retryCount}
         </div>
-        {epgNow && epgNext && (
+        {epgNext && (
           <div
             style={{
               display: "flex",
@@ -1039,7 +1057,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
           >
             <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.next")}</span>
             <span>{epgNext.title}</span>
-            <span style={{ opacity: 0.5, fontSize: 12 }}>{formatTime(epgNext.startAt)}</span>
+            <span style={{ opacity: 0.5, fontSize: 12 }}>
+              {formatTime(epgNext.startAt)} - {formatTime(epgNext.endAt)}
+            </span>
           </div>
         )}
       </div>

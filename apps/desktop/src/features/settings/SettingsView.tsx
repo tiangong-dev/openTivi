@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getErrorMessage } from "../../lib/errors";
 import { LOCALE_SETTING_KEY, t, type Locale, type TranslationKey } from "../../lib/i18n";
-import { DEFAULT_GUIDE_WINDOW_MINUTES, DEFAULT_INSTANT_SWITCH_ENABLED, GUIDE_WINDOW_MINUTES_SETTING_KEY, INSTANT_SWITCH_ENABLED_SETTING_KEY } from "../../lib/settings";
+import {
+  APP_START_VIEW_SETTING_KEY,
+  DEFAULT_APP_START_VIEW,
+  DEFAULT_GUIDE_WINDOW_MINUTES,
+  DEFAULT_INSTANT_SWITCH_ENABLED,
+  GUIDE_WINDOW_MINUTES_SETTING_KEY,
+  INSTANT_SWITCH_ENABLED_SETTING_KEY,
+} from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
 import type { AppUpdateInfo, Setting } from "../../types/api";
 
@@ -42,10 +49,10 @@ const settingCategories: { titleKey: TranslationKey; settings: SettingDef[] }[] 
         ],
       },
       {
-        key: "app.startView",
+        key: APP_START_VIEW_SETTING_KEY,
         labelKey: "settings.startView.label",
         type: "select",
-        defaultValue: "channels",
+        defaultValue: DEFAULT_APP_START_VIEW,
         options: [
           { labelKey: "settings.startView.channels", value: "channels" },
           { labelKey: "settings.startView.sources", value: "sources" },
@@ -58,15 +65,12 @@ const settingCategories: { titleKey: TranslationKey; settings: SettingDef[] }[] 
   {
     titleKey: "settings.category.playback",
     settings: [
-      { key: "player.autoplay", labelKey: "settings.player.autoplay", type: "toggle", defaultValue: true },
-      { key: "player.volume", labelKey: "settings.player.volume", type: "range", defaultValue: 80, min: 0, max: 100 },
       { key: INSTANT_SWITCH_ENABLED_SETTING_KEY, labelKey: "settings.player.instantSwitchEnabled", type: "toggle", defaultValue: DEFAULT_INSTANT_SWITCH_ENABLED },
     ],
   },
   {
     titleKey: "settings.category.epg",
     settings: [
-      { key: "epg.autoRefresh", labelKey: "settings.epg.autoRefresh", type: "toggle", defaultValue: false },
       {
         key: GUIDE_WINDOW_MINUTES_SETTING_KEY,
         labelKey: "settings.epg.guideTimelineWindow",
@@ -255,15 +259,27 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   };
 
   const saveSetting = async (key: string, value: unknown) => {
+    const previousValue = values[key];
     setValues((prev) => ({ ...prev, [key]: value }));
     if (key === LOCALE_SETTING_KEY) {
       onLocaleChange((value === "zh-CN" ? "zh-CN" : "en-US") as Locale);
     }
     try {
       await tauriInvoke("set_setting", { input: { key, value } });
+      setError(null);
       setFlash(true);
       setTimeout(() => setFlash(false), 1500);
     } catch (e) {
+      setValues((prev) => {
+        if (previousValue === undefined) {
+          const { [key]: _discarded, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [key]: previousValue };
+      });
+      if (key === LOCALE_SETTING_KEY) {
+        onLocaleChange((previousValue === "zh-CN" ? "zh-CN" : "en-US") as Locale);
+      }
       setError(getErrorMessage(e));
     }
   };

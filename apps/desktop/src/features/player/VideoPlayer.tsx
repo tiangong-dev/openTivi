@@ -1,11 +1,50 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import Hls from "hls.js";
-import mpegts from "mpegts.js";
 
 import { t, type Locale } from "../../lib/i18n";
+import { DEFAULT_INSTANT_SWITCH_ENABLED, INSTANT_SWITCH_ENABLED_SETTING_KEY, resolveInstantSwitchEnabled } from "../../lib/settings";
 import { tauriInvoke } from "../../lib/tauri";
 import { createConfirmPressHandler, mapKeyToTvIntent } from "../../lib/tvInput";
-import type { Channel, ChannelEpgSnapshot, EpgProgram } from "../../types/api";
+import type { Channel, ChannelEpgSnapshot, EpgProgram, Setting } from "../../types/api";
+import {
+  buildNeighborWarmPlan,
+  getAdjacentChannel,
+  getPrevSlot,
+  getNextSlot,
+  resolveCurrentPlaybackChannelId,
+} from "./playerSwitchCore";
+import {
+  formatNetworkSpeed,
+  formatTime,
+  getGuidePrograms,
+  parseXmltvDate,
+} from "./playerUtils";
+import { useInstantChannelSwitch } from "./useInstantChannelSwitch";
+import {
+  bottomBarStyle,
+  channelListItemStyle,
+  channelListPanelStyle,
+  channelProgramNextStyle,
+  channelProgramNowStyle,
+  containerStyle,
+  errorOverlayStyle,
+  guideHeaderStyle,
+  guideHintStyle,
+  guideItemStyle,
+  guidePanelStyle,
+  networkSpeedStyle,
+  osdStyle,
+  overlayBtnStyle,
+  pauseIndicatorStyle,
+  progressBarStyle,
+  progressTrackStyle,
+  topBarStyle,
+  videoStyle,
+} from "./playerStyles";
+
+const OVERLAY_HIDE_MS = 4000;
+const OSD_DISPLAY_MS = 2000;
+const NEIGHBOR_WARM_DELAY_MS = 320;
+const INSTANT_SWITCH_SLOT_TTL_MS = 60000; // 1min - keep instant switch slots ready
 
 interface Props {
   channel: Channel;
@@ -16,22 +55,20 @@ interface Props {
 }
 
 export function VideoPlayer({ channel, channels, locale, onClose, onChannelChange }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const hlsRef = useRef<Hls | null>(null);
-  const mpegtsRef = useRef<mpegts.Player | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guideAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelListAutoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const speedObserverRef = useRef<PerformanceObserver | null>(null);
   const speedFallbackTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inactivityCleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerFocusZoneRef = useRef<"player" | "nav">("player");
   const showChannelListPanelRef = useRef(false);
   const focusedChannelIndexRef = useRef(0);
   const channelsRef = useRef<Channel[]>(channels);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
   const channelListItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const preferredDirectionRef = useRef<-1 | 1>(1);
 
   const [error, setError] = useState<string | null>(null);
   const [proxyPort, setProxyPort] = useState<number | null>(null);
@@ -51,6 +88,28 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   const [networkSpeedBps, setNetworkSpeedBps] = useState<number | null>(null);
   const [channelEpgSnapshots, setChannelEpgSnapshots] = useState<Record<number, ChannelEpgSnapshot>>({});
   const [channelEpgLoading, setChannelEpgLoading] = useState(false);
+  const [instantSwitchEnabled, setInstantSwitchEnabled] = useState(DEFAULT_INSTANT_SWITCH_ENABLED);
+
+  const {
+    prevVideoRef,
+    activeVideoRef,
+    nextVideoRef,
+    activeSlot,
+    activeSlotRef,
+    slotChannelIdRef,
+    hlsSlotsRef,
+    loadChannelInSlot,
+    activateSlot,
+    destroySlot,
+    setSlotMuted,
+    getVideoBySlot,
+    appendRuntimeLog,
+  } = useInstantChannelSwitch({
+    proxyPort,
+    locale,
+    onError: setError,
+    onNetworkSpeed: setNetworkSpeedBps,
+  });
 
   const GUIDE_AUTO_HIDE_MS = 3500;
   const CHANNEL_LIST_AUTO_HIDE_MS = 5000;
@@ -61,117 +120,55 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
 
   useEffect(() => {
     void tauriInvoke<number>("get_proxy_port").then(setProxyPort);
+    void tauriInvoke<Setting[]>("get_settings").then((settings) => {
+      const instantSwitchEnabledSetting = settings.find((s) => s.key === INSTANT_SWITCH_ENABLED_SETTING_KEY);
+      setInstantSwitchEnabled(resolveInstantSwitchEnabled(instantSwitchEnabledSetting?.value ?? DEFAULT_INSTANT_SWITCH_ENABLED));
+    });
   }, []);
+
+
 
   useEffect(() => {
     if (proxyPort === null) return;
-    const video = videoRef.current;
-    if (!video) return;
 
-    cleanup();
+    const currentActiveSlot = activeSlotRef.current;
+
+    if (slotChannelIdRef.current[currentActiveSlot] === channel.id) {
+      setSlotMuted(currentActiveSlot, false);
+      return;
+    }
+
+    // Check if in prev or next slot
+    if (slotChannelIdRef.current[0] === channel.id) {
+      console.log(
+        `[InstantSwitch] User switched to prev channel ${channel.id} (${channel.name})`,
+      );
+      activateSlot(0);
+      return;
+    }
+
+    if (slotChannelIdRef.current[2] === channel.id) {
+      console.log(
+        `[InstantSwitch] User switched to next channel ${channel.id} (${channel.name})`,
+      );
+      activateSlot(2);
+      return;
+    }
+
+    // Load in current active slot
     setError(null);
-    setNetworkSpeedBps(null);
+    loadChannelInSlot(currentActiveSlot, channel, false);
+    setSlotMuted(currentActiveSlot, false);
+  }, [
+    activateSlot,
+    channel.id,
+    channel.streamUrl,
+    loadChannelInSlot,
+    proxyPort,
+    setSlotMuted,
+  ]);
 
-    const proxiedUrl = toProxyUrl(channel.streamUrl, proxyPort);
 
-    if (isHls(channel.streamUrl)) {
-      attachHls(video, proxiedUrl);
-    } else if (isMpegTs(channel.streamUrl)) {
-      attachMpegTs(video, proxiedUrl);
-    } else {
-      video.src = proxiedUrl;
-      video.play().catch(() => {
-        if (Hls.isSupported()) {
-          attachHls(video, proxiedUrl);
-        } else {
-          setError(t(locale, "player.unsupportedStreamFormat"));
-        }
-      });
-    }
-
-    return cleanup;
-  }, [channel.streamUrl, proxyPort, locale]);
-
-  const attachHls = (video: HTMLVideoElement, url: string) => {
-    if (Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
-      hls.loadSource(url);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
-      hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
-        const fragData = data as unknown as {
-          stats?: {
-            total?: number;
-            loaded?: number;
-            loading?: { start?: number; end?: number };
-          };
-        };
-        const loadedBytes = fragData.stats?.total ?? fragData.stats?.loaded ?? 0;
-        const loadingStart = fragData.stats?.loading?.start ?? 0;
-        const loadingEnd = fragData.stats?.loading?.end ?? 0;
-        const durationMs = loadingEnd - loadingStart;
-        if (loadedBytes > 0 && durationMs > 0) {
-          const bitsPerSecond = (loadedBytes * 8 * 1000) / durationMs;
-          setNetworkSpeedBps(bitsPerSecond);
-        }
-      });
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (data.fatal) {
-          setError(t(locale, "player.playbackErrorDetails", { details: data.details }));
-        }
-      });
-      hlsRef.current = hls;
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = url;
-      video.play().catch(() => {});
-    } else {
-      setError(t(locale, "player.hlsNotSupported"));
-    }
-  };
-
-  const attachMpegTs = (video: HTMLVideoElement, url: string) => {
-    if (mpegts.isSupported()) {
-      const player = mpegts.createPlayer({
-        type: "mpegts",
-        isLive: true,
-        url,
-      });
-      player.attachMediaElement(video);
-      player.load();
-      player.play();
-      player.on(mpegts.Events.STATISTICS_INFO, (stats) => {
-        const speedKiloBytesPerSec = Number((stats as { speed?: number })?.speed);
-        if (Number.isFinite(speedKiloBytesPerSec) && speedKiloBytesPerSec > 0) {
-          const bitsPerSecond = speedKiloBytesPerSec * 1024 * 8;
-          setNetworkSpeedBps(bitsPerSecond);
-        }
-      });
-      player.on(mpegts.Events.ERROR, () => {
-        setError(t(locale, "player.mpegtsPlaybackError"));
-      });
-      mpegtsRef.current = player;
-    } else {
-      setError(t(locale, "player.mpegtsNotSupported"));
-    }
-  };
-
-  const cleanup = () => {
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-    if (mpegtsRef.current) {
-      mpegtsRef.current.pause();
-      mpegtsRef.current.unload();
-      mpegtsRef.current.detachMediaElement();
-      mpegtsRef.current.destroy();
-      mpegtsRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.removeAttribute("src");
-      videoRef.current.load();
-    }
-  };
 
   useEffect(() => {
     setEpgLoading(true);
@@ -242,6 +239,8 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     channelsRef.current = channels;
   }, [channels]);
 
+
+
   useEffect(() => {
     if (!showChannelListPanel || channels.length === 0) {
       return;
@@ -304,44 +303,8 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [epgNow]);
 
   useEffect(() => {
-    if (proxyPort === null) {
-      return;
-    }
-    if (typeof PerformanceObserver === "undefined") {
-      return;
-    }
-    const proxyPrefix = `http://127.0.0.1:${proxyPort}/stream?`;
-    const observer = new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) {
-        if (entry.entryType !== "resource") {
-          continue;
-        }
-        const resource = entry as PerformanceResourceTiming;
-        if (!resource.name.startsWith(proxyPrefix)) {
-          continue;
-        }
-        const bytes = resource.transferSize > 0 ? resource.transferSize : resource.encodedBodySize;
-        const durationMs = resource.duration;
-        if (bytes <= 0 || durationMs <= 0) {
-          continue;
-        }
-        const bitsPerSecond = (bytes * 8 * 1000) / durationMs;
-        setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.65 + bitsPerSecond * 0.35));
-      }
-    });
-    observer.observe({ type: "resource", buffered: false });
-    speedObserverRef.current = observer;
-    return () => {
-      observer.disconnect();
-      if (speedObserverRef.current === observer) {
-        speedObserverRef.current = null;
-      }
-    };
-  }, [proxyPort]);
-
-  useEffect(() => {
     const readDecodedBytes = () => {
-      const video = videoRef.current as (HTMLVideoElement & {
+      const video = getVideoBySlot(activeSlotRef.current) as (HTMLVideoElement & {
         webkitVideoDecodedByteCount?: number;
         webkitAudioDecodedByteCount?: number;
       }) | null;
@@ -355,9 +318,12 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     let lastBytes = readDecodedBytes();
     let lastTs = Date.now();
     speedFallbackTimerRef.current = setInterval(() => {
-      const hlsEstimate = Number((hlsRef.current as unknown as { bandwidthEstimate?: number } | null)?.bandwidthEstimate ?? 0);
+      const activeHls = hlsSlotsRef.current[activeSlotRef.current];
+      const hlsEstimate = Number(
+        (activeHls as unknown as { bandwidthEstimate?: number } | null)?.bandwidthEstimate ?? 0,
+      );
       if (Number.isFinite(hlsEstimate) && hlsEstimate > 0) {
-        setNetworkSpeedBps((prev) => (prev === null ? hlsEstimate : prev * 0.65 + hlsEstimate * 0.35));
+        setNetworkSpeedBps((prev) => (prev === null ? hlsEstimate : prev * 0.4 + hlsEstimate * 0.6));
         return;
       }
 
@@ -376,7 +342,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         return;
       }
       const bitsPerSecond = (deltaBytes * 8 * 1000) / deltaMs;
-      setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.65 + bitsPerSecond * 0.35));
+      setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.4 + bitsPerSecond * 0.6));
     }, 1000);
 
     return () => {
@@ -385,15 +351,17 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         speedFallbackTimerRef.current = null;
       }
     };
-  }, [channel.id]);
+  }, [channel.id, getVideoBySlot]);
 
   const showOverlay = useCallback(() => {
     setOverlayVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
-      if (!error) setOverlayVisible(false);
-    }, 4000);
-  }, [error]);
+      if (!error) {
+        setOverlayVisible(false);
+      }
+    }, OVERLAY_HIDE_MS);
+  }, [channel.id, error]);
 
   useEffect(() => {
     showOverlay();
@@ -414,22 +382,135 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     if (error) setOverlayVisible(true);
   }, [error]);
 
+  const getCurrentPlaybackChannelId = useCallback(() => {
+    return resolveCurrentPlaybackChannelId(slotChannelIdRef.current, activeSlotRef.current, channel.id);
+  }, [channel.id]);
+
+  const showSwitchOsd = useCallback((next: Channel) => {
+    setOsdChannel(next);
+    if (osdTimerRef.current) clearTimeout(osdTimerRef.current);
+    osdTimerRef.current = setTimeout(() => setOsdChannel(null), OSD_DISPLAY_MS);
+  }, []);
+
+  const prewarmChannel = useCallback(
+    (next: Channel, direction: -1 | 1) => {
+      const currentPlaybackChannelId = getCurrentPlaybackChannelId();
+      if (next.id === currentPlaybackChannelId) return;
+
+      if (proxyPort === null) {
+        console.log("[InstantSwitch] Proxy port not available");
+        return;
+      }
+      if (!instantSwitchEnabled) {
+        console.log("[InstantSwitch] Instant switch disabled in settings");
+        return;
+      }
+      const slot = direction === 1 ? getNextSlot(activeSlotRef.current) : getPrevSlot(activeSlotRef.current);
+      const currentSlotChannelId = slotChannelIdRef.current[slot];
+      if (currentSlotChannelId !== next.id) {
+        console.log(
+          `[InstantSwitch] Loading channel ${next.id} (${next.name}) into slot ${slot}(${direction === 1 ? "next" : "prev"}), previous: ${currentSlotChannelId}`,
+        );
+        loadChannelInSlot(slot, next, true);
+      } else {
+        console.log(
+          `[InstantSwitch] Channel ${next.id} already in slot ${slot}, skip loading`,
+        );
+      }
+      setSlotMuted(slot, true);
+    },
+    [getCurrentPlaybackChannelId, loadChannelInSlot, proxyPort, setSlotMuted, instantSwitchEnabled],
+  );
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityCleanupTimerRef.current) {
+      clearTimeout(inactivityCleanupTimerRef.current);
+    }
+    inactivityCleanupTimerRef.current = setTimeout(() => {
+      console.log("[InstantSwitch] TTL expired - cleaning up standby slots");
+      destroySlot(0);
+      destroySlot(2);
+    }, INSTANT_SWITCH_SLOT_TTL_MS);
+  }, [destroySlot]);
+
+  useEffect(() => {
+    if (proxyPort === null || channels.length < 2) return;
+    const timer = setTimeout(() => {
+      const preferred = preferredDirectionRef.current;
+      const baseChannelId = getCurrentPlaybackChannelId();
+      
+      // Preload next channel
+      const next = getAdjacentChannel(channels, baseChannelId, 1);
+      if (next) {
+        console.log(
+          `[InstantSwitch] Preload next channel - base: ${baseChannelId}, next: ${next.id} (${next.name})`,
+        );
+        prewarmChannel(next, 1);
+      }
+
+      // Preload prev channel
+      const prev = getAdjacentChannel(channels, baseChannelId, -1);
+      if (prev) {
+        console.log(
+          `[InstantSwitch] Preload prev channel - base: ${baseChannelId}, prev: ${prev.id} (${prev.name})`,
+        );
+        prewarmChannel(prev, -1);
+      }
+
+      // Reset inactivity timer
+      resetInactivityTimer();
+    }, NEIGHBOR_WARM_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [
+    channel.id,
+    channels.length,
+    channels,
+    getCurrentPlaybackChannelId,
+    prewarmChannel,
+    proxyPort,
+    resetInactivityTimer,
+  ]);
+
   const switchChannel = useCallback(
     (direction: -1 | 1) => {
-      if (channels.length === 0) return;
-      const idx = channels.findIndex((c) => c.id === channel.id);
-      if (idx === -1) return;
-      const nextIdx = (idx + direction + channels.length) % channels.length;
-      const next = channels[nextIdx];
-
-      setOsdChannel(next);
-      if (osdTimerRef.current) clearTimeout(osdTimerRef.current);
-      osdTimerRef.current = setTimeout(() => setOsdChannel(null), 2000);
-
+      preferredDirectionRef.current = direction;
+      const baseChannelId = getCurrentPlaybackChannelId();
+      const next = getAdjacentChannel(channels, baseChannelId, direction);
+      if (!next || next.id === baseChannelId) return;
+      console.log(
+        `[InstantSwitch] User switch - from ${baseChannelId} to ${next.id} (${next.name}), direction: ${direction}`,
+      );
+      showSwitchOsd(next);
+      const targetSlot = direction === 1 ? getNextSlot(activeSlotRef.current) : getPrevSlot(activeSlotRef.current);
+      if (slotChannelIdRef.current[targetSlot] !== next.id) {
+        console.log(
+          `[InstantSwitch] Loading channel ${next.id} (${next.name}) in slot ${targetSlot} for immediate switch`,
+        );
+        const loaded = loadChannelInSlot(targetSlot, next, false);
+        if (!loaded) {
+          console.warn(
+            `[InstantSwitch] Failed to load channel ${next.id} into slot ${targetSlot}, skip activation`,
+          );
+          return;
+        }
+      } else {
+        console.log(
+          `[InstantSwitch] Channel ${next.id} already in slot ${targetSlot}, activate directly`,
+        );
+      }
+      setError(null);
+      activateSlot(targetSlot);
       onChannelChange(next);
     },
-    [channels, channel.id, onChannelChange],
-  );
+    [
+      activateSlot,
+      channels,
+       getCurrentPlaybackChannelId,
+       loadChannelInSlot,
+       onChannelChange,
+       showSwitchOsd,
+      ],
+      );
 
   const setChannelListPanel = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
     setShowChannelListPanel((prev) => {
@@ -489,15 +570,16 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, []);
 
   const togglePlayPause = useCallback(() => {
-    if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      videoRef.current.play().catch(() => {});
+    const activeVideo = getVideoBySlot(activeSlotRef.current);
+    if (!activeVideo) return;
+    if (activeVideo.paused) {
+      activeVideo.play().catch(() => {});
       setIsPaused(false);
       return;
     }
-    videoRef.current.pause();
+    activeVideo.pause();
     setIsPaused(true);
-  }, []);
+  }, [getVideoBySlot]);
 
   useEffect(() => {
     confirmPressRef.current = createConfirmPressHandler({
@@ -630,10 +712,13 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (mapKeyToTvIntent(e.key) !== "Confirm") return;
+      const intent = mapKeyToTvIntent(e.key);
       if (playerFocusZoneRef.current === "nav") return;
-      e.preventDefault();
-      confirmPressRef.current?.onKeyUp();
+      if (intent === "Confirm") {
+        e.preventDefault();
+        confirmPressRef.current?.onKeyUp();
+        return;
+      }
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
@@ -659,12 +744,47 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         clearTimeout(channelListAutoHideTimerRef.current);
         channelListAutoHideTimerRef.current = null;
       }
+      destroySlot(0);
+      destroySlot(1);
+      destroySlot(2);
     };
-  }, []);
+  }, [destroySlot]);
 
   return (
     <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>
-      <video ref={videoRef} style={videoStyle} autoPlay />
+      <video
+        ref={prevVideoRef}
+        style={{
+          ...videoStyle,
+          opacity: activeSlot === 0 ? 1 : 0,
+          zIndex: activeSlot === 0 ? 1 : 0,
+          pointerEvents: activeSlot === 0 ? "auto" : "none",
+        }}
+        autoPlay
+        muted={activeSlot !== 0}
+      />
+      <video
+        ref={activeVideoRef}
+        style={{
+          ...videoStyle,
+          opacity: activeSlot === 1 ? 1 : 0,
+          zIndex: activeSlot === 1 ? 1 : 0,
+          pointerEvents: activeSlot === 1 ? "auto" : "none",
+        }}
+        autoPlay
+        muted={activeSlot !== 1}
+      />
+      <video
+        ref={nextVideoRef}
+        style={{
+          ...videoStyle,
+          opacity: activeSlot === 2 ? 1 : 0,
+          zIndex: activeSlot === 2 ? 1 : 0,
+          pointerEvents: activeSlot === 2 ? "auto" : "none",
+        }}
+        autoPlay
+        muted={activeSlot !== 2}
+      />
 
       <div
         style={{
@@ -721,46 +841,53 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
         </div>
       </div>
 
-      {epgNow && (
-        <div
-          style={{
-            ...bottomBarStyle,
-            opacity: overlayVisible ? 1 : 0,
-            pointerEvents: overlayVisible ? "auto" : "none",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14 }}>
-            <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.now")}</span>
-            <span style={{ fontWeight: 600 }}>{epgNow.title}</span>
-            <span style={{ opacity: 0.5, fontSize: 12 }}>
-              {formatTime(epgNow.startAt)} - {formatTime(epgNow.endAt)}
-            </span>
-          </div>
-          <div style={progressTrackStyle}>
-            <div style={{ ...progressBarStyle, width: `${Math.max(0, Math.min(100, epgProgress))}%` }} />
-          </div>
-          <div style={networkSpeedStyle}>
-            {t(locale, "player.networkSpeed")}:{" "}
-            {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}
-          </div>
-          {epgNext && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                fontSize: 13,
-                opacity: 0.7,
-                marginTop: 4,
-              }}
-            >
-              <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.next")}</span>
-              <span>{epgNext.title}</span>
-              <span style={{ opacity: 0.5, fontSize: 12 }}>{formatTime(epgNext.startAt)}</span>
+      <div
+        style={{
+          ...bottomBarStyle,
+          opacity: 1,
+          pointerEvents: "none",
+        }}
+      >
+        {epgNow && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14 }}>
+              <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.now")}</span>
+              <span style={{ fontWeight: 600 }}>{epgNow.title}</span>
+              <span style={{ opacity: 0.5, fontSize: 12 }}>
+                {formatTime(epgNow.startAt)} - {formatTime(epgNow.endAt)}
+              </span>
             </div>
-          )}
+            <div style={progressTrackStyle}>
+              <div style={{ ...progressBarStyle, width: `${Math.max(0, Math.min(100, epgProgress))}%` }} />
+            </div>
+          </>
+        )}
+        {!epgNow && (
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            {epgLoading ? t(locale, "player.loadingEpg") : t(locale, "player.noGuideForChannel")}
+          </div>
+        )}
+        <div style={networkSpeedStyle}>
+          {t(locale, "player.networkSpeed")}:{" "}
+          {networkSpeedBps !== null ? formatNetworkSpeed(networkSpeedBps) : t(locale, "player.networkSpeedUnavailable")}
         </div>
-      )}
+        {epgNow && epgNext && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              fontSize: 13,
+              opacity: 0.7,
+              marginTop: 4,
+            }}
+          >
+            <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.next")}</span>
+            <span>{epgNext.title}</span>
+            <span style={{ opacity: 0.5, fontSize: 12 }}>{formatTime(epgNext.startAt)}</span>
+          </div>
+        )}
+      </div>
 
       {showGuidePanel && (
         <div style={guidePanelStyle}>
@@ -906,256 +1033,3 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
     </div>
   );
 }
-
-function parseXmltvDate(raw: string): number | null {
-  const match = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-]\d{4}))?/);
-  if (!match) {
-    const fallback = Date.parse(raw);
-    return Number.isNaN(fallback) ? null : fallback;
-  }
-  const [, y, mo, d, h, mi, s, offset] = match;
-  const tz = offset ? `${offset.slice(0, 3)}:${offset.slice(3)}` : "Z";
-  const iso = `${y}-${mo}-${d}T${h}:${mi}:${s}${tz}`;
-  const ts = Date.parse(iso);
-  return Number.isNaN(ts) ? null : ts;
-}
-
-function formatTime(value: string): string {
-  const ts = parseXmltvDate(value);
-  if (ts === null) return value;
-  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatNetworkSpeed(bitsPerSecond: number): string {
-  if (bitsPerSecond >= 1_000_000) {
-    return `${(bitsPerSecond / 1_000_000).toFixed(2)} Mbps`;
-  }
-  return `${(bitsPerSecond / 1_000).toFixed(1)} Kbps`;
-}
-
-function getGuidePrograms(programs: EpgProgram[]): EpgProgram[] {
-  const now = Date.now();
-  const upcoming = programs.filter((p) => {
-    const end = parseXmltvDate(p.endAt);
-    return end !== null && end >= now - 15 * 60 * 1000;
-  });
-  return (upcoming.length > 0 ? upcoming : programs).slice(0, 12);
-}
-
-function toProxyUrl(originalUrl: string, port: number): string {
-  return `http://127.0.0.1:${port}/stream?url=${encodeURIComponent(originalUrl)}`;
-}
-
-function isHls(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.includes(".m3u8") || lower.includes("format=m3u8");
-}
-
-function isMpegTs(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.endsWith(".ts") || lower.includes("container=ts");
-}
-
-const containerStyle: React.CSSProperties = {
-  position: "relative",
-  width: "100%",
-  height: "100%",
-  backgroundColor: "#000",
-  overflow: "hidden",
-  cursor: "default",
-};
-
-const videoStyle: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  width: "100%",
-  height: "100%",
-  objectFit: "contain",
-  backgroundColor: "#000",
-};
-
-const topBarStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 0,
-  left: 0,
-  right: 0,
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "16px 20px",
-  background: "linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%)",
-  color: "#fff",
-  transition: "opacity 0.3s ease",
-  zIndex: 10,
-};
-
-const bottomBarStyle: React.CSSProperties = {
-  position: "absolute",
-  bottom: 0,
-  left: 0,
-  right: 0,
-  padding: "16px 20px",
-  background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)",
-  color: "#fff",
-  transition: "opacity 0.3s ease",
-  zIndex: 10,
-};
-
-const guidePanelStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 72,
-  right: 12,
-  bottom: 92,
-  width: 340,
-  maxWidth: "40vw",
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  backgroundColor: "rgba(10,10,10,0.92)",
-  backdropFilter: "blur(8px)",
-  color: "var(--text-primary)",
-  display: "flex",
-  flexDirection: "column",
-  padding: 10,
-  gap: 8,
-  zIndex: 12,
-};
-
-const channelListPanelStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 72,
-  left: 12,
-  bottom: 92,
-  width: 320,
-  maxWidth: "38vw",
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  backgroundColor: "rgba(20,20,20,0.78)",
-  backdropFilter: "blur(8px)",
-  color: "var(--text-primary)",
-  display: "flex",
-  flexDirection: "column",
-  padding: 10,
-  gap: 8,
-  zIndex: 12,
-};
-
-const guideHeaderStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  fontSize: 13,
-  fontWeight: 600,
-};
-
-const guideHintStyle: React.CSSProperties = {
-  color: "var(--text-secondary)",
-  fontSize: 12,
-};
-
-const guideItemStyle: React.CSSProperties = {
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  padding: "6px 8px",
-};
-
-const channelListItemStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  width: "100%",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  background: "transparent",
-  color: "var(--text-primary)",
-  padding: "7px 8px",
-  fontSize: 13,
-  cursor: "pointer",
-};
-
-const channelProgramNowStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: "#cbd5e1",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-};
-
-const channelProgramNextStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: "var(--text-secondary)",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-};
-
-const overlayBtnStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.15)",
-  backdropFilter: "blur(8px)",
-  border: "none",
-  color: "#fff",
-  width: 36,
-  height: 36,
-  borderRadius: "50%",
-  cursor: "pointer",
-  fontSize: 14,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const progressTrackStyle: React.CSSProperties = {
-  width: "100%",
-  height: 3,
-  backgroundColor: "rgba(255,255,255,0.2)",
-  borderRadius: 2,
-  marginTop: 8,
-  overflow: "hidden",
-};
-
-const progressBarStyle: React.CSSProperties = {
-  height: "100%",
-  backgroundColor: "#3b82f6",
-  borderRadius: 2,
-  transition: "width 0.5s ease",
-};
-
-const networkSpeedStyle: React.CSSProperties = {
-  marginTop: 6,
-  fontSize: 12,
-  color: "rgba(255,255,255,0.75)",
-};
-
-const errorOverlayStyle: React.CSSProperties = {
-  position: "absolute",
-  bottom: 80,
-  left: "50%",
-  transform: "translateX(-50%)",
-  padding: "10px 20px",
-  backgroundColor: "rgba(0,0,0,0.8)",
-  backdropFilter: "blur(8px)",
-  borderRadius: 8,
-  zIndex: 20,
-};
-
-const pauseIndicatorStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  fontSize: 64,
-  color: "rgba(255,255,255,0.7)",
-  pointerEvents: "none",
-  zIndex: 15,
-};
-
-const osdStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  textAlign: "center",
-  color: "#fff",
-  textShadow: "0 2px 12px rgba(0,0,0,0.8)",
-  pointerEvents: "none",
-  zIndex: 15,
-  animation: "fadeIn 0.2s ease",
-};

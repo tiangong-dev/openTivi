@@ -20,9 +20,10 @@ import {
 } from "../lib/navigation";
 import type { Channel, Setting } from "../types/api";
 
-type View = AppStartView;
+type View = AppStartView | "dev-components";
 type FocusZone = "nav" | "content";
 type InputMode = "keyboard" | "pointer";
+const isDev = import.meta.env.DEV;
 
 const loadChannelsView = () =>
   import("../features/channels/ChannelsView").then((module) => ({ default: module.ChannelsView }));
@@ -34,6 +35,8 @@ const loadSourcesView = () =>
   import("../features/sources/SourcesView").then((module) => ({ default: module.SourcesView }));
 const loadSettingsView = () =>
   import("../features/settings/SettingsView").then((module) => ({ default: module.SettingsView }));
+const loadDevComponentsView = () =>
+  import("../features/dev/DevComponentsView").then((module) => ({ default: module.DevComponentsView }));
 const loadVideoPlayer = () =>
   import("../features/player/VideoPlayer").then((module) => ({ default: module.VideoPlayer }));
 
@@ -42,6 +45,7 @@ const FavoritesView = lazy(loadFavoritesView);
 const RecentsView = lazy(loadRecentsView);
 const SourcesView = lazy(loadSourcesView);
 const SettingsView = lazy(loadSettingsView);
+const DevComponentsView = lazy(loadDevComponentsView);
 const VideoPlayer = lazy(loadVideoPlayer);
 
 const viewPreloaders: Record<View, () => Promise<unknown>> = {
@@ -50,6 +54,7 @@ const viewPreloaders: Record<View, () => Promise<unknown>> = {
   recents: loadRecentsView,
   sources: loadSourcesView,
   settings: loadSettingsView,
+  "dev-components": loadDevComponentsView,
 };
 
 function scheduleIdleWork(callback: IdleRequestCallback): number {
@@ -198,6 +203,7 @@ export function AppShell() {
     { key: "recents", label: t(locale, "nav.recents") },
     { key: "sources", label: t(locale, "nav.sources") },
     { key: "settings", label: t(locale, "nav.settings") },
+    ...(isDev ? [{ key: "dev-components" as const, label: t(locale, "nav.devComponents") }] : []),
   ];
   const navFocusGroup = useIndexFocusGroup({
     itemCount: navItems.length,
@@ -333,13 +339,21 @@ export function AppShell() {
         }
         return;
       }
+      if (intent === TvIntent.Back) {
+        event.preventDefault();
+        const handledByContent = dispatchContentKeyForInput(event.key, event.repeat);
+        if (!handledByContent) {
+          (document.activeElement as HTMLElement | null)?.blur();
+          setFocusZone("nav");
+        }
+        return;
+      }
       if (
         intent === TvIntent.MoveUp ||
         intent === TvIntent.MoveDown ||
         intent === TvIntent.MoveRight ||
         intent === TvIntent.Confirm ||
         intent === TvIntent.SecondaryAction ||
-        intent === TvIntent.Back ||
         event.key === "Delete" ||
         event.key === "r" ||
         event.key === "R"
@@ -400,6 +414,8 @@ export function AppShell() {
         return <RecentsView locale={locale} onPlay={handlePlay} />;
       case "settings":
         return <SettingsView locale={locale} onLocaleChange={handleLocaleChange} />;
+      case "dev-components":
+        return <DevComponentsView locale={locale} />;
     }
   };
 

@@ -3,7 +3,7 @@ import { createContext, useContext } from "react";
 import type { AppStartView } from "./settings";
 import type { TvContentKeyDetail } from "./tvInput";
 
-export type NavigationView = AppStartView;
+export type NavigationView = AppStartView | "dev-components";
 export type NavigationFocusZone = "nav" | "content";
 export type NavigationInputMode = "keyboard" | "pointer";
 export interface NavigationFocusContentDetail {

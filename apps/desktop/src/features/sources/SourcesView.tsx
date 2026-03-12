@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Settings2 } from "lucide-react";
 import { useIndexFocusGroup, useLinearFocusGroup } from "../../lib/focusScope";
 import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
@@ -8,11 +9,14 @@ import { TvIntent } from "../../lib/tvInput";
 import type { Source, ImportSummary } from "../../types/api";
 
 type ImportTab = "m3u" | "xtream" | "xmltv";
-type SourceFocusTarget = "add" | "list";
+type SourceFocusTarget = "add" | "filter" | "list";
 type SourceFilter = "all" | "enabled" | "disabled" | "backoff" | "error";
+type SourceRowAction = "refresh" | "edit" | "delete";
 
 const importTabOrder = ["m3u", "xtream", "xmltv"] as const;
 const deleteConfirmActions = ["cancel", "delete"] as const;
+const sourceFilterOrder = ["all", "enabled", "disabled", "backoff", "error"] as const;
+const sourceActionOrder = ["refresh", "edit", "delete"] as const;
 
 interface Props {
   locale: Locale;
@@ -27,21 +31,26 @@ export function SourcesView({ locale }: Props) {
   const [loading, setLoading] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [actionMenuSource, setActionMenuSource] = useState<Source | null>(null);
+  const [actionMenuIndex, setActionMenuIndex] = useState(0);
   const [editing, setEditing] = useState<EditSourceDraft | null>(null);
   const [deleteConfirmSource, setDeleteConfirmSource] = useState<Source | null>(null);
   const [deleteConfirmAction, setDeleteConfirmAction] = useState<"cancel" | "delete">("cancel");
   const [focusedSourceIndex, setFocusedSourceIndex] = useState(0);
   const [focusTarget, setFocusTarget] = useState<SourceFocusTarget>("add");
+  const [focusedFilterIndex, setFocusedFilterIndex] = useState(0);
   const [domFocusedSourceId, setDomFocusedSourceId] = useState<number | null>(null);
   const [hoveredSourceId, setHoveredSourceId] = useState<number | null>(null);
   const refreshingSourceIds = useRef<Set<number>>(new Set());
   const addButtonRef = useRef<HTMLButtonElement | null>(null);
+  const filterChipRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const addTabRefs = useRef<Record<ImportTab, HTMLButtonElement | null>>({
     m3u: null,
     xtream: null,
     xmltv: null,
   });
   const addModalFirstInputRef = useRef<HTMLInputElement | null>(null);
+  const actionMenuRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
   const deleteConfirmRef = useRef<HTMLButtonElement | null>(null);
   const sourceRowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
@@ -57,6 +66,24 @@ export function SourcesView({ locale }: Props) {
     forwardIntent: TvIntent.MoveDown,
     backwardEdge: "bubble",
     forwardEdge: "bubble",
+  });
+  const sourceFilterGroup = useIndexFocusGroup({
+    itemCount: sourceFilterOrder.length,
+    currentIndex: focusedFilterIndex,
+    setCurrentIndex: setFocusedFilterIndex,
+    backwardIntent: TvIntent.MoveLeft,
+    forwardIntent: TvIntent.MoveRight,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
+  });
+  const sourceActionGroup = useIndexFocusGroup({
+    itemCount: sourceActionOrder.length,
+    currentIndex: actionMenuIndex,
+    setCurrentIndex: setActionMenuIndex,
+    backwardIntent: TvIntent.MoveUp,
+    forwardIntent: TvIntent.MoveDown,
+    backwardEdge: "wrap",
+    forwardEdge: "wrap",
   });
   const addModalTabGroup = useLinearFocusGroup({
     items: importTabOrder,
@@ -94,20 +121,31 @@ export function SourcesView({ locale }: Props) {
     if (filteredSources.length === 0) {
       setFocusedSourceIndex(0);
       setDomFocusedSourceId(null);
-      setFocusTarget("add");
+      setFocusTarget((current) => (current === "list" ? "filter" : current));
       return;
     }
     setFocusedSourceIndex((prev) => Math.min(prev, filteredSources.length - 1));
   }, [filteredSources.length]);
+
+  useEffect(() => {
+    setFocusedFilterIndex(Math.max(0, sourceFilterOrder.indexOf(sourceFilter)));
+  }, [sourceFilter]);
 
   const focusAddButton = () => {
     setFocusTarget("add");
     addButtonRef.current?.focus();
   };
 
+  const focusFilterByIndex = (index: number) => {
+    const wrapped = ((index % sourceFilterOrder.length) + sourceFilterOrder.length) % sourceFilterOrder.length;
+    setFocusTarget("filter");
+    setFocusedFilterIndex(wrapped);
+    filterChipRefs.current[wrapped]?.focus();
+  };
+
   const focusSourceByIndex = (index: number) => {
     if (filteredSources.length === 0) {
-      focusAddButton();
+      focusFilterByIndex(focusedFilterIndex);
       return;
     }
     const wrapped = ((index % filteredSources.length) + filteredSources.length) % filteredSources.length;
@@ -119,9 +157,58 @@ export function SourcesView({ locale }: Props) {
     rowNode?.scrollIntoView({ block: "nearest" });
   };
 
+  const focusCurrentSource = () => {
+    focusSourceByIndex(focusedSourceIndex);
+  };
+
+  const executeAction = (source: Source, action: SourceRowAction) => {
+    if (action === "refresh") {
+      if (!source.enabled || isSourceInBackoff(source) || loading) {
+        return;
+      }
+      setActionMenuSource(null);
+      void handleRefresh(source.id);
+      return;
+    }
+    if (action === "edit") {
+      setActionMenuSource(null);
+      openEdit(source);
+      return;
+    }
+    openDeleteConfirm(source);
+  };
+
+  const openActionMenu = (source: Source) => {
+    setActionMenuSource(source);
+    setActionMenuIndex(0);
+  };
+
+  const closeActionMenu = () => {
+    setActionMenuSource(null);
+    window.setTimeout(() => {
+      focusCurrentSource();
+    }, 0);
+  };
+
   const openDeleteConfirm = (source: Source) => {
     setDeleteConfirmSource(source);
     setDeleteConfirmAction("cancel");
+  };
+
+  const closeDeleteConfirm = () => {
+    setDeleteConfirmSource(null);
+    window.setTimeout(() => {
+      if (actionMenuSource) {
+        actionMenuRefs.current[actionMenuIndex]?.focus();
+        return;
+      }
+      focusCurrentSource();
+    }, 0);
+  };
+
+  const closeEditModal = () => {
+    setEditing(null);
+    window.setTimeout(() => focusCurrentSource(), 0);
   };
 
   const executeDeleteConfirmed = async () => {
@@ -129,7 +216,17 @@ export function SourcesView({ locale }: Props) {
     const targetId = deleteConfirmSource.id;
     setDeleteConfirmSource(null);
     await handleDelete(targetId);
-    focusAddButton();
+    window.setTimeout(() => {
+      if (filteredSources.length > 1) {
+        focusSourceByIndex(Math.min(focusedSourceIndex, filteredSources.length - 2));
+        return;
+      }
+      if (sourceFilterOrder.length > 0) {
+        focusFilterByIndex(focusedFilterIndex);
+      } else {
+        focusAddButton();
+      }
+    }, 0);
   };
 
   useEffect(() => {
@@ -145,6 +242,10 @@ export function SourcesView({ locale }: Props) {
         focusSourceByIndex(focusedSourceIndex);
         return;
       }
+      if (focusTarget === "filter") {
+        focusFilterByIndex(focusedFilterIndex);
+        return;
+      }
       focusAddButton();
     },
     onContentKey: (event) => {
@@ -153,6 +254,27 @@ export function SourcesView({ locale }: Props) {
       const intent = detail?.intent;
       const key = detail?.key;
       if (!intent && !key) return;
+      if (actionMenuSource) {
+        if (intent === TvIntent.MoveUp || intent === TvIntent.MoveDown) {
+          event.preventDefault();
+          const result = sourceActionGroup.handleIntent(intent);
+          if (result.handled) {
+            window.setTimeout(() => actionMenuRefs.current[result.next]?.focus(), 0);
+          }
+          return;
+        }
+        if (intent === TvIntent.MoveLeft || intent === TvIntent.Back) {
+          event.preventDefault();
+          closeActionMenu();
+          return;
+        }
+        if (intent === TvIntent.Confirm) {
+          event.preventDefault();
+          executeAction(actionMenuSource, sourceActionOrder[actionMenuIndex] ?? "edit");
+        }
+        return;
+      }
+
       if (deleteConfirmSource) {
         if (intent === TvIntent.MoveLeft || intent === TvIntent.MoveRight) {
           const result = deleteConfirmActionGroup.handleIntent(intent);
@@ -166,8 +288,7 @@ export function SourcesView({ locale }: Props) {
           if (deleteConfirmAction === "delete") {
             void executeDeleteConfirmed();
           } else {
-            setDeleteConfirmSource(null);
-            focusAddButton();
+            closeDeleteConfirm();
           }
           return;
         }
@@ -197,17 +318,47 @@ export function SourcesView({ locale }: Props) {
 
       if (editing) return;
 
+      if (focusTarget === "filter") {
+        if (intent === TvIntent.MoveLeft || intent === TvIntent.MoveRight) {
+          const result = sourceFilterGroup.handleIntent(intent);
+          if (result.handled) {
+            event.preventDefault();
+            focusFilterByIndex(result.next);
+          }
+          return;
+        }
+        if (intent === TvIntent.MoveUp) {
+          event.preventDefault();
+          focusAddButton();
+          return;
+        }
+        if (intent === TvIntent.MoveDown) {
+          event.preventDefault();
+          if (filteredSources.length > 0) {
+            focusSourceByIndex(0);
+          }
+          return;
+        }
+        if (intent === TvIntent.Confirm) {
+          event.preventDefault();
+          setSourceFilter(sourceFilterOrder[focusedFilterIndex] ?? "all");
+        }
+        return;
+      }
+
       if (intent === TvIntent.MoveDown || intent === TvIntent.MoveUp) {
         event.preventDefault();
         if (focusTarget === "add") {
-          if (filteredSources.length > 0) {
-            focusSourceByIndex(intent === TvIntent.MoveDown ? 0 : filteredSources.length - 1);
+          if (intent === TvIntent.MoveDown) {
+            focusFilterByIndex(focusedFilterIndex);
           }
           return;
         }
         const result = sourceListGroup.handleIntent(intent);
         if (!result.handled) {
-          focusAddButton();
+          if (intent === TvIntent.MoveUp) {
+            focusFilterByIndex(focusedFilterIndex);
+          }
           return;
         }
         focusSourceByIndex(result.next);
@@ -222,7 +373,7 @@ export function SourcesView({ locale }: Props) {
         }
         const current = filteredSources[focusedSourceIndex];
         if (current) {
-          openEdit(current);
+          openActionMenu(current);
         }
         return;
       }
@@ -231,7 +382,7 @@ export function SourcesView({ locale }: Props) {
       const current = filteredSources[focusedSourceIndex];
       if (!current) return;
 
-      if (key === "Delete" || key === "Backspace") {
+      if (key === "Delete") {
         event.preventDefault();
         openDeleteConfirm(current);
         return;
@@ -244,15 +395,16 @@ export function SourcesView({ locale }: Props) {
   });
 
   useEffect(() => {
-    if (!showAddModal && !editing && !deleteConfirmSource) return;
+    if (!showAddModal && !editing && !deleteConfirmSource && !actionMenuSource) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      if (deleteConfirmSource) {
-        setDeleteConfirmSource(null);
-        focusAddButton();
+      if (actionMenuSource) {
+        closeActionMenu();
+      } else if (deleteConfirmSource) {
+        closeDeleteConfirm();
       } else if (editing) {
-        setEditing(null);
+        closeEditModal();
       } else {
         setShowAddModal(false);
         window.setTimeout(() => focusAddButton(), 0);
@@ -262,12 +414,17 @@ export function SourcesView({ locale }: Props) {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [deleteConfirmSource, editing, showAddModal]);
+  }, [actionMenuIndex, actionMenuSource, deleteConfirmSource, editing, showAddModal]);
 
   useEffect(() => {
     if (!showAddModal) return;
     window.setTimeout(() => addTabRefs.current[activeTab]?.focus(), 0);
   }, [showAddModal, activeTab]);
+
+  useEffect(() => {
+    if (!actionMenuSource) return;
+    window.setTimeout(() => actionMenuRefs.current[actionMenuIndex]?.focus(), 0);
+  }, [actionMenuIndex, actionMenuSource]);
 
   useEffect(() => {
     if (!deleteConfirmSource) return;
@@ -465,15 +622,26 @@ export function SourcesView({ locale }: Props) {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>{t(locale, "sources.section.importedSources")}</h3>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {(["all", "enabled", "disabled", "backoff", "error"] as SourceFilter[]).map((filter) => (
+              {(sourceFilterOrder as readonly SourceFilter[]).map((filter, index) => (
                 <button
                   key={filter}
                   type="button"
+                  ref={(node) => {
+                    filterChipRefs.current[index] = node;
+                  }}
+                  data-tv-focusable={focusTarget === "filter" && focusedFilterIndex === index ? "true" : undefined}
                   onClick={() => setSourceFilter(filter)}
+                  onFocus={() => {
+                    setFocusTarget("filter");
+                    setFocusedFilterIndex(index);
+                  }}
                   style={{
                     ...filterChipStyle,
                     backgroundColor: sourceFilter === filter ? "var(--accent)" : "var(--bg-tertiary)",
                     color: sourceFilter === filter ? "#fff" : "var(--text-primary)",
+                    ...(focusTarget === "filter" && focusedFilterIndex === index && isKeyboardContentActive
+                      ? filterChipActiveStyle
+                      : null),
                   }}
                 >
                   {t(locale, `sources.filter.${filter}`)}
@@ -491,7 +659,7 @@ export function SourcesView({ locale }: Props) {
                 <th style={thStyle}>{t(locale, "sources.table.importedOverview")}</th>
                 <th style={thStyle}>{t(locale, "sources.table.autoRefresh")}</th>
                 <th style={thStyle}>{t(locale, "sources.table.lastImport")}</th>
-                <th style={thStyle}>{t(locale, "sources.table.actions")}</th>
+                <th style={iconThStyle} aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
@@ -519,7 +687,7 @@ export function SourcesView({ locale }: Props) {
                   }}
                   onMouseEnter={() => setHoveredSourceId(s.id)}
                   onMouseLeave={() => setHoveredSourceId((prev) => (prev === s.id ? null : prev))}
-                  onDoubleClick={() => openEdit(s)}
+                  onDoubleClick={() => openActionMenu(s)}
                 >
                   <td style={tdStyle}>{s.name}</td>
                   <td style={tdStyle}>{s.kind.toUpperCase()}</td>
@@ -552,41 +720,18 @@ export function SourcesView({ locale }: Props) {
                       : "—"}
                   </td>
                   <td style={tdStyle}>{s.lastImportedAt ?? "—"}</td>
-                  <td style={tdStyle}>
+                  <td style={iconTdStyle}>
                     <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label={t(locale, "sources.action.openMenuAria")}
                       onClick={(event) => {
                         event.stopPropagation();
-                        void handleRefresh(s.id);
+                        openActionMenu(s);
                       }}
-                      disabled={loading || !s.enabled || isSourceInBackoff(s)}
-                      tabIndex={-1}
-                      style={{
-                        ...actionBtnStyle,
-                        opacity: s.enabled && !isSourceInBackoff(s) ? 1 : 0.5,
-                        cursor: s.enabled && !isSourceInBackoff(s) ? "pointer" : "not-allowed",
-                      }}
+                      style={iconTriggerButtonStyle}
                     >
-                      {t(locale, "sources.action.refresh")}
-                    </button>
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openEdit(s);
-                      }}
-                      tabIndex={-1}
-                      style={actionBtnStyle}
-                    >
-                      {t(locale, "sources.action.edit")}
-                    </button>
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openDeleteConfirm(s);
-                      }}
-                      tabIndex={-1}
-                      style={{ ...actionBtnStyle, color: "var(--danger)" }}
-                    >
-                      {t(locale, "sources.action.delete")}
+                      <Settings2 size={16} />
                     </button>
                   </td>
                 </tr>
@@ -606,8 +751,11 @@ export function SourcesView({ locale }: Props) {
       )}
 
       {showAddModal && (
-        <div style={modalOverlayStyle}>
-          <div style={modalCardStyle}>
+        <div style={modalOverlayStyle} onClick={() => {
+          setShowAddModal(false);
+          window.setTimeout(() => focusAddButton(), 0);
+        }}>
+          <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
             <h3 style={{ marginTop: 0, marginBottom: 12 }}>{t(locale, "sources.add.title")}</h3>
             <div style={{ display: "flex", gap: 0, marginBottom: 16 }}>
               {(["m3u", "xtream", "xmltv"] as ImportTab[]).map((tab) => (
@@ -687,26 +835,98 @@ export function SourcesView({ locale }: Props) {
         </div>
       )}
 
+      {actionMenuSource && (
+        <div style={modalOverlayStyle} onClick={closeActionMenu}>
+          <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
+            <div style={actionMenuHeaderStyle}>
+              <div>
+                <h3 style={{ margin: 0 }}>{t(locale, "sources.actionMenu.title", { name: actionMenuSource.name })}</h3>
+                <p style={actionMenuDescriptionStyle}>{t(locale, "sources.actionMenu.subtitle")}</p>
+              </div>
+            </div>
+            <div style={actionMenuMetaStyle}>
+              <div style={actionMenuMetaRowStyle}>
+                <span>{t(locale, "sources.table.type")}</span>
+                <strong>{actionMenuSource.kind.toUpperCase()}</strong>
+              </div>
+              <div style={actionMenuMetaRowStyle}>
+                <span>{t(locale, "sources.table.status")}</span>
+                <strong>{t(locale, `sources.status.${getSourceStatusKey(actionMenuSource)}`)}</strong>
+              </div>
+              <div style={actionMenuMetaRowStyle}>
+                <span>{t(locale, "sources.table.location")}</span>
+                <strong style={actionMenuMetaValueStyle}>{actionMenuSource.location}</strong>
+              </div>
+            </div>
+            <div style={actionMenuStackStyle}>
+              {sourceActionOrder.map((action, index) => {
+                const disabled =
+                  action === "refresh" && (loading || !actionMenuSource.enabled || isSourceInBackoff(actionMenuSource));
+                return (
+                  <button
+                    key={action}
+                    ref={(node) => {
+                      actionMenuRefs.current[index] = node;
+                    }}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => executeAction(actionMenuSource, action)}
+                    style={{
+                      ...actionMenuButtonStyle,
+                      ...(actionMenuIndex === index ? actionMenuButtonActiveStyle : null),
+                      ...(action === "delete" ? actionMenuDangerStyle : null),
+                      ...(disabled ? actionMenuDisabledStyle : null),
+                    }}
+                  >
+                    {t(locale, `sources.action.${action}`)}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={closeActionMenu}
+                style={{
+                  ...submitBtnStyle,
+                  backgroundColor: "var(--bg-tertiary)",
+                  color: "var(--text-primary)",
+                }}
+              >
+                {t(locale, "sources.edit.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteConfirmSource && (
-        <div style={modalOverlayStyle}>
-          <div style={modalCardStyle}>
+        <div style={modalOverlayStyle} onClick={closeDeleteConfirm}>
+          <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>{t(locale, "sources.deleteConfirm.title")}</h3>
             <p style={{ marginTop: 0, color: "var(--text-secondary)" }}>
               {t(locale, "sources.deleteConfirm.message", { name: deleteConfirmSource.name })}
             </p>
+            <div style={actionMenuMetaStyle}>
+              <div style={actionMenuMetaRowStyle}>
+                <span>{t(locale, "sources.table.type")}</span>
+                <strong>{deleteConfirmSource.kind.toUpperCase()}</strong>
+              </div>
+              <div style={actionMenuMetaRowStyle}>
+                <span>{t(locale, "sources.table.location")}</span>
+                <strong style={actionMenuMetaValueStyle}>{deleteConfirmSource.location}</strong>
+              </div>
+            </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button
                 ref={deleteCancelRef}
-                onClick={() => {
-                  setDeleteConfirmSource(null);
-                  focusAddButton();
-                }}
+                onClick={closeDeleteConfirm}
                 style={{
                   ...submitBtnStyle,
-                  backgroundColor:
-                    deleteConfirmAction === "cancel" ? "var(--bg-tertiary)" : "transparent",
+                  backgroundColor: "var(--bg-tertiary)",
                   color: "var(--text-primary)",
                   border: "1px solid var(--border)",
+                  ...(deleteConfirmAction === "cancel" ? dialogActionActiveStyle : null),
                 }}
               >
                 {t(locale, "sources.deleteConfirm.cancel")}
@@ -718,8 +938,8 @@ export function SourcesView({ locale }: Props) {
                 }}
                 style={{
                   ...submitBtnStyle,
-                  backgroundColor:
-                    deleteConfirmAction === "delete" ? "var(--danger)" : "#7f1d1d",
+                  backgroundColor: deleteConfirmAction === "delete" ? "var(--danger)" : "#7f1d1d",
+                  ...(deleteConfirmAction === "delete" ? dialogActionActiveStyle : null),
                 }}
               >
                 {t(locale, "sources.deleteConfirm.confirm")}
@@ -730,8 +950,8 @@ export function SourcesView({ locale }: Props) {
       )}
 
       {editing && (
-        <div style={modalOverlayStyle}>
-          <div style={modalCardStyle}>
+        <div style={modalOverlayStyle} onClick={closeEditModal}>
+          <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
             <h3 style={{ marginTop: 0, marginBottom: 12 }}>{t(locale, "sources.edit.title")}</h3>
             <label style={labelStyle}>
               {t(locale, "sources.edit.name")}
@@ -792,7 +1012,7 @@ export function SourcesView({ locale }: Props) {
             </label>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
               <button
-                onClick={() => setEditing(null)}
+                onClick={closeEditModal}
                 style={{ ...submitBtnStyle, backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)" }}
                 disabled={savingEdit}
               >
@@ -1104,18 +1324,25 @@ const thStyle: React.CSSProperties = {
   borderBottom: "1px solid var(--border)",
 };
 
+const iconThStyle: React.CSSProperties = {
+  ...thStyle,
+  width: 56,
+};
+
 const tdStyle: React.CSSProperties = {
   padding: "8px 12px",
   fontSize: 13,
 };
 
-const actionBtnStyle: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  color: "var(--accent)",
-  cursor: "pointer",
-  fontSize: 13,
-  marginRight: 8,
+const iconTdStyle: React.CSSProperties = {
+  ...tdStyle,
+  width: 56,
+  textAlign: "center",
+};
+
+const filterChipActiveStyle: React.CSSProperties = {
+  boxShadow: "inset 0 0 0 1px #fff",
+  outline: "none",
 };
 
 const filterChipStyle: React.CSSProperties = {
@@ -1124,6 +1351,92 @@ const filterChipStyle: React.CSSProperties = {
   border: "1px solid var(--border)",
   cursor: "pointer",
   fontSize: 12,
+};
+
+const actionMenuButtonStyle: React.CSSProperties = {
+  padding: "10px 16px",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  backgroundColor: "var(--bg-tertiary)",
+  color: "var(--text-primary)",
+  cursor: "pointer",
+  fontSize: 14,
+  width: "100%",
+  textAlign: "left",
+};
+
+const actionMenuButtonActiveStyle: React.CSSProperties = {
+  boxShadow: "inset 0 0 0 1px var(--accent)",
+  backgroundColor: "var(--bg-secondary)",
+};
+
+const actionMenuDangerStyle: React.CSSProperties = {
+  color: "var(--danger)",
+};
+
+const actionMenuDisabledStyle: React.CSSProperties = {
+  opacity: 0.5,
+  cursor: "not-allowed",
+};
+
+const actionMenuStackStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+};
+
+const actionMenuHeaderStyle: React.CSSProperties = {
+  marginBottom: 16,
+};
+
+const actionMenuDescriptionStyle: React.CSSProperties = {
+  margin: "8px 0 0",
+  color: "var(--text-secondary)",
+  lineHeight: 1.5,
+};
+
+const actionMenuMetaStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  marginBottom: 16,
+  padding: 12,
+  borderRadius: 10,
+  border: "1px solid var(--border)",
+  backgroundColor: "var(--bg-primary)",
+};
+
+const actionMenuMetaRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  color: "var(--text-secondary)",
+  fontSize: 13,
+};
+
+const actionMenuMetaValueStyle: React.CSSProperties = {
+  color: "var(--text-primary)",
+  maxWidth: 280,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const dialogActionActiveStyle: React.CSSProperties = {
+  boxShadow: "0 0 0 2px rgba(255,255,255,0.2), inset 0 0 0 1px #fff",
+};
+
+const iconTriggerButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 32,
+  height: 32,
+  borderRadius: 999,
+  border: "1px solid var(--border)",
+  backgroundColor: "var(--bg-tertiary)",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
 };
 
 const statusBadgeStyle: React.CSSProperties = {

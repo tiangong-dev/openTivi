@@ -61,7 +61,7 @@ export function useTvViewEvents({
 }: {
   views: ViewSpec;
   onFocusContent?: (event: CustomEvent<FocusContentDetail>) => void;
-  onContentKey?: (event: CustomEvent<TvContentKeyDetail>) => void;
+  onContentKey?: (event: CustomEvent<TvContentKeyDetail>) => boolean | void;
   onContentKeyUp?: (event: CustomEvent<TvContentKeyDetail>) => void;
 }) {
   const navigation = useNavigationState();
@@ -80,7 +80,9 @@ export function useTvViewEvents({
     if (onContentKey) {
       const listener = (detail: TvContentKeyDetail) => {
         if (!matchesView(views, detail?.view)) return;
-        return onContentKey(createSyntheticEvent(detail));
+        const event = createSyntheticEvent(detail);
+        const result = onContentKey(event);
+        return result === true || event.defaultPrevented;
       };
       removers.push(navigation.subscribeContentKey(listener));
     }

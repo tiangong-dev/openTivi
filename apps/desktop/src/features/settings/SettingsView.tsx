@@ -17,6 +17,7 @@ import {
 import { tauriInvoke } from "../../lib/tauri";
 import { TvIntent } from "../../lib/tvInput";
 import type { AppUpdateInfo, Setting } from "../../types/api";
+import { Button, Modal, Notice, PageView, Panel, SectionLabel } from "../../components/ui";
 
 interface Props {
   locale: Locale;
@@ -493,25 +494,15 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
   };
 
   return (
-    <div style={{ padding: 24, width: "100%", height: "100%", overflowY: "auto" }}>
-      {flash && <div style={flashStyle}>{t(locale, "settings.flash.saved")}</div>}
+    <PageView>
+      {flash ? <Notice>{t(locale, "settings.flash.saved")}</Notice> : null}
 
-      {error && <div style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div>}
-      <div style={hintStyle}>{t(locale, "settings.hint.tv")}</div>
+      {error ? <Notice tone="danger">{error}</Notice> : null}
+      <SectionLabel style={hintStyle}>{t(locale, "settings.hint.tv")}</SectionLabel>
 
       {settingCategories.map((cat) => (
-        <div key={cat.titleKey} style={{ marginBottom: 24 }}>
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--text-secondary)",
-              marginBottom: 8,
-              textTransform: "uppercase",
-              letterSpacing: 1,
-            }}
-          >
-            {t(locale, cat.titleKey)}
-          </div>
+        <Panel key={cat.titleKey} padding="var(--space-4)" style={{ marginBottom: "var(--space-2)" }}>
+          <SectionLabel style={{ marginBottom: "var(--space-2)" }}>{t(locale, cat.titleKey)}</SectionLabel>
           {cat.settings.map((def) => (
             <div
               key={def.key}
@@ -549,13 +540,12 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
               </div>
             </div>
           ))}
-          {cat.titleKey === "settings.update.title" && updateError ? <div style={{ color: "var(--danger)", marginTop: 8 }}>{updateError}</div> : null}
-        </div>
+          {cat.titleKey === "settings.update.title" && updateError ? <Notice tone="danger" style={{ marginTop: "var(--space-2)" }}>{updateError}</Notice> : null}
+        </Panel>
       ))}
 
       {editingSetting && (
-        <div style={modalOverlayStyle}>
-          <div style={modalCardStyle}>
+        <Modal width={480}>
             <h3 style={{ marginTop: 0, marginBottom: 12 }}>
               {t(locale, "settings.edit.title", { label: t(locale, editingSetting.labelKey) })}
             </h3>
@@ -565,51 +555,41 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
             {editingSetting.type === "range" ? (
               <>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
-                  <button
+                  <Button
                     ref={decreaseModalBtnRef}
                     type="button"
                     onClick={() => triggerSetting(editingSetting, -1)}
                     data-tv-focusable={editAction === "decrease" ? "true" : undefined}
-                    style={{
-                      ...modalActionBtnStyle,
-                      ...(editAction === "decrease" ? modalActionBtnActiveStyle : null),
-                    }}
+                    active={editAction === "decrease"}
                   >
                     {t(locale, "settings.edit.decrease")}
-                  </button>
+                  </Button>
                   <span style={{ minWidth: 140, textAlign: "center", color: "var(--accent)", fontWeight: 600 }}>
                     {displaySettingValue(editingSetting)}
                   </span>
-                  <button
+                  <Button
                     ref={increaseModalBtnRef}
                     type="button"
                     onClick={() => triggerSetting(editingSetting, 1)}
                     data-tv-focusable={editAction === "increase" ? "true" : undefined}
-                    style={{
-                      ...modalActionBtnStyle,
-                      ...(editAction === "increase" ? modalActionBtnActiveStyle : null),
-                    }}
+                    active={editAction === "increase"}
                   >
                     {t(locale, "settings.edit.increase")}
-                  </button>
+                  </Button>
                 </div>
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-                  <button
+                  <Button
                     ref={closeModalBtnRef}
                     type="button"
                     onClick={() => {
                       closeEditingSetting(editingSetting.key);
                     }}
                     data-tv-focusable={editAction === "done" ? "true" : undefined}
-                    style={{
-                      ...modalActionBtnStyle,
-                      backgroundColor: "var(--bg-tertiary)",
-                      color: "var(--text-primary)",
-                      ...(editAction === "done" ? modalActionBtnActiveStyle : null),
-                    }}
+                    variant="secondary"
+                    active={editAction === "done"}
                   >
                     {t(locale, "settings.edit.done")}
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : (
@@ -619,7 +599,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
                     || (editingSetting.type === "toggle" && String(Boolean(getValue(editingSetting))) === option.value);
                   const active = editOptionIndex === index;
                   return (
-                    <button
+                    <Button
                       key={option.value}
                       type="button"
                       data-setting-option-index={index}
@@ -629,23 +609,23 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
                         void saveSetting(editingSetting.key, nextValue);
                         closeEditingSetting(editingSetting.key);
                       }}
+                      variant="secondary"
+                      active={active}
                       style={{
                         ...modalOptionStyle,
                         ...(selected ? modalOptionSelectedStyle : null),
-                        ...(active ? modalOptionActiveStyle : null),
                       }}
                     >
                       <span style={modalRadioStyle}>{selected ? "●" : "○"}</span>
                       <span>{option.label}</span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
-    </div>
+    </PageView>
   );
 }
 
@@ -682,49 +662,12 @@ const hintStyle: React.CSSProperties = {
   marginBottom: 12,
 };
 
-const modalOverlayStyle: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  backgroundColor: "rgba(0,0,0,0.45)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 1000,
-};
-
-const modalCardStyle: React.CSSProperties = {
-  width: 480,
-  maxWidth: "90vw",
-  backgroundColor: "var(--bg-secondary)",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  padding: 16,
-};
-
-const modalActionBtnStyle: React.CSSProperties = {
-  padding: "8px 14px",
-  borderRadius: 4,
-  border: "1px solid var(--border)",
-  backgroundColor: "var(--accent)",
-  color: "#fff",
-  cursor: "pointer",
-};
-
-const modalActionBtnActiveStyle: React.CSSProperties = {
-  boxShadow: "inset 0 0 0 1px #fff",
-};
-
 const modalOptionStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 10,
   width: "100%",
-  padding: "10px 12px",
-  borderRadius: 6,
-  border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-primary)",
-  color: "var(--text-primary)",
-  cursor: "pointer",
+  justifyContent: "flex-start",
   textAlign: "left",
 };
 
@@ -732,23 +675,8 @@ const modalOptionSelectedStyle: React.CSSProperties = {
   color: "var(--accent)",
 };
 
-const modalOptionActiveStyle: React.CSSProperties = {
-  backgroundColor: "var(--bg-tertiary)",
-  boxShadow: "inset 0 0 0 1px var(--accent)",
-};
-
 const modalRadioStyle: React.CSSProperties = {
   width: 16,
   color: "var(--accent)",
   fontSize: 14,
-};
-
-const flashStyle: React.CSSProperties = {
-  backgroundColor: "var(--accent)",
-  color: "#fff",
-  padding: "6px 12px",
-  borderRadius: 4,
-  fontSize: 13,
-  marginBottom: 12,
-  textAlign: "center",
 };

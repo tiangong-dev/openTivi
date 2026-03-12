@@ -7,6 +7,7 @@ import { t, type Locale } from "../../lib/i18n";
 import { useTvViewEvents, useViewActivity } from "../../lib/tvEvents";
 import { TvIntent } from "../../lib/tvInput";
 import type { Source, ImportSummary } from "../../types/api";
+import { Badge, Button, ChipButton, EmptyState, Field, Modal, Notice, PageView, Panel, TextInput } from "../../components/ui";
 
 type ImportTab = "m3u" | "xtream" | "xmltv";
 type SourceFocusTarget = "add" | "filter" | "list";
@@ -584,46 +585,31 @@ export function SourcesView({ locale }: Props) {
   }, [m3uSources]);
 
   return (
-    <div style={{ padding: 24 }}>
+    <PageView style={{ height: "auto" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>{t(locale, "sources.title")}</h2>
-        <button
+        <Button
           ref={addButtonRef}
           type="button"
           data-tv-focusable={focusTarget === "add" ? "true" : undefined}
           onFocus={() => setFocusTarget("add")}
           onClick={() => setShowAddModal(true)}
-          style={{
-            ...submitBtnStyle,
-            alignSelf: "auto",
-            backgroundColor: focusTarget === "add" && isKeyboardContentActive ? "var(--accent-hover)" : "var(--accent)",
-          }}
+          active={focusTarget === "add" && isKeyboardContentActive}
+          style={{ alignSelf: "auto" }}
         >
           + {t(locale, "sources.action.add")}
-        </button>
+        </Button>
       </div>
 
-      {message && (
-        <div
-          style={{
-            padding: "8px 12px",
-            marginBottom: 16,
-            borderRadius: 4,
-            backgroundColor: message.type === "ok" ? "#065f4620" : "#ef444420",
-            color: message.type === "ok" ? "#4ade80" : "#ef4444",
-          }}
-        >
-          {message.text}
-        </div>
-      )}
+      {message ? <Notice tone={message.type === "ok" ? "success" : "danger"}>{message.text}</Notice> : null}
 
       {sources.length > 0 ? (
-        <div style={{ marginTop: 8 }}>
+        <Panel padding="var(--space-4)" style={{ marginTop: 8 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>{t(locale, "sources.section.importedSources")}</h3>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {(sourceFilterOrder as readonly SourceFilter[]).map((filter, index) => (
-                <button
+                <ChipButton
                   key={filter}
                   type="button"
                   ref={(node) => {
@@ -635,17 +621,10 @@ export function SourcesView({ locale }: Props) {
                     setFocusTarget("filter");
                     setFocusedFilterIndex(index);
                   }}
-                  style={{
-                    ...filterChipStyle,
-                    backgroundColor: sourceFilter === filter ? "var(--accent)" : "var(--bg-tertiary)",
-                    color: sourceFilter === filter ? "#fff" : "var(--text-primary)",
-                    ...(focusTarget === "filter" && focusedFilterIndex === index && isKeyboardContentActive
-                      ? filterChipActiveStyle
-                      : null),
-                  }}
+                  active={sourceFilter === filter || (focusTarget === "filter" && focusedFilterIndex === index && isKeyboardContentActive)}
                 >
                   {t(locale, `sources.filter.${filter}`)}
-                </button>
+                </ChipButton>
               ))}
             </div>
           </div>
@@ -693,9 +672,9 @@ export function SourcesView({ locale }: Props) {
                   <td style={tdStyle}>{s.kind.toUpperCase()}</td>
                   <td style={{ ...tdStyle, minWidth: 240 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ ...statusBadgeStyle, ...getSourceStatusStyle(s) }}>
+                      <Badge tone={getSourceStatusTone(s)} style={statusBadgeStyle}>
                         {t(locale, `sources.status.${getSourceStatusKey(s)}`)}
-                      </span>
+                      </Badge>
                       <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
                         {describeSourceStatus(s, locale)}
                       </span>
@@ -739,43 +718,33 @@ export function SourcesView({ locale }: Props) {
             </tbody>
           </table>
           {filteredSources.length === 0 ? (
-            <div style={{ color: "var(--text-secondary)", marginTop: 16 }}>
-              {t(locale, "sources.filter.empty")}
-            </div>
+            <EmptyState description={t(locale, "sources.filter.empty")} style={{ padding: "var(--space-4) 0 0" }} />
           ) : null}
-        </div>
+        </Panel>
       ) : (
-        <div style={{ color: "var(--text-secondary)", marginTop: 24 }}>
-          {t(locale, "sources.empty")}
-        </div>
+        <EmptyState description={t(locale, "sources.empty")} />
       )}
 
       {showAddModal && (
-        <div style={modalOverlayStyle} onClick={() => {
+        <Modal onDismiss={() => {
           setShowAddModal(false);
           window.setTimeout(() => focusAddButton(), 0);
         }}>
-          <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
             <h3 style={{ marginTop: 0, marginBottom: 12 }}>{t(locale, "sources.add.title")}</h3>
             <div style={{ display: "flex", gap: 0, marginBottom: 16 }}>
               {(["m3u", "xtream", "xmltv"] as ImportTab[]).map((tab) => (
-                <button
+                <Button
                   key={tab}
                   ref={(node) => {
                     addTabRefs.current[tab] = node;
                   }}
                   onClick={() => setActiveTab(tab)}
-                  style={{
-                    padding: "8px 16px",
-                    border: "1px solid var(--border)",
-                    backgroundColor: activeTab === tab ? "var(--accent)" : "var(--bg-tertiary)",
-                    color: "var(--text-primary)",
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
+                  variant={activeTab === tab ? "primary" : "secondary"}
+                  size="sm"
+                  style={{ borderRadius: 0 }}
                 >
                   {tab === "m3u" ? "M3U" : tab === "xtream" ? t(locale, "sources.tab.xtream") : "XMLTV EPG"}
-                </button>
+                </Button>
               ))}
             </div>
             {activeTab === "m3u" && (
@@ -821,23 +790,21 @@ export function SourcesView({ locale }: Props) {
               />
             )}
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-              <button
+              <Button
                 onClick={() => {
                   setShowAddModal(false);
                   focusAddButton();
                 }}
-                style={{ ...submitBtnStyle, backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)" }}
+                variant="secondary"
               >
                 {t(locale, "sources.edit.cancel")}
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {actionMenuSource && (
-        <div style={modalOverlayStyle} onClick={closeActionMenu}>
-          <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
+        <Modal onDismiss={closeActionMenu}>
             <div style={actionMenuHeaderStyle}>
               <div>
                 <h3 style={{ margin: 0 }}>{t(locale, "sources.actionMenu.title", { name: actionMenuSource.name })}</h3>
@@ -863,7 +830,7 @@ export function SourcesView({ locale }: Props) {
                 const disabled =
                   action === "refresh" && (loading || !actionMenuSource.enabled || isSourceInBackoff(actionMenuSource));
                 return (
-                  <button
+                  <Button
                     key={action}
                     ref={(node) => {
                       actionMenuRefs.current[index] = node;
@@ -871,38 +838,32 @@ export function SourcesView({ locale }: Props) {
                     type="button"
                     disabled={disabled}
                     onClick={() => executeAction(actionMenuSource, action)}
+                    variant={action === "delete" ? "danger" : "secondary"}
+                    active={actionMenuIndex === index}
                     style={{
                       ...actionMenuButtonStyle,
-                      ...(actionMenuIndex === index ? actionMenuButtonActiveStyle : null),
-                      ...(action === "delete" ? actionMenuDangerStyle : null),
                       ...(disabled ? actionMenuDisabledStyle : null),
                     }}
                   >
                     {t(locale, `sources.action.${action}`)}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-              <button
+              <Button
                 type="button"
                 onClick={closeActionMenu}
-                style={{
-                  ...submitBtnStyle,
-                  backgroundColor: "var(--bg-tertiary)",
-                  color: "var(--text-primary)",
-                }}
+                variant="secondary"
               >
                 {t(locale, "sources.edit.cancel")}
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {deleteConfirmSource && (
-        <div style={modalOverlayStyle} onClick={closeDeleteConfirm}>
-          <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
+        <Modal onDismiss={closeDeleteConfirm}>
             <h3 style={{ marginTop: 0 }}>{t(locale, "sources.deleteConfirm.title")}</h3>
             <p style={{ marginTop: 0, color: "var(--text-secondary)" }}>
               {t(locale, "sources.deleteConfirm.message", { name: deleteConfirmSource.name })}
@@ -918,89 +879,56 @@ export function SourcesView({ locale }: Props) {
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button
+              <Button
                 ref={deleteCancelRef}
                 onClick={closeDeleteConfirm}
-                style={{
-                  ...submitBtnStyle,
-                  backgroundColor: "var(--bg-tertiary)",
-                  color: "var(--text-primary)",
-                  border: "1px solid var(--border)",
-                  ...(deleteConfirmAction === "cancel" ? dialogActionActiveStyle : null),
-                }}
+                variant="secondary"
+                active={deleteConfirmAction === "cancel"}
               >
                 {t(locale, "sources.deleteConfirm.cancel")}
-              </button>
-              <button
+              </Button>
+              <Button
                 ref={deleteConfirmRef}
                 onClick={() => {
                   void executeDeleteConfirmed();
                 }}
-                style={{
-                  ...submitBtnStyle,
-                  backgroundColor: deleteConfirmAction === "delete" ? "var(--danger)" : "#7f1d1d",
-                  ...(deleteConfirmAction === "delete" ? dialogActionActiveStyle : null),
-                }}
+                variant="danger"
+                active={deleteConfirmAction === "delete"}
               >
                 {t(locale, "sources.deleteConfirm.confirm")}
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {editing && (
-        <div style={modalOverlayStyle} onClick={closeEditModal}>
-          <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
+        <Modal onDismiss={closeEditModal}>
             <h3 style={{ marginTop: 0, marginBottom: 12 }}>{t(locale, "sources.edit.title")}</h3>
-            <label style={labelStyle}>
-              {t(locale, "sources.edit.name")}
-              <input
-                style={inputStyle}
-                value={editing.name}
-                onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-              />
-            </label>
-            <label style={labelStyle}>
-              {t(locale, "sources.edit.location")}
-              <input
-                style={inputStyle}
-                value={editing.location}
-                onChange={(e) => setEditing({ ...editing, location: e.target.value })}
-              />
-            </label>
+            <Field label={t(locale, "sources.edit.name")}>
+              <TextInput value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+            </Field>
+            <Field label={t(locale, "sources.edit.location")}>
+              <TextInput value={editing.location} onChange={(e) => setEditing({ ...editing, location: e.target.value })} />
+            </Field>
             {editing.kind === "xtream" && (
               <>
-                <label style={labelStyle}>
-                  {t(locale, "sources.edit.username")}
-                  <input
-                    style={inputStyle}
-                    value={editing.username}
-                    onChange={(e) => setEditing({ ...editing, username: e.target.value })}
-                  />
-                </label>
-                <label style={labelStyle}>
-                  {t(locale, "sources.edit.password")}
-                  <input
-                    style={inputStyle}
-                    type="password"
-                    value={editing.password}
-                    onChange={(e) => setEditing({ ...editing, password: e.target.value })}
-                  />
-                </label>
+                <Field label={t(locale, "sources.edit.username")}>
+                  <TextInput value={editing.username} onChange={(e) => setEditing({ ...editing, username: e.target.value })} />
+                </Field>
+                <Field label={t(locale, "sources.edit.password")}>
+                  <TextInput type="password" value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} />
+                </Field>
               </>
             )}
             {editing.kind === "m3u" && (
-              <label style={labelStyle}>
-                {t(locale, "sources.edit.autoRefreshInterval")}
-                <input
-                  style={inputStyle}
+              <Field label={t(locale, "sources.edit.autoRefreshInterval")}>
+                <TextInput
                   type="number"
                   min={1}
                   value={editing.autoRefreshMinutes}
                   onChange={(e) => setEditing({ ...editing, autoRefreshMinutes: e.target.value })}
                 />
-              </label>
+              </Field>
             )}
             <label style={{ ...labelStyle, flexDirection: "row", alignItems: "center", gap: 8 }}>
               <input
@@ -1011,21 +939,20 @@ export function SourcesView({ locale }: Props) {
               {t(locale, "sources.edit.enabled")}
             </label>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-              <button
+              <Button
                 onClick={closeEditModal}
-                style={{ ...submitBtnStyle, backgroundColor: "var(--bg-tertiary)", color: "var(--text-primary)" }}
+                variant="secondary"
                 disabled={savingEdit}
               >
                 {t(locale, "sources.edit.cancel")}
-              </button>
-              <button onClick={handleSaveEdit} style={submitBtnStyle} disabled={savingEdit}>
+              </Button>
+              <Button onClick={handleSaveEdit} disabled={savingEdit}>
                 {savingEdit ? t(locale, "sources.edit.saving") : t(locale, "sources.edit.save")}
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
-    </div>
+    </PageView>
   );
 }
 
@@ -1080,34 +1007,29 @@ function M3uForm({ locale, loading, setLoading, onDone, onError, firstInputRef }
 
   return (
     <form onSubmit={handleSubmit} style={formStyle}>
-      <label style={labelStyle}>
-        {t(locale, "sources.form.name")}
-        <input
+      <Field label={t(locale, "sources.form.name")}>
+        <TextInput
           ref={firstInputRef}
-          style={inputStyle}
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t(locale, "sources.form.m3uNamePlaceholder")}
         />
-      </label>
-      <label style={labelStyle}>
-        {t(locale, "sources.form.m3uLocation")}
-        <input style={inputStyle} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="http://example.com/playlist.m3u" />
-      </label>
-      <label style={labelStyle}>
-        {t(locale, "sources.form.autoRefreshInterval")}
-        <input
-          style={inputStyle}
+      </Field>
+      <Field label={t(locale, "sources.form.m3uLocation")}>
+        <TextInput value={location} onChange={(e) => setLocation(e.target.value)} placeholder="http://example.com/playlist.m3u" />
+      </Field>
+      <Field label={t(locale, "sources.form.autoRefreshInterval")}>
+        <TextInput
           value={autoRefreshMinutes}
           onChange={(e) => setAutoRefreshMinutes(e.target.value)}
           placeholder={t(locale, "sources.form.autoRefreshPlaceholder")}
           type="number"
           min={1}
         />
-      </label>
-      <button type="submit" disabled={loading} style={submitBtnStyle}>
+      </Field>
+      <Button type="submit" disabled={loading}>
         {loading ? t(locale, "sources.form.importing") : t(locale, "sources.form.importM3u")}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -1140,31 +1062,26 @@ function XtreamForm({ locale, loading, setLoading, onDone, onError, firstInputRe
 
   return (
     <form onSubmit={handleSubmit} style={formStyle}>
-      <label style={labelStyle}>
-        {t(locale, "sources.form.name")}
-        <input
+      <Field label={t(locale, "sources.form.name")}>
+        <TextInput
           ref={firstInputRef}
-          style={inputStyle}
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t(locale, "sources.form.xtreamNamePlaceholder")}
         />
-      </label>
-      <label style={labelStyle}>
-        {t(locale, "sources.form.serverUrl")}
-        <input style={inputStyle} value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="http://example.com:8080" />
-      </label>
-      <label style={labelStyle}>
-        {t(locale, "sources.form.username")}
-        <input style={inputStyle} value={username} onChange={(e) => setUsername(e.target.value)} />
-      </label>
-      <label style={labelStyle}>
-        {t(locale, "sources.form.password")}
-        <input style={inputStyle} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-      </label>
-      <button type="submit" disabled={loading} style={submitBtnStyle}>
+      </Field>
+      <Field label={t(locale, "sources.form.serverUrl")}>
+        <TextInput value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="http://example.com:8080" />
+      </Field>
+      <Field label={t(locale, "sources.form.username")}>
+        <TextInput value={username} onChange={(e) => setUsername(e.target.value)} />
+      </Field>
+      <Field label={t(locale, "sources.form.password")}>
+        <TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </Field>
+      <Button type="submit" disabled={loading}>
         {loading ? t(locale, "sources.form.importing") : t(locale, "sources.form.importXtream")}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -1191,23 +1108,20 @@ function XmltvForm({ locale, loading, setLoading, onDone, onError, firstInputRef
 
   return (
     <form onSubmit={handleSubmit} style={formStyle}>
-      <label style={labelStyle}>
-        {t(locale, "sources.form.name")}
-        <input
+      <Field label={t(locale, "sources.form.name")}>
+        <TextInput
           ref={firstInputRef}
-          style={inputStyle}
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t(locale, "sources.form.xmltvNamePlaceholder")}
         />
-      </label>
-      <label style={labelStyle}>
-        {t(locale, "sources.form.xmltvLocation")}
-        <input style={inputStyle} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="http://example.com/epg.xml" />
-      </label>
-      <button type="submit" disabled={loading} style={submitBtnStyle}>
+      </Field>
+      <Field label={t(locale, "sources.form.xmltvLocation")}>
+        <TextInput value={location} onChange={(e) => setLocation(e.target.value)} placeholder="http://example.com/epg.xml" />
+      </Field>
+      <Button type="submit" disabled={loading}>
         {loading ? t(locale, "sources.form.importing") : t(locale, "sources.form.importXmltv")}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -1246,18 +1160,18 @@ function getSourceStatusKey(source: Source): "disabled" | "backoff" | "error" | 
   return "healthy";
 }
 
-function getSourceStatusStyle(source: Source): React.CSSProperties {
+function getSourceStatusTone(source: Source): "default" | "warning" | "danger" | "success" {
   const status = getSourceStatusKey(source);
   if (status === "disabled") {
-    return { backgroundColor: "#374151", color: "#e5e7eb" };
+    return "default";
   }
   if (status === "backoff") {
-    return { backgroundColor: "#78350f", color: "#fde68a" };
+    return "warning";
   }
   if (status === "error") {
-    return { backgroundColor: "#7f1d1d", color: "#fecaca" };
+    return "danger";
   }
-  return { backgroundColor: "#14532d", color: "#bbf7d0" };
+  return "success";
 }
 
 function describeSourceStatus(source: Source, locale: Locale): string {
@@ -1299,26 +1213,6 @@ const labelStyle: React.CSSProperties = {
   color: "var(--text-secondary)",
 };
 
-const inputStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  backgroundColor: "var(--bg-tertiary)",
-  border: "1px solid var(--border)",
-  borderRadius: 4,
-  color: "var(--text-primary)",
-  fontSize: 14,
-};
-
-const submitBtnStyle: React.CSSProperties = {
-  padding: "8px 16px",
-  backgroundColor: "var(--accent)",
-  border: "none",
-  borderRadius: 4,
-  color: "#fff",
-  fontSize: 14,
-  cursor: "pointer",
-  alignSelf: "flex-start",
-};
-
 const thStyle: React.CSSProperties = {
   padding: "8px 12px",
   borderBottom: "1px solid var(--border)",
@@ -1340,38 +1234,10 @@ const iconTdStyle: React.CSSProperties = {
   textAlign: "center",
 };
 
-const filterChipActiveStyle: React.CSSProperties = {
-  boxShadow: "inset 0 0 0 1px #fff",
-  outline: "none",
-};
-
-const filterChipStyle: React.CSSProperties = {
-  padding: "6px 10px",
-  borderRadius: 999,
-  border: "1px solid var(--border)",
-  cursor: "pointer",
-  fontSize: 12,
-};
-
 const actionMenuButtonStyle: React.CSSProperties = {
-  padding: "10px 16px",
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-tertiary)",
-  color: "var(--text-primary)",
-  cursor: "pointer",
-  fontSize: 14,
   width: "100%",
   textAlign: "left",
-};
-
-const actionMenuButtonActiveStyle: React.CSSProperties = {
-  boxShadow: "inset 0 0 0 1px var(--accent)",
-  backgroundColor: "var(--bg-secondary)",
-};
-
-const actionMenuDangerStyle: React.CSSProperties = {
-  color: "var(--danger)",
+  justifyContent: "flex-start",
 };
 
 const actionMenuDisabledStyle: React.CSSProperties = {
@@ -1422,10 +1288,6 @@ const actionMenuMetaValueStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const dialogActionActiveStyle: React.CSSProperties = {
-  boxShadow: "0 0 0 2px rgba(255,255,255,0.2), inset 0 0 0 1px #fff",
-};
-
 const iconTriggerButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -1439,40 +1301,9 @@ const iconTriggerButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const statusBadgeStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "2px 8px",
-  borderRadius: 999,
-  fontSize: 11,
-  fontWeight: 600,
-};
+const statusBadgeStyle: React.CSSProperties = {};
 
 const sourceRowActiveStyle: React.CSSProperties = {
   backgroundColor: "var(--bg-tertiary)",
   boxShadow: "inset 0 0 0 1px var(--accent)",
-};
-
-const modalOverlayStyle: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  backgroundColor: "rgba(0,0,0,0.45)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 1000,
-};
-
-const modalCardStyle: React.CSSProperties = {
-  width: 520,
-  maxWidth: "90vw",
-  maxHeight: "90vh",
-  overflowY: "auto",
-  backgroundColor: "var(--bg-secondary)",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  padding: 16,
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
 };

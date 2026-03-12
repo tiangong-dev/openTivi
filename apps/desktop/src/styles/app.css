@@ -1,18 +1,11 @@
-:root {
-  --bg-primary: #0f0f0f;
-  --bg-secondary: #1a1a1a;
-  --bg-tertiary: #252525;
-  --text-primary: #e0e0e0;
-  --text-secondary: #999;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --border: #333;
-  --danger: #ef4444;
-}
-
 body {
+  background:
+    radial-gradient(circle at top, rgba(45, 140, 255, 0.12), transparent 34%),
+    linear-gradient(180deg, #0b1420 0%, var(--color-bg-canvas) 52%);
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-normal);
 }
 
 #root {
@@ -23,7 +16,12 @@ body {
 
 button,
 [role="button"] {
-  transition: background-color 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  font: inherit;
+  transition:
+    background-color var(--duration-fast) var(--easing-standard),
+    box-shadow var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard),
+    filter var(--duration-fast) var(--easing-standard);
 }
 
 button:hover:not(:disabled) {

@@ -3,6 +3,7 @@ import { tauriInvoke } from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/errors";
 import { t, type Locale } from "../../lib/i18n";
 import type { Channel } from "../../types/api";
+import { EmptyState, Notice, PageView, SectionLabel } from "../../components/ui";
 import { ChannelRowsWithGuide } from "../channels/ChannelRowsWithGuide";
 
 interface Props {
@@ -36,17 +37,21 @@ export function FavoritesView({ locale, onPlay }: Props) {
   };
 
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
+    <PageView style={{ gap: "var(--space-2)" }}>
+      <SectionLabel style={{ marginBottom: 0 }}>
         {t(locale, "favorites.title")} · {channels.length} {t(locale, "favorites.channelsUnit")}
-      </div>
+      </SectionLabel>
 
-      {error && <div style={{ color: "var(--danger)", marginBottom: 8 }}>{error}</div>}
+      {error ? <Notice tone="danger">{error}</Notice> : null}
 
       {channels.length === 0 && !error && (
-        <div style={{ color: "var(--text-secondary)", marginTop: 24, textAlign: "center" }}>
-          {t(locale, "favorites.emptyPrefix")}<b>{t(locale, "favorites.emptyChannels")}</b>{t(locale, "favorites.emptySuffix")}
-        </div>
+        <EmptyState
+          description={(
+            <>
+              {t(locale, "favorites.emptyPrefix")}<b>{t(locale, "favorites.emptyChannels")}</b>{t(locale, "favorites.emptySuffix")}
+            </>
+          )}
+        />
       )}
 
       <div style={{ flex: 1, overflowY: "auto" }}>
@@ -59,6 +64,6 @@ export function FavoritesView({ locale, onPlay }: Props) {
           active
         />
       </div>
-    </div>
+    </PageView>
   );
 }

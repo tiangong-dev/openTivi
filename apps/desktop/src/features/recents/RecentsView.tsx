@@ -4,6 +4,7 @@ import { getErrorMessage } from "../../lib/errors";
 import { t, type Locale } from "../../lib/i18n";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel, RecentChannel } from "../../types/api";
+import { EmptyState, Notice, PageView } from "../../components/ui";
 import { ChannelRowsWithGuide } from "../channels/ChannelRowsWithGuide";
 
 interface Props {
@@ -37,13 +38,11 @@ export function RecentsView({ locale, onPlay }: Props) {
   };
 
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
+    <PageView style={{ gap: "var(--space-3)" }}>
       <h2 style={{ margin: 0 }}>{t(locale, "recents.title")}</h2>
-      {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
+      {error ? <Notice tone="danger">{error}</Notice> : null}
       {!error && items.length === 0 && (
-        <div style={{ color: "var(--text-secondary)" }}>
-          {t(locale, "recents.empty")}
-        </div>
+        <EmptyState description={t(locale, "recents.empty")} style={{ paddingTop: "var(--space-4)" }} />
       )}
       <div style={{ flex: 1, overflowY: "auto" }}>
         <ChannelRowsWithGuide
@@ -60,7 +59,7 @@ export function RecentsView({ locale, onPlay }: Props) {
           )}
         />
       </div>
-    </div>
+    </PageView>
   );
 }
 

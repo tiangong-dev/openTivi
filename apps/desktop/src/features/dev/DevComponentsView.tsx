@@ -5,6 +5,15 @@ import { useIndexFocusGroup } from "../../lib/focusScope";
 import { t, type Locale } from "../../lib/i18n";
 import { useTvViewEvents, useViewActivity } from "../../lib/tvEvents";
 import { TvIntent } from "../../lib/tvInput";
+import {
+  colorTokens,
+  elevationTokens,
+  radiusTokens,
+  spacingTokens,
+  typographyTokens,
+  type DesignTokenItem,
+} from "../../styles/designTokens";
+import { Badge, Button, ChipButton, Modal, Notice, Panel } from "../../components/ui";
 
 interface Props {
   locale: Locale;
@@ -216,6 +225,16 @@ export function DevComponentsView({ locale }: Props) {
         </div>
       </Section>
 
+      <Section title="Design Tokens">
+        <div style={tokenSectionStackStyle}>
+          <TokenGroup title="Colors" tokens={colorTokens} swatch />
+          <TokenGroup title="Typography" tokens={typographyTokens} />
+          <TokenGroup title="Radius" tokens={radiusTokens} preview="radius" />
+          <TokenGroup title="Spacing" tokens={spacingTokens} preview="spacing" />
+          <TokenGroup title="Elevation" tokens={elevationTokens} preview="shadow" />
+        </div>
+      </Section>
+
       <Section title={t(locale, "devComponents.section.chips")}>
         <div style={rowStyle}>
           <DemoButton
@@ -244,8 +263,8 @@ export function DevComponentsView({ locale }: Props) {
 
       <Section title={t(locale, "devComponents.section.status")}>
         <div style={stackStyle}>
-          <div style={bannerSuccessStyle}>{t(locale, "sources.message.sourceUpdated")}</div>
-          <div style={bannerErrorStyle}>{t(locale, "sources.status.lastError", { error: "HTTP 404" })}</div>
+          <Notice tone="success" style={bannerSuccessStyle}>{t(locale, "sources.message.sourceUpdated")}</Notice>
+          <Notice tone="danger" style={bannerErrorStyle}>{t(locale, "sources.status.lastError", { error: "HTTP 404" })}</Notice>
           <div style={rowStyle}>
             <StatusBadge style={healthyBadgeStyle}>{t(locale, "sources.status.healthy")}</StatusBadge>
             <StatusBadge style={backoffBadgeStyle}>{t(locale, "sources.status.backoff")}</StatusBadge>
@@ -295,8 +314,7 @@ export function DevComponentsView({ locale }: Props) {
       </Section>
 
       {showModal ? (
-        <div style={overlayStyle} onClick={closeModal}>
-          <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
+        <Modal onDismiss={closeModal} style={modalCardStyle}>
             <div style={modalHeaderStyle}>
               <div>
                 <div style={modalTitleStyle}>{t(locale, "devComponents.modal.title")}</div>
@@ -349,8 +367,7 @@ export function DevComponentsView({ locale }: Props) {
                 onClick={closeModal}
               />
             </div>
-          </div>
-        </div>
+        </Modal>
       ) : null}
     </div>
   );
@@ -375,23 +392,41 @@ function DemoButton({
   onClick?: () => void;
   children?: ReactNode;
 }) {
+  const isChip = style === chipStyle || style === chipActiveStyle;
+
   return (
-    <button
-      ref={(node) => {
-        refMap.current[id] = node;
-      }}
-      type="button"
-      data-tv-focusable={active ? "true" : undefined}
-      onFocus={() => undefined}
-      onClick={onClick}
-      aria-label={iconOnly ? label : undefined}
-      style={{
-        ...(style ?? primaryButtonStyle),
-        ...(active ? focusRingStyle : null),
-      }}
-    >
-      {children ?? label}
-    </button>
+    isChip ? (
+      <ChipButton
+        ref={(node) => {
+          refMap.current[id] = node;
+        }}
+        type="button"
+        data-tv-focusable={active ? "true" : undefined}
+        onFocus={() => undefined}
+        onClick={onClick}
+        aria-label={iconOnly ? label : undefined}
+        active={active || style === chipActiveStyle}
+      >
+        {children ?? label}
+      </ChipButton>
+    ) : (
+      <Button
+        ref={(node) => {
+          refMap.current[id] = node;
+        }}
+        type="button"
+        data-tv-focusable={active ? "true" : undefined}
+        onFocus={() => undefined}
+        onClick={onClick}
+        aria-label={iconOnly ? label : undefined}
+        variant={style === secondaryButtonStyle ? "secondary" : style === dangerButtonStyle ? "danger" : "primary"}
+        size={iconOnly ? "icon" : "md"}
+        active={active}
+        style={style === secondaryButtonStyle || style === dangerButtonStyle || style === primaryButtonStyle ? undefined : style}
+      >
+        {children ?? label}
+      </Button>
+    )
   );
 }
 
@@ -413,30 +448,67 @@ function ModalButton({
   children?: ReactNode;
 }) {
   return (
-    <button
+    <Button
       ref={(node) => {
         refMap.current[id] = node;
       }}
       type="button"
       data-tv-focusable={active ? "true" : undefined}
       onClick={onClick}
+      variant={style === dangerButtonStyle ? "danger" : style === secondaryButtonStyle ? "secondary" : "secondary"}
+      active={active}
       style={{
-        ...(style ?? secondaryButtonStyle),
-        ...(active ? focusRingStyle : null),
+        ...(style === dangerButtonStyle || style === secondaryButtonStyle ? undefined : style),
+        justifyContent: "flex-start",
+        width: "100%",
       }}
     >
       {children ?? label}
       {children ? <span>{label}</span> : null}
-    </button>
+    </Button>
   );
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section style={sectionStyle}>
+    <Panel as="section" style={sectionStyle}>
       <h3 style={sectionTitleStyle}>{title}</h3>
       {children}
-    </section>
+    </Panel>
+  );
+}
+
+function TokenGroup({
+  title,
+  tokens,
+  swatch = false,
+  preview,
+}: {
+  title: string;
+  tokens: DesignTokenItem[];
+  swatch?: boolean;
+  preview?: "radius" | "spacing" | "shadow";
+}) {
+  return (
+    <div style={tokenGroupStyle}>
+      <div style={tokenGroupHeaderStyle}>
+        <h4 style={tokenGroupTitleStyle}>{title}</h4>
+        <span style={tokenGroupCountStyle}>{tokens.length} tokens</span>
+      </div>
+      <div style={tokenGridStyle}>
+        {tokens.map((token) => (
+          <div key={token.name} style={tokenCardStyle}>
+            {swatch ? <div style={{ ...tokenSwatchStyle, background: `var(${token.name})` }} /> : null}
+            {preview === "radius" ? <div style={{ ...radiusPreviewStyle, borderRadius: `var(${token.name})` }} /> : null}
+            {preview === "spacing" ? <div style={{ width: `var(${token.name})`, ...spacingPreviewStyle }} /> : null}
+            {preview === "shadow" ? <div style={{ ...shadowPreviewStyle, boxShadow: `var(${token.name})` }} /> : null}
+            <div style={tokenNameStyle}>{token.name}</div>
+            <div style={tokenValueStyle}>{token.value}</div>
+            <div style={tokenUsageStyle}>{token.usage}</div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -447,60 +519,59 @@ function StatusBadge({
   children: React.ReactNode;
   style: CSSProperties;
 }) {
-  return <span style={{ ...statusBadgeStyle, ...style }}>{children}</span>;
+  return <Badge style={{ ...statusBadgeStyle, ...style }}>{children}</Badge>;
 }
 
 const pageStyle: CSSProperties = {
-  padding: 24,
+  padding: "var(--space-6)",
   display: "flex",
   flexDirection: "column",
-  gap: 24,
+  gap: "var(--space-6)",
   overflowY: "auto",
 };
 
 const heroStyle: CSSProperties = {
-  padding: 20,
-  borderRadius: 16,
-  border: "1px solid var(--border)",
-  background: "linear-gradient(135deg, rgba(11, 107, 94, 0.16), rgba(15, 23, 42, 0.12))",
+  padding: "var(--space-5)",
+  borderRadius: "var(--radius-lg)",
+  border: "1px solid var(--color-border-strong)",
+  background:
+    "linear-gradient(135deg, rgba(45, 140, 255, 0.18), rgba(18, 185, 129, 0.12) 52%, rgba(7, 16, 24, 0.16))",
+  boxShadow: "var(--shadow-elevation-1)",
 };
 
 const eyebrowStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--font-size-sm)",
   textTransform: "uppercase",
-  letterSpacing: 1.2,
+  letterSpacing: "var(--letter-spacing-wide)",
   color: "var(--text-secondary)",
-  marginBottom: 8,
+  marginBottom: "var(--space-2)",
 };
 
 const titleStyle: CSSProperties = {
   margin: 0,
-  fontSize: 28,
+  fontSize: "var(--font-size-2xl)",
+  lineHeight: "var(--line-height-tight)",
+  letterSpacing: "var(--letter-spacing-tight)",
 };
 
 const subtitleStyle: CSSProperties = {
-  margin: "8px 0 0",
+  margin: "var(--space-2) 0 0",
   color: "var(--text-secondary)",
-  lineHeight: 1.6,
+  lineHeight: "var(--line-height-relaxed)",
   maxWidth: 720,
 };
 
-const sectionStyle: CSSProperties = {
-  padding: 20,
-  borderRadius: 12,
-  border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-secondary)",
-};
+const sectionStyle: CSSProperties = {};
 
 const sectionTitleStyle: CSSProperties = {
   marginTop: 0,
-  marginBottom: 16,
-  fontSize: 16,
+  marginBottom: "var(--space-4)",
+  fontSize: "var(--font-size-lg)",
 };
 
 const rowStyle: CSSProperties = {
   display: "flex",
-  gap: 12,
+  gap: "var(--space-3)",
   flexWrap: "wrap",
   alignItems: "center",
 };
@@ -508,32 +579,21 @@ const rowStyle: CSSProperties = {
 const stackStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 12,
+  gap: "var(--space-3)",
 };
 
-const primaryButtonStyle: CSSProperties = {
-  padding: "10px 16px",
-  border: "none",
-  borderRadius: 8,
-  backgroundColor: "var(--accent)",
-  color: "#fff",
-  cursor: "pointer",
-  fontSize: 14,
-};
+const primaryButtonStyle: CSSProperties = {};
 
 const secondaryButtonStyle: CSSProperties = {
-  ...primaryButtonStyle,
   backgroundColor: "var(--bg-tertiary)",
   color: "var(--text-primary)",
-  border: "1px solid var(--border)",
 };
 
 const dangerButtonStyle: CSSProperties = {
-  ...primaryButtonStyle,
-  backgroundColor: "#7f1d1d",
+  backgroundColor: "var(--color-fill-danger)",
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
+  gap: "var(--space-2)",
 };
 
 const iconButtonStyle: CSSProperties = {
@@ -542,77 +602,61 @@ const iconButtonStyle: CSSProperties = {
   justifyContent: "center",
   width: 36,
   height: 36,
-  borderRadius: 999,
-  border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-tertiary)",
+  borderRadius: "var(--radius-pill)",
   color: "var(--text-secondary)",
-  cursor: "pointer",
 };
 
-const chipStyle: CSSProperties = {
-  padding: "6px 10px",
-  borderRadius: 999,
-  border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-tertiary)",
-  color: "var(--text-primary)",
-  cursor: "pointer",
-};
+const chipStyle: CSSProperties = {};
 
 const chipActiveStyle: CSSProperties = {
-  ...chipStyle,
-  backgroundColor: "var(--accent)",
-  color: "#fff",
+  backgroundColor: "var(--color-fill-brand)",
+  color: "var(--color-white)",
 };
 
 const bannerSuccessStyle: CSSProperties = {
-  padding: "10px 12px",
-  borderRadius: 8,
-  backgroundColor: "#065f4620",
-  color: "#4ade80",
+  padding: 0,
 };
 
 const bannerErrorStyle: CSSProperties = {
-  ...bannerSuccessStyle,
-  backgroundColor: "#ef444420",
-  color: "#ef4444",
+  padding: 0,
 };
 
 const statusBadgeStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   padding: "2px 8px",
-  borderRadius: 999,
-  fontSize: 11,
-  fontWeight: 600,
+  borderRadius: "var(--radius-pill)",
+  fontSize: "var(--font-size-xs)",
+  fontWeight: "var(--font-weight-semibold)",
 };
 
 const healthyBadgeStyle: CSSProperties = {
-  backgroundColor: "#14532d",
-  color: "#bbf7d0",
+  backgroundColor: "rgba(18, 185, 129, 0.22)",
+  color: "#baf7df",
 };
 
 const backoffBadgeStyle: CSSProperties = {
-  backgroundColor: "#78350f",
-  color: "#fde68a",
+  backgroundColor: "rgba(245, 158, 11, 0.22)",
+  color: "#ffe19d",
 };
 
 const errorBadgeStyle: CSSProperties = {
-  backgroundColor: "#7f1d1d",
-  color: "#fecaca",
+  backgroundColor: "rgba(239, 68, 68, 0.22)",
+  color: "#ffc5c5",
 };
 
 const tableCardStyle: CSSProperties = {
   border: "1px solid var(--border)",
-  borderRadius: 12,
+  borderRadius: "var(--radius-md)",
   overflow: "hidden",
 };
 
 const tableHeaderStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1.4fr auto 48px",
-  gap: 12,
+  gap: "var(--space-3)",
   padding: "10px 12px",
-  fontSize: 12,
+  fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
   borderBottom: "1px solid var(--border)",
 };
@@ -620,7 +664,7 @@ const tableHeaderStyle: CSSProperties = {
 const tableRowStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1.4fr auto 48px",
-  gap: 12,
+  gap: "var(--space-3)",
   alignItems: "center",
   padding: "12px",
   backgroundColor: "var(--bg-primary)",
@@ -633,13 +677,13 @@ const rowTitleStyle: CSSProperties = {
 
 const rowMetaStyle: CSSProperties = {
   color: "var(--text-secondary)",
-  fontSize: 12,
+  fontSize: "var(--font-size-sm)",
 };
 
 const overlayStyle: CSSProperties = {
   position: "fixed",
   inset: 0,
-  backgroundColor: "rgba(0,0,0,0.45)",
+  backgroundColor: "var(--color-bg-overlay)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -648,35 +692,30 @@ const overlayStyle: CSSProperties = {
 
 const modalCardStyle: CSSProperties = {
   width: 520,
-  maxWidth: "90vw",
-  borderRadius: 12,
-  border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-secondary)",
-  padding: 20,
 };
 
 const modalHeaderStyle: CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
   justifyContent: "space-between",
-  gap: 12,
-  marginBottom: 16,
+  gap: "var(--space-3)",
+  marginBottom: "var(--space-4)",
 };
 
 const modalTitleStyle: CSSProperties = {
-  fontSize: 18,
-  fontWeight: 700,
-  marginBottom: 8,
+  fontSize: "var(--font-size-xl)",
+  fontWeight: "var(--font-weight-bold)",
+  marginBottom: "var(--space-2)",
 };
 
 const modalTextStyle: CSSProperties = {
   color: "var(--text-secondary)",
-  lineHeight: 1.5,
+  lineHeight: "var(--line-height-normal)",
 };
 
 const metaPanelStyle: CSSProperties = {
   border: "1px solid var(--border)",
-  borderRadius: 10,
+  borderRadius: "var(--radius-sm)",
   padding: 12,
   backgroundColor: "var(--bg-primary)",
 };
@@ -684,23 +723,107 @@ const metaPanelStyle: CSSProperties = {
 const metaRowStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  gap: 12,
+  gap: "var(--space-3)",
   color: "var(--text-secondary)",
 };
 
 const actionListStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 8,
+  gap: "var(--space-2)",
 };
 
 const modalFooterStyle: CSSProperties = {
   display: "flex",
   justifyContent: "flex-end",
-  marginTop: 16,
+  marginTop: "var(--space-4)",
 };
 
-const focusRingStyle: CSSProperties = {
-  boxShadow: "0 0 0 2px rgba(255,255,255,0.2), inset 0 0 0 1px #fff",
-  outline: "none",
+const focusRingStyle: CSSProperties = {};
+
+const tokenSectionStackStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-5)",
+};
+
+const tokenGroupStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-3)",
+};
+
+const tokenGroupHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "var(--space-3)",
+};
+
+const tokenGroupTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "var(--font-size-lg)",
+};
+
+const tokenGroupCountStyle: CSSProperties = {
+  fontSize: "var(--font-size-sm)",
+  color: "var(--text-secondary)",
+};
+
+const tokenGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "var(--space-3)",
+};
+
+const tokenCardStyle: CSSProperties = {
+  padding: "var(--space-4)",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--border)",
+  backgroundColor: "var(--color-bg-canvas)",
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-2)",
+};
+
+const tokenSwatchStyle: CSSProperties = {
+  height: 56,
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--color-border-strong)",
+};
+
+const radiusPreviewStyle: CSSProperties = {
+  width: 72,
+  height: 56,
+  background: "linear-gradient(135deg, rgba(45, 140, 255, 0.9), rgba(18, 185, 129, 0.9))",
+};
+
+const spacingPreviewStyle: CSSProperties = {
+  height: 10,
+  borderRadius: "var(--radius-pill)",
+  backgroundColor: "var(--color-fill-brand)",
+};
+
+const shadowPreviewStyle: CSSProperties = {
+  height: 56,
+  borderRadius: "var(--radius-sm)",
+  backgroundColor: "var(--color-bg-elevated)",
+};
+
+const tokenNameStyle: CSSProperties = {
+  fontFamily: "var(--font-family-mono)",
+  fontSize: "var(--font-size-sm)",
+  color: "var(--color-brand-300)",
+};
+
+const tokenValueStyle: CSSProperties = {
+  fontSize: "var(--font-size-md)",
+  fontWeight: "var(--font-weight-semibold)",
+  color: "var(--text-primary)",
+};
+
+const tokenUsageStyle: CSSProperties = {
+  fontSize: "var(--font-size-sm)",
+  color: "var(--text-secondary)",
+  lineHeight: "var(--line-height-normal)",
 };

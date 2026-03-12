@@ -18,6 +18,7 @@ import {
 } from "../../lib/tvInput";
 import { tauriInvoke } from "../../lib/tauri";
 import type { Channel, ChannelEpgSnapshot, Setting } from "../../types/api";
+import { Button, EmptyState } from "../../components/ui";
 
 interface Props<T extends Channel = Channel> {
   items: T[];
@@ -363,6 +364,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
           : undefined
       }
     >
+      {items.length === 0 ? <EmptyState description={t(locale, "guide.noData")} style={{ padding: "var(--space-4)" }} /> : null}
       {topSpacerHeight > 0 ? <div style={{ height: topSpacerHeight }} /> : null}
       {visibleItems.map(({ item: ch, index }) => {
         const snapshot = snapshots[ch.id];
@@ -421,9 +423,9 @@ export function ChannelRowsWithGuide<T extends Channel>({
                   {renderMeta ? <span style={{ marginLeft: 8 }}>{renderMeta(ch)}</span> : null}
                 </div>
               </div>
-              <span style={{ fontSize: 13, color: "var(--accent)" }}>
+              <Button variant="ghost" size="sm" style={playIndicatorStyle} tabIndex={-1}>
                 ▶
-              </span>
+              </Button>
             </div>
 
             <div style={guideInlineStyle}>
@@ -602,6 +604,13 @@ const rowStyle: React.CSSProperties = {
 const rowActiveStyle: React.CSSProperties = {
   backgroundColor: "var(--bg-tertiary)",
   boxShadow: "inset 0 0 0 1px var(--accent)",
+};
+
+const playIndicatorStyle: React.CSSProperties = {
+  pointerEvents: "none",
+  minHeight: 24,
+  padding: "0 var(--space-2)",
+  color: "var(--accent)",
 };
 
 const guideInlineStyle: React.CSSProperties = {

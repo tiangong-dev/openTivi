@@ -18,6 +18,7 @@ import {
   type NavigationContentKeyUpListener,
   type NavigationFocusContentListener,
 } from "../lib/navigation";
+import { Button } from "../components/ui";
 import type { Channel, Setting } from "../types/api";
 
 type View = AppStartView | "dev-components";
@@ -424,7 +425,7 @@ export function AppShell() {
       <>
       <nav style={sidebarStyle}>
         {navItems.map((item, index) => (
-          <button
+          <Button
             key={item.key}
             data-tv-nav-button="true"
             data-tv-nav-view={item.key}
@@ -439,14 +440,15 @@ export function AppShell() {
                 setFocusZone("nav");
               }
             }}
+            variant="nav"
+            active={inputMode === "keyboard" && focusZone === "nav" && index === focusedNavIndex}
             style={{
-              ...navBtnStyle,
               ...(item.key === activeView ? navBtnActiveStyle : null),
               ...(inputMode === "keyboard" && focusZone === "nav" && index === focusedNavIndex ? navBtnCursorStyle : null),
             }}
           >
             {item.label}
-          </button>
+          </Button>
         ))}
       </nav>
       <main ref={mainRef} style={mainStyle}>
@@ -487,19 +489,6 @@ const sidebarStyle: React.CSSProperties = {
   flexDirection: "column",
   padding: "16px 0",
   flexShrink: 0,
-};
-
-const navBtnStyle: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  padding: "10px 16px",
-  backgroundColor: "transparent",
-  border: "none",
-  color: "var(--text-primary)",
-  fontSize: 14,
-  cursor: "pointer",
-  textAlign: "left",
-  outline: "none",
 };
 
 const navBtnActiveStyle: React.CSSProperties = {

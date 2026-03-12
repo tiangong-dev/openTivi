@@ -5,20 +5,20 @@ export interface DesignTokenItem {
 }
 
 export const colorTokens: DesignTokenItem[] = [
-  { name: "--color-bg-canvas", value: "#071018", usage: "应用整体背景" },
-  { name: "--color-bg-surface", value: "#0d1722", usage: "主内容容器、卡片底色" },
-  { name: "--color-bg-subtle", value: "#162131", usage: "次级按钮、输入框、表头" },
-  { name: "--color-bg-elevated", value: "#1a2738", usage: "弹层、浮层、选中卡片" },
-  { name: "--color-text-primary", value: "#edf3fb", usage: "主要文字" },
-  { name: "--color-text-secondary", value: "#a4b2c3", usage: "说明文字、弱化信息" },
-  { name: "--color-text-muted", value: "#78889b", usage: "占位、辅助状态" },
-  { name: "--color-fill-brand", value: "#2d8cff", usage: "主按钮、可交互高亮" },
-  { name: "--color-fill-brand-hover", value: "#5ca6ff", usage: "主按钮 hover" },
-  { name: "--color-success-500", value: "#12b981", usage: "成功状态" },
-  { name: "--color-warning-500", value: "#f59e0b", usage: "警告状态" },
-  { name: "--color-danger-500", value: "#ef4444", usage: "错误状态、删除操作" },
-  { name: "--color-border-subtle", value: "rgba(169, 180, 194, 0.18)", usage: "默认描边" },
-  { name: "--color-border-strong", value: "rgba(169, 180, 194, 0.32)", usage: "强调描边、分组边界" },
+  { name: "--color-bg-canvas", value: "#0a0a0b", usage: "应用整体背景" },
+  { name: "--color-bg-surface", value: "#141416", usage: "主内容容器、卡片底色" },
+  { name: "--color-bg-subtle", value: "#1c1c1f", usage: "次级按钮、输入框、表头" },
+  { name: "--color-bg-elevated", value: "#2a2a2f", usage: "弹层、浮层、选中卡片" },
+  { name: "--color-text-primary", value: "#f5f5f7", usage: "主要文字" },
+  { name: "--color-text-secondary", value: "#a1a1aa", usage: "说明文字、弱化信息" },
+  { name: "--color-text-muted", value: "#6e6e76", usage: "占位、辅助状态" },
+  { name: "--color-fill-brand", value: "#0a84ff", usage: "主按钮、可交互高亮" },
+  { name: "--color-fill-brand-hover", value: "#409cff", usage: "主按钮 hover" },
+  { name: "--color-success-500", value: "#30d158", usage: "成功状态" },
+  { name: "--color-warning-500", value: "#ff9f0a", usage: "警告状态" },
+  { name: "--color-danger-500", value: "#ff453a", usage: "错误状态、删除操作" },
+  { name: "--color-border-subtle", value: "rgba(255, 255, 255, 0.1)", usage: "默认描边" },
+  { name: "--color-border-strong", value: "rgba(255, 255, 255, 0.18)", usage: "强调描边、分组边界" },
 ];
 
 export const typographyTokens: DesignTokenItem[] = [
@@ -57,7 +57,7 @@ export const spacingTokens: DesignTokenItem[] = [
 ];
 
 export const elevationTokens: DesignTokenItem[] = [
-  { name: "--shadow-elevation-1", value: "0 10px 30px rgba(2, 8, 16, 0.24)", usage: "悬浮面板" },
-  { name: "--shadow-elevation-2", value: "0 18px 44px rgba(2, 8, 16, 0.34)", usage: "模态、关键层级" },
+  { name: "--shadow-elevation-1", value: "0 12px 28px rgba(0, 0, 0, 0.38)", usage: "悬浮面板" },
+  { name: "--shadow-elevation-2", value: "0 18px 48px rgba(0, 0, 0, 0.48)", usage: "模态、关键层级" },
   { name: "--shadow-focus-ring", value: "focus ring", usage: "TV 焦点、键盘焦点" },
 ];

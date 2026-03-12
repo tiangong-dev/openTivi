@@ -501,7 +501,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
       <SectionLabel style={hintStyle}>{t(locale, "settings.hint.tv")}</SectionLabel>
 
       {settingCategories.map((cat) => (
-        <Panel key={cat.titleKey} padding="var(--space-4)" style={{ marginBottom: "var(--space-2)" }}>
+        <Panel key={cat.titleKey} padding="var(--space-4)">
           <SectionLabel style={{ marginBottom: "var(--space-2)" }}>{t(locale, cat.titleKey)}</SectionLabel>
           {cat.settings.map((def) => (
             <div

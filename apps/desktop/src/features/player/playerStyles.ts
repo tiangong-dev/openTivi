@@ -1,9 +1,8 @@
 import type { CSSProperties } from "react";
 
 export const containerStyle: CSSProperties = {
-  position: "relative",
-  width: "100%",
-  height: "100%",
+  position: "absolute",
+  inset: 0,
   backgroundColor: "#000",
   overflow: "hidden",
   cursor: "default",

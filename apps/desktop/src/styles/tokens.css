@@ -40,54 +40,54 @@
   --radius-round: 50%;
 
   /* Core palette */
-  --color-neutral-950: #071018;
-  --color-neutral-900: #0d1722;
-  --color-neutral-850: #162131;
-  --color-neutral-800: #1d2939;
-  --color-neutral-700: #304256;
-  --color-neutral-500: #6b7c93;
-  --color-neutral-300: #a9b4c2;
-  --color-neutral-100: #dce4ee;
+  --color-neutral-950: #0a0a0b;
+  --color-neutral-900: #141416;
+  --color-neutral-850: #1c1c1f;
+  --color-neutral-800: #232327;
+  --color-neutral-700: #34343a;
+  --color-neutral-500: #8b8b95;
+  --color-neutral-300: #b9b9c2;
+  --color-neutral-100: #efeff4;
   --color-white: #ffffff;
 
-  --color-brand-500: #2d8cff;
-  --color-brand-400: #5ca6ff;
-  --color-brand-300: #92c3ff;
-  --color-brand-700: #0f62cc;
+  --color-brand-500: #0a84ff;
+  --color-brand-400: #409cff;
+  --color-brand-300: #7db8ff;
+  --color-brand-700: #0066cc;
 
-  --color-success-500: #12b981;
-  --color-success-700: #0b6b5e;
-  --color-warning-500: #f59e0b;
-  --color-warning-700: #8a5a0a;
-  --color-danger-500: #ef4444;
-  --color-danger-700: #991b1b;
+  --color-success-500: #30d158;
+  --color-success-700: #1c8f3b;
+  --color-warning-500: #ff9f0a;
+  --color-warning-700: #b86d00;
+  --color-danger-500: #ff453a;
+  --color-danger-700: #c9342c;
 
   /* Semantic colors */
   --color-bg-canvas: var(--color-neutral-950);
   --color-bg-surface: var(--color-neutral-900);
   --color-bg-subtle: var(--color-neutral-850);
-  --color-bg-elevated: #1a2738;
-  --color-bg-overlay: rgba(3, 10, 18, 0.72);
+  --color-bg-elevated: #2a2a2f;
+  --color-bg-overlay: rgba(0, 0, 0, 0.72);
 
-  --color-text-primary: #edf3fb;
-  --color-text-secondary: #a4b2c3;
-  --color-text-muted: #78889b;
-  --color-text-inverse: #08121b;
+  --color-text-primary: #f5f5f7;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #6e6e76;
+  --color-text-inverse: #111113;
 
-  --color-border-subtle: rgba(169, 180, 194, 0.18);
-  --color-border-strong: rgba(169, 180, 194, 0.32);
+  --color-border-subtle: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.18);
 
   --color-fill-brand: var(--color-brand-500);
   --color-fill-brand-hover: var(--color-brand-400);
   --color-fill-danger: var(--color-danger-700);
-  --color-fill-danger-soft: rgba(239, 68, 68, 0.18);
-  --color-fill-success-soft: rgba(18, 185, 129, 0.18);
-  --color-fill-warning-soft: rgba(245, 158, 11, 0.18);
+  --color-fill-danger-soft: rgba(255, 69, 58, 0.18);
+  --color-fill-success-soft: rgba(48, 209, 88, 0.18);
+  --color-fill-warning-soft: rgba(255, 159, 10, 0.18);
 
   /* Shadows and focus */
-  --shadow-elevation-1: 0 10px 30px rgba(2, 8, 16, 0.24);
-  --shadow-elevation-2: 0 18px 44px rgba(2, 8, 16, 0.34);
-  --shadow-focus-ring: 0 0 0 2px rgba(146, 195, 255, 0.26), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+  --shadow-elevation-1: 0 12px 28px rgba(0, 0, 0, 0.38);
+  --shadow-elevation-2: 0 18px 48px rgba(0, 0, 0, 0.48);
+  --shadow-focus-ring: 0 0 0 2px rgba(10, 132, 255, 0.42), inset 0 0 0 1px rgba(255, 255, 255, 0.88);
 
   /* Motion */
   --duration-fast: 120ms;

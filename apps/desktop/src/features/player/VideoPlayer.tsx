@@ -65,6 +65,8 @@ interface Props {
   locale: Locale;
   onClose: () => void;
   onChannelChange: (channel: Channel) => void;
+  active?: boolean;
+  hidden?: boolean;
 }
 
 interface DecoderDiagnosticsState {
@@ -74,7 +76,15 @@ interface DecoderDiagnosticsState {
   framesLabel: string;
 }
 
-export function VideoPlayer({ channel, channels, locale, onClose, onChannelChange }: Props) {
+export function VideoPlayer({
+  channel,
+  channels,
+  locale,
+  onClose,
+  onChannelChange,
+  active = true,
+  hidden = false,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -850,6 +860,9 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [onChannelChange, setChannelListPanel, setGuidePanelVisible, showOverlay, startChannelListAutoHide, togglePlayPause]);
 
   useEffect(() => {
+    if (!active) {
+      return;
+    }
     const onKey = (e: KeyboardEvent) => {
       const intent = mapKeyToTvIntent(e.key);
       const inNavZone = playerFocusZoneRef.current === "nav";
@@ -979,6 +992,7 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
       window.removeEventListener("keyup", onKeyUp);
     };
   }, [
+    active,
     focusActiveNavButton,
     focusChannelListItem,
     getNavButtons,
@@ -1005,7 +1019,19 @@ export function VideoPlayer({ channel, channels, locale, onClose, onChannelChang
   }, [destroySlot]);
 
   return (
-    <div ref={containerRef} style={containerStyle} onMouseMove={showOverlay} onClick={showOverlay}>
+    <div
+      ref={containerRef}
+      aria-hidden={hidden}
+      style={{
+        ...containerStyle,
+        opacity: hidden ? 0 : 1,
+        pointerEvents: hidden ? "none" : "auto",
+        visibility: hidden ? "hidden" : "visible",
+        zIndex: hidden ? 0 : 2,
+      }}
+      onMouseMove={active ? showOverlay : undefined}
+      onClick={active ? showOverlay : undefined}
+    >
       <video
         ref={prevVideoRef}
         style={{

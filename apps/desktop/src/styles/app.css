@@ -14,6 +14,17 @@ body {
   overflow: hidden;
 }
 
+@keyframes app-shell-marquee {
+  0%,
+  10% {
+    transform: translateX(0);
+  }
+  90%,
+  100% {
+    transform: translateX(-55%);
+  }
+}
+
 button,
 [role="button"] {
   font: inherit;

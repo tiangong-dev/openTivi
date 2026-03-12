@@ -19,9 +19,9 @@ import {
   type NavigationFocusContentListener,
 } from "../lib/navigation";
 import { Button } from "../components/ui";
-import type { Channel, Setting } from "../types/api";
+import type { Channel, ChannelEpgSnapshot, Setting } from "../types/api";
 
-type View = AppStartView | "dev-components";
+type View = AppStartView | "dev-components" | "now-playing";
 type FocusZone = "nav" | "content";
 type InputMode = "keyboard" | "pointer";
 const isDev = import.meta.env.DEV;
@@ -56,6 +56,7 @@ const viewPreloaders: Record<View, () => Promise<unknown>> = {
   sources: loadSourcesView,
   settings: loadSettingsView,
   "dev-components": loadDevComponentsView,
+  "now-playing": loadVideoPlayer,
 };
 
 function scheduleIdleWork(callback: IdleRequestCallback): number {
@@ -88,6 +89,7 @@ export function AppShell() {
   const [activeView, setActiveView] = useState<View>(DEFAULT_APP_START_VIEW);
   const [playingChannel, setPlayingChannel] = useState<Channel | null>(null);
   const [channelList, setChannelList] = useState<Channel[]>([]);
+  const [playingSnapshot, setPlayingSnapshot] = useState<ChannelEpgSnapshot | null>(null);
   const [locale, setLocale] = useState<Locale>(detectDefaultLocale());
   const [focusedNavIndex, setFocusedNavIndex] = useState(0);
   const [focusZone, setFocusZone] = useState<FocusZone>("nav");
@@ -116,6 +118,7 @@ export function AppShell() {
             const allChannels = await tauriInvoke<Channel[]>("list_channels", {
               query: { limit: 5000, offset: 0 },
             }).catch(() => [restored]);
+            setActiveView("now-playing");
             setPlayingChannel(restored);
             setChannelList(allChannels);
           }
@@ -144,6 +147,44 @@ export function AppShell() {
       cancelIdleWork(idleHandle);
     };
   }, [activeView]);
+
+  useEffect(() => {
+    if (!playingChannel) {
+      setPlayingSnapshot(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadPlayingSnapshot = async () => {
+      const now = Date.now();
+      try {
+        const list = await tauriInvoke<ChannelEpgSnapshot[]>("get_channels_epg_snapshots", {
+          query: {
+            channelIds: [playingChannel.id],
+            windowStartTs: now - 15 * 60 * 1000,
+            windowEndTs: now + 4 * 60 * 60 * 1000,
+          },
+        });
+        if (!cancelled) {
+          setPlayingSnapshot(list[0] ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setPlayingSnapshot(null);
+        }
+      }
+    };
+
+    void loadPlayingSnapshot();
+    const timer = window.setInterval(() => {
+      void loadPlayingSnapshot();
+    }, 30_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [playingChannel]);
 
   const subscribeFocusContent = useCallback((listener: NavigationFocusContentListener) => {
     focusContentListenersRef.current.add(listener);
@@ -190,6 +231,7 @@ export function AppShell() {
     void tauriInvoke("set_setting", {
       input: { key: PLAYER_LAST_CHANNEL_ID_SETTING_KEY, value: ch.id },
     }).catch(() => undefined);
+    setActiveView("now-playing");
     setPlayingChannel(ch);
     if (allChannels) setChannelList(allChannels);
   };
@@ -198,7 +240,24 @@ export function AppShell() {
     setLocale(next);
   };
 
-  const navItems: { key: View; label: string }[] = [
+  const closePlaying = useCallback(() => {
+    setPlayingChannel(null);
+    setPlayingSnapshot(null);
+    if (activeView === "now-playing") {
+      setActiveView("channels");
+    }
+  }, [activeView]);
+
+  const isPlayerViewActive = activeView === "now-playing" && Boolean(playingChannel);
+  const nowPlayingProgramTitle = playingSnapshot?.now?.title?.trim() || playingSnapshot?.next?.title?.trim() || "";
+  const nowPlayingMarqueeText = playingChannel
+    ? [playingChannel.channelNumber, playingChannel.name, nowPlayingProgramTitle].filter(Boolean).join(" · ")
+    : "";
+
+  const navItems: { key: View; label: string; detail?: string }[] = [
+    ...(playingChannel
+      ? [{ key: "now-playing" as const, label: t(locale, "nav.nowPlaying"), detail: nowPlayingMarqueeText }]
+      : []),
     { key: "channels", label: t(locale, "nav.channels") },
     { key: "favorites", label: t(locale, "nav.favorites") },
     { key: "recents", label: t(locale, "nav.recents") },
@@ -224,7 +283,6 @@ export function AppShell() {
     if (typeof navIndex === "number") {
       setFocusedNavIndex(navIndex);
     }
-    setPlayingChannel(null);
   };
 
   const focusNavByIndex = (nextIndex: number) => {
@@ -245,7 +303,7 @@ export function AppShell() {
   };
 
   useEffect(() => {
-    if (playingChannel) {
+    if (isPlayerViewActive) {
       return;
     }
     window.dispatchEvent(new CustomEvent("tv-focus-zone", {
@@ -259,10 +317,10 @@ export function AppShell() {
       return;
     }
     focusContent();
-  }, [focusZone, focusedNavIndex, activeView, inputMode, playingChannel]);
+  }, [activeView, focusZone, focusedNavIndex, inputMode, isPlayerViewActive]);
 
   useEffect(() => {
-    if (playingChannel) {
+    if (isPlayerViewActive) {
       return;
     }
     const onWindowPointerDown = () => {
@@ -379,7 +437,7 @@ export function AppShell() {
       window.removeEventListener("keydown", onWindowKeyDown);
       window.removeEventListener("keyup", onWindowKeyUp);
     };
-  }, [activeView, dispatchContentKey, dispatchContentKeyUp, focusZone, focusedNavIndex, inputMode, navFocusGroup, navItems, playingChannel]);
+  }, [activeView, dispatchContentKey, dispatchContentKeyUp, focusZone, focusedNavIndex, inputMode, isPlayerViewActive, navFocusGroup, navItems]);
 
   const navigationValue = useMemo(() => ({
     activeView,
@@ -417,6 +475,8 @@ export function AppShell() {
         return <SettingsView locale={locale} onLocaleChange={handleLocaleChange} />;
       case "dev-components":
         return <DevComponentsView locale={locale} />;
+      case "now-playing":
+        return <ViewFallback />;
     }
   };
 
@@ -424,41 +484,85 @@ export function AppShell() {
     <NavigationContext.Provider value={navigationValue}>
       <>
       <nav style={sidebarStyle}>
-        {navItems.map((item, index) => (
-          <Button
-            key={item.key}
-            data-tv-nav-button="true"
-            data-tv-nav-view={item.key}
-            data-tv-nav-active={item.key === activeView ? "true" : undefined}
-            ref={(node) => {
-              navButtonRefs.current[index] = node;
-            }}
-            onClick={() => activateView(item.key, index)}
-            onFocus={() => {
-              setFocusedNavIndex(index);
-              if (inputMode === "keyboard") {
-                setFocusZone("nav");
-              }
-            }}
-            variant="nav"
-            active={inputMode === "keyboard" && focusZone === "nav" && index === focusedNavIndex}
-            style={{
-              ...(item.key === activeView ? navBtnActiveStyle : null),
-              ...(inputMode === "keyboard" && focusZone === "nav" && index === focusedNavIndex ? navBtnCursorStyle : null),
-            }}
-          >
-            {item.label}
-          </Button>
-        ))}
+        {navItems.map((item, index) => {
+          const isNowPlayingItem = item.key === "now-playing";
+          const isFocused = inputMode === "keyboard" && focusZone === "nav" && index === focusedNavIndex;
+          const isActive = item.key === activeView;
+          const button = (
+            <Button
+              key={item.key}
+              data-tv-nav-button="true"
+              data-tv-nav-view={item.key}
+              data-tv-nav-active={item.key === activeView ? "true" : undefined}
+              ref={(node) => {
+                navButtonRefs.current[index] = node;
+              }}
+              onClick={() => activateView(item.key, index)}
+              onFocus={() => {
+                setFocusedNavIndex(index);
+                if (inputMode === "keyboard") {
+                  setFocusZone("nav");
+                }
+              }}
+              variant="nav"
+              active={isFocused}
+              style={{
+                ...(isActive ? navBtnActiveStyle : null),
+                ...(isFocused ? navBtnCursorStyle : null),
+                ...(isNowPlayingItem ? navNowPlayingButtonStyle : null),
+              }}
+            >
+              {item.detail ? (
+                <span style={navNowPlayingContentStyle}>
+                  <span style={navNowPlayingLabelStyle}>{item.label}</span>
+                  <span style={navMarqueeViewportStyle}>
+                    <span style={navMarqueeTrackStyle}>{item.detail}</span>
+                  </span>
+                </span>
+              ) : (
+                item.label
+              )}
+            </Button>
+          );
+
+          if (!isNowPlayingItem) {
+            return button;
+          }
+
+          return (
+            <div
+              key={item.key}
+              style={{
+                ...navNowPlayingRowStyle,
+                ...(isActive ? navBtnActiveStyle : null),
+                ...(isFocused ? navBtnCursorStyle : null),
+              }}
+            >
+              {button}
+              <button
+                type="button"
+                aria-label="Close now playing"
+                style={navNowPlayingCloseStyle}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  closePlaying();
+                }}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
       </nav>
       <main ref={mainRef} style={mainStyle}>
         <Suspense fallback={<ViewFallback />}>
+          {renderView()}
           {playingChannel ? (
             <VideoPlayer
               channel={playingChannel}
               channels={channelList}
               locale={locale}
-              onClose={() => setPlayingChannel(null)}
+              onClose={closePlaying}
               onChannelChange={(ch: Channel) => {
                 void tauriInvoke("mark_recent_watched", { channelId: ch.id }).catch(() => undefined);
                 void tauriInvoke("set_setting", {
@@ -466,10 +570,10 @@ export function AppShell() {
                 }).catch(() => undefined);
                 setPlayingChannel(ch);
               }}
+              active={isPlayerViewActive}
+              hidden={!isPlayerViewActive}
             />
-          ) : (
-            renderView()
-          )}
+          ) : null}
         </Suspense>
       </main>
       </>
@@ -505,9 +609,75 @@ const mainStyle: React.CSSProperties = {
   overflow: "auto",
   display: "flex",
   flexDirection: "column",
+  position: "relative",
 };
 
 const viewFallbackStyle: React.CSSProperties = {
   flex: 1,
   backgroundColor: "var(--bg-primary)",
+};
+
+const navNowPlayingContentStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  minWidth: 0,
+  textAlign: "left",
+};
+
+const navNowPlayingRowStyle: React.CSSProperties = {
+  position: "relative",
+  marginInline: 8,
+  borderRadius: "var(--radius-sm)",
+  overflow: "hidden",
+};
+
+const navNowPlayingButtonStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  minWidth: 0,
+  paddingInline: 12,
+  paddingRight: 44,
+  backgroundColor: "transparent",
+  boxShadow: "none",
+  minHeight: 48,
+};
+
+const navNowPlayingLabelStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 700,
+  flexShrink: 0,
+};
+
+const navMarqueeViewportStyle: React.CSSProperties = {
+  position: "relative",
+  overflow: "hidden",
+  flex: 1,
+  minWidth: 0,
+  fontSize: 12,
+  color: "var(--text-secondary)",
+  whiteSpace: "nowrap",
+};
+
+const navMarqueeTrackStyle: React.CSSProperties = {
+  display: "inline-block",
+  paddingRight: 24,
+  animation: "app-shell-marquee 12s linear infinite",
+};
+
+const navNowPlayingCloseStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "50%",
+  right: 8,
+  transform: "translateY(-50%)",
+  width: 32,
+  minWidth: 32,
+  border: "1px solid transparent",
+  borderRadius: "var(--radius-sm)",
+  backgroundColor: "transparent",
+  color: "var(--text-secondary)",
+  fontSize: 20,
+  lineHeight: 1,
+  cursor: "pointer",
+  zIndex: 1,
 };

@@ -31,10 +31,23 @@ export function RecentsView({ locale, onPlay }: Props) {
   }, []);
 
   const toggleFavorite = async (ch: Channel) => {
+    const nextFavorite = !ch.isFavorite;
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === ch.id ? { ...item, isFavorite: nextFavorite } : item,
+      ),
+    );
     try {
-      await tauriInvoke("set_favorite", { input: { channelId: ch.id, favorite: !ch.isFavorite } });
+      await tauriInvoke("set_favorite", { input: { channelId: ch.id, favorite: nextFavorite } });
       void loadRecents();
-    } catch (_) {}
+    } catch (e) {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === ch.id ? { ...item, isFavorite: ch.isFavorite } : item,
+        ),
+      );
+      setError(getErrorMessage(e));
+    }
   };
 
   return (

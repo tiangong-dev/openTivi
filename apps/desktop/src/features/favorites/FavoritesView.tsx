@@ -30,10 +30,15 @@ export function FavoritesView({ locale, onPlay }: Props) {
   }, []);
 
   const unfavorite = async (ch: Channel) => {
+    const previous = channels;
+    setChannels((prev) => prev.filter((item) => item.id !== ch.id));
     try {
       await tauriInvoke("set_favorite", { input: { channelId: ch.id, favorite: false } });
-      loadFavorites();
-    } catch (_) {}
+      void loadFavorites();
+    } catch (e) {
+      setChannels(previous);
+      setError(getErrorMessage(e));
+    }
   };
 
   return (

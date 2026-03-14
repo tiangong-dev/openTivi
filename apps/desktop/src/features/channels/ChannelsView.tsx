@@ -59,6 +59,8 @@ const browseAnchorOrder = [
   ChannelsFocusAnchor.EpgEntry,
   ChannelsFocusAnchor.ChannelList,
 ] as const;
+const CHANNEL_CONFIRM_DOUBLE_PRESS_MS = 520;
+const CHANNEL_CONFIRM_LONG_PRESS_MS = 700;
 
 export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   const { isKeyboardContentActive } = useViewActivity("channels");
@@ -344,11 +346,23 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
   }, [epgSearch, epgStateFilter]);
 
   const toggleFavorite = async (channel: Channel) => {
+    const nextFavorite = !channel.isFavorite;
+    setChannels((prev) =>
+      prev.map((item) =>
+        item.id === channel.id ? { ...item, isFavorite: nextFavorite } : item,
+      ),
+    );
     try {
-      await tauriInvoke("set_favorite", { input: { channelId: channel.id, favorite: !channel.isFavorite } });
+      await tauriInvoke("set_favorite", { input: { channelId: channel.id, favorite: nextFavorite } });
       await loadChannels();
-    } catch {
-      // Ignore favorite toggle failures in-place.
+      setError(null);
+    } catch (e) {
+      setChannels((prev) =>
+        prev.map((item) =>
+          item.id === channel.id ? { ...item, isFavorite: channel.isFavorite } : item,
+        ),
+      );
+      setError(getErrorMessage(e));
     }
   };
 
@@ -596,6 +610,8 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
           }
         }
       },
+      doublePressWindowMs: CHANNEL_CONFIRM_DOUBLE_PRESS_MS,
+      longPressMs: CHANNEL_CONFIRM_LONG_PRESS_MS,
     });
     return () => {
       confirmPressRef.current?.clear();

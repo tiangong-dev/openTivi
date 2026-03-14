@@ -10,7 +10,7 @@ import {
   type AppStartView,
 } from "../lib/settings";
 import { tauriInvoke } from "../lib/tauri";
-import { mapKeyToTvIntent, TvIntent, type TvContentKeyDetail } from "../lib/tvInput";
+import { createTvContentKeyDetail, mapKeyToTvIntent, TvIntent, type TvContentKeyDetail } from "../lib/tvInput";
 import { detectDefaultLocale, LOCALE_SETTING_KEY, resolveLocale, t, type Locale } from "../lib/i18n";
 import {
   NavigationContext,
@@ -341,21 +341,11 @@ export function AppShell() {
       );
     };
     const dispatchContentKeyForInput = (key: string, repeat: boolean): boolean => {
-      const detail: TvContentKeyDetail = {
-        key,
-        view: activeView,
-        repeat,
-        intent: mapKeyToTvIntent(key),
-      };
+      const detail: TvContentKeyDetail = createTvContentKeyDetail(key, activeView, repeat);
       return dispatchContentKey(detail);
     };
     const dispatchContentKeyUpForInput = (key: string) => {
-      const detail: TvContentKeyDetail = {
-        key,
-        view: activeView,
-        repeat: false,
-        intent: mapKeyToTvIntent(key),
-      };
+      const detail: TvContentKeyDetail = createTvContentKeyDetail(key, activeView, false);
       dispatchContentKeyUp(detail);
     };
     const onWindowKeyDown = (event: KeyboardEvent) => {

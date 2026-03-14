@@ -33,6 +33,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0008_source_refresh_health",
         include_str!("../../../migrations/0008_source_refresh_health.sql"),
     ),
+    (
+        "0009_repair_channel_foreign_keys",
+        include_str!("../../../migrations/0009_repair_channel_foreign_keys.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
@@ -88,5 +92,18 @@ mod tests {
         assert!(tables.contains(&"favorites".to_string()));
         assert!(tables.contains(&"recents".to_string()));
         assert!(tables.contains(&"settings".to_string()));
+
+        for table in ["favorites", "recents", "channel_health"] {
+            let foreign_tables: Vec<String> = conn
+                .prepare(&format!("PRAGMA foreign_key_list({table})"))
+                .unwrap()
+                .query_map([], |row| row.get(2))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect();
+
+            assert!(foreign_tables.iter().any(|name| name == "channels"));
+            assert!(!foreign_tables.iter().any(|name| name == "channels_old"));
+        }
     }
 }

@@ -44,6 +44,9 @@ interface PrewarmIntentInput {
 }
 
 const SNAPSHOT_WINDOW_SIZE = 24;
+const CHANNEL_CONFIRM_DOUBLE_PRESS_MS = 520;
+const CHANNEL_CONFIRM_LONG_PRESS_MS = 700;
+const POINTER_DOUBLE_CLICK_MS = 260;
 
 export function ChannelRowsWithGuide<T extends Channel>({
   items,
@@ -70,6 +73,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const confirmPressRef = useRef<ReturnType<typeof createConfirmPressHandler> | null>(null);
+  const pointerClickTimerRef = useRef<number | null>(null);
   const focusedIndexRef = useRef(0);
   const itemsRef = useRef<T[]>(items);
   const onPlayRef = useRef(onPlay);
@@ -246,6 +250,21 @@ export function ChannelRowsWithGuide<T extends Channel>({
     onToggleFavoriteRef.current?.(channel);
   };
 
+  const clearPointerClickTimer = () => {
+    if (pointerClickTimerRef.current !== null) {
+      globalThis.clearTimeout(pointerClickTimerRef.current);
+      pointerClickTimerRef.current = null;
+    }
+  };
+
+  const schedulePointerPlay = (channel: T) => {
+    clearPointerClickTimer();
+    pointerClickTimerRef.current = globalThis.setTimeout(() => {
+      pointerClickTimerRef.current = null;
+      schedulePlay(channel);
+    }, POINTER_DOUBLE_CLICK_MS);
+  };
+
   const focusRowByIndex = (nextIndex: number) => {
     if (items.length === 0) return;
     const wrapped = ((nextIndex % items.length) + items.length) % items.length;
@@ -284,6 +303,8 @@ export function ChannelRowsWithGuide<T extends Channel>({
           triggerFavorite(current);
         }
       },
+      doublePressWindowMs: CHANNEL_CONFIRM_DOUBLE_PRESS_MS,
+      longPressMs: CHANNEL_CONFIRM_LONG_PRESS_MS,
     });
     return () => {
       confirmPressRef.current?.clear();
@@ -348,6 +369,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
 
   useEffect(() => {
     return () => {
+      clearPointerClickTimer();
       void tauriInvoke("prewarm_clear_source", { source: "channel_list_outer" }).catch(
         () => undefined,
       );
@@ -376,11 +398,30 @@ export function ChannelRowsWithGuide<T extends Channel>({
               ref={(node) => {
                 rowRefs.current[index] = node;
               }}
-              role="button"
               tabIndex={0}
               data-tv-focusable={focusedIndex === index ? "true" : undefined}
               style={{ ...rowStyle, ...(isActive ? rowActiveStyle : null) }}
-              onClick={() => schedulePlay(ch)}
+              onClick={(event) => {
+                if (event.detail === 0) return;
+                if (event.detail > 1) return;
+                schedulePointerPlay(ch);
+              }}
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                clearPointerClickTimer();
+                if (!onToggleFavorite) return;
+                triggerFavorite(ch);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== "NumpadEnter" && event.key !== " ") return;
+                event.preventDefault();
+                confirmPressRef.current?.onKeyDown(event.repeat);
+              }}
+              onKeyUp={(event) => {
+                if (event.key !== "Enter" && event.key !== "NumpadEnter" && event.key !== " ") return;
+                event.preventDefault();
+                confirmPressRef.current?.onKeyUp();
+              }}
               onFocus={() => {
                 setFocusedIndex(index);
                 setDomFocusedIndex(index);

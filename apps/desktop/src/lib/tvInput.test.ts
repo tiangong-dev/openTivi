@@ -18,6 +18,7 @@ describe("tv input", () => {
     expect(mapKeyToTvIntent("ArrowLeft")).toBe(TvIntent.MoveLeft);
     expect(mapKeyToTvIntent("ArrowRight")).toBe(TvIntent.MoveRight);
     expect(mapKeyToTvIntent("Enter")).toBe(TvIntent.Confirm);
+    expect(mapKeyToTvIntent("NumpadEnter")).toBe(TvIntent.Confirm);
     expect(mapKeyToTvIntent("Escape")).toBe(TvIntent.Back);
     expect(mapKeyToTvIntent("F")).toBe(TvIntent.SecondaryAction);
   });
@@ -31,7 +32,7 @@ describe("tv input", () => {
 
     handler.onKeyDown(false);
     handler.onKeyUp();
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(380);
     expect(gestures).toEqual([ConfirmGesture.Single]);
 
     gestures.length = 0;
@@ -39,6 +40,30 @@ describe("tv input", () => {
     handler.onKeyUp();
     handler.onKeyDown(false);
     handler.onKeyUp();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(gestures).toEqual([ConfirmGesture.Double]);
+
+    gestures.length = 0;
+    handler.onKeyDown(false);
+    handler.onKeyUp();
+    await vi.advanceTimersByTimeAsync(320);
+    handler.onKeyDown(false);
+    handler.onKeyUp();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(gestures).toEqual([ConfirmGesture.Double]);
+
+    gestures.length = 0;
+    const relaxedHandler = createConfirmPressHandler(
+      {
+        onGesture: (gesture) => gestures.push(gesture),
+      },
+      { doublePressWindowMs: 520, longPressMs: 700 },
+    );
+    relaxedHandler.onKeyDown(false);
+    relaxedHandler.onKeyUp();
+    await vi.advanceTimersByTimeAsync(460);
+    relaxedHandler.onKeyDown(false);
+    relaxedHandler.onKeyUp();
     await vi.advanceTimersByTimeAsync(10);
     expect(gestures).toEqual([ConfirmGesture.Double]);
 

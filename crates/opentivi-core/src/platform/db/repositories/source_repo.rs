@@ -84,7 +84,7 @@ pub fn get_by_id(conn: &Connection, id: i64) -> AppResult<Option<Source>> {
         "SELECT id, kind, name, location, username, password, enabled, disabled_reason, auto_refresh_minutes, last_imported_at, last_refresh_error, last_refresh_attempt_at, consecutive_refresh_failures, next_retry_at, created_at, updated_at FROM sources WHERE id = ?1",
     )?;
 
-    let result = stmt.query_row([id], |row| {
+    crate::platform::db::optional_row(stmt.query_row([id], |row| {
         let kind_str: String = row.get(1)?;
         Ok(Source {
             id: row.get(0)?,
@@ -104,13 +104,7 @@ pub fn get_by_id(conn: &Connection, id: i64) -> AppResult<Option<Source>> {
             created_at: row.get(14)?,
             updated_at: row.get(15)?,
         })
-    });
-
-    match result {
-        Ok(source) => Ok(Some(source)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.into()),
-    }
+    }))
 }
 
 pub fn upsert_source(

@@ -199,7 +199,7 @@ pub fn get_enabled_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel
          WHERE c.id = ?1 AND s.enabled = 1",
     )?;
 
-    let result = stmt.query_row([id], |row| {
+    crate::platform::db::optional_row(stmt.query_row([id], |row| {
         Ok(Channel {
             id: row.get(0)?,
             channel_key: row.get(1)?,
@@ -216,13 +216,7 @@ pub fn get_enabled_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel
             container_extension: row.get(12)?,
             is_live: row.get::<_, i64>(13)? != 0,
         })
-    });
-
-    match result {
-        Ok(ch) => Ok(Some(ch)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.into()),
-    }
+    }))
 }
 
 pub fn get_enabled_channel_dto_by_id(
@@ -237,7 +231,7 @@ pub fn get_enabled_channel_dto_by_id(
          WHERE c.id = ?1 AND s.enabled = 1",
     )?;
 
-    let result = stmt.query_row([id], |row| {
+    crate::platform::db::optional_row(stmt.query_row([id], |row| {
         Ok(ChannelListItemDto {
             id: row.get(0)?,
             source_id: row.get(1)?,
@@ -249,13 +243,7 @@ pub fn get_enabled_channel_dto_by_id(
             stream_url: row.get(7)?,
             is_favorite: row.get::<_, i64>(8)? != 0,
         })
-    });
-
-    match result {
-        Ok(channel) => Ok(Some(channel)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.into()),
-    }
+    }))
 }
 
 /// Find all channels with the same normalized_name as the given channel.

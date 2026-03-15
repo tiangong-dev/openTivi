@@ -1,0 +1,530 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0EC69C56A2F8FB809EFB3894 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED563FB5D1E3C92B36EB9B61 /* ContentView.swift */; };
+		189229D30CE9D43E28B3E13B /* AddSourceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4355C692DF2630D87175705A /* AddSourceView.swift */; };
+		1F3E0A6A7222D9EF638C3651 /* FavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D98051C62E8F36F60003B03A /* FavoritesView.swift */; };
+		2146DF2D14270127D76DFBA3 /* SourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75187A82B708340B7740F0A /* SourcesView.swift */; };
+		2EDF48B6F2BF7894A990FCCD /* Color+Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7DEB3B82BF6946CA463D22C /* Color+Theme.swift */; };
+		39DA5E69C2BBF9218C580039 /* OpenTiviApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D877A93D476F2838ABD9212 /* OpenTiviApp.swift */; };
+		3BB61F07C77A510C8B28C0E6 /* PlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F2E9B5277A99579824B3762 /* PlayerViewModel.swift */; };
+		502A724A71A1C3D0D4285CEC /* Date+Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCC92F9A8DE0A9A13A62D10D /* Date+Formatting.swift */; };
+		61ACF0E45B0084F0B2242C54 /* EditSourceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71EB14F22A1739665D741293 /* EditSourceView.swift */; };
+		6B932CE52B92332BCBEABABF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F2C1FD392486FB5C1EF08DE /* Models.swift */; };
+		6F42AFD3686A5FC31366C16A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92C51F4B80DB27846A430B9F /* SettingsView.swift */; };
+		6F46D0F68AA3DBBBF4FBE817 /* RustBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE9E33B54B51BD9E688019D3 /* RustBridge.swift */; };
+		7B89F3E4B1A9228AFB7A4EA1 /* ChannelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B6A5D49C4FD29D265F7521F /* ChannelsView.swift */; };
+		8278D36164F825B9B44421FD /* LoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FD1A3C6DE86D7B51D35EFB3 /* LoadingView.swift */; };
+		85B3017946B644C379D62CE5 /* RecentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEA19293455DF621FBAFD97F /* RecentsView.swift */; };
+		891DA5A337775A18FE12361C /* GroupFilterChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = D756FA28AD56240FC4C1C204 /* GroupFilterChips.swift */; };
+		8D041BBED6E2EF4DBDA293B8 /* ChannelsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7AFA30107D440F28FBDAA12 /* ChannelsViewModel.swift */; };
+		94C27BFC2D422CBB88CC2597 /* PlayerOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20363AA3740491688D216F49 /* PlayerOverlay.swift */; };
+		9D77C25D523782EF52111C86 /* FavoritesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D1D8DA264BC15E9A0503DDF /* FavoritesViewModel.swift */; };
+		9D9CC211D7032B00794115E4 /* ChannelDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19EF402F3AF61250AADCC353 /* ChannelDetailView.swift */; };
+		9E63F68B259D6FF09BDE0560 /* ChannelLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7772148A66405D3C0DBC8A1E /* ChannelLogo.swift */; };
+		B8BE9723FBDC2C709F19C6C4 /* MiniPlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 652693D49B33B2A4773BB7B1 /* MiniPlayerBar.swift */; };
+		C9D21462BD3DC4618DF1B5EA /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDAB8C5C8FB2936573198102 /* PlayerView.swift */; };
+		CD2D4BC640ED64F5FC921BD4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 482EC4685CDB1FC5F98BC9B9 /* Assets.xcassets */; };
+		D97D4656420A6BA342D78B08 /* RecentsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E9174EBF40656396833710 /* RecentsViewModel.swift */; };
+		E05697019E53F1A8BA50D700 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605AAB9CBA5B2D329A916159 /* SettingsViewModel.swift */; };
+		E5C07E4545615F7CC73DB513 /* EpgNowNextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C29556493CA48450F1243B /* EpgNowNextView.swift */; };
+		E72CE7822B2D133D0A874E99 /* ChannelRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CB833E3DFC916E4AE8668EF /* ChannelRow.swift */; };
+		EAC9745A74964D89274C42C6 /* StreamPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60F405454E8D8CD3941CE307 /* StreamPlayer.swift */; };
+		FBCC71F19B5B86B3EAD07AA2 /* SourcesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BA8E59BFAC75C93D12588E /* SourcesViewModel.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		06BA8E59BFAC75C93D12588E /* SourcesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesViewModel.swift; sourceTree = "<group>"; };
+		0F2E9B5277A99579824B3762 /* PlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViewModel.swift; sourceTree = "<group>"; };
+		197E8D252200AF8F1377B365 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		19EF402F3AF61250AADCC353 /* ChannelDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelDetailView.swift; sourceTree = "<group>"; };
+		1FD1A3C6DE86D7B51D35EFB3 /* LoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingView.swift; sourceTree = "<group>"; };
+		20363AA3740491688D216F49 /* PlayerOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerOverlay.swift; sourceTree = "<group>"; };
+		4355C692DF2630D87175705A /* AddSourceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddSourceView.swift; sourceTree = "<group>"; };
+		482EC4685CDB1FC5F98BC9B9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		4F2C1FD392486FB5C1EF08DE /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		57611A176AE913662778FD5B /* OpenTivi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenTivi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		605AAB9CBA5B2D329A916159 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
+		60F405454E8D8CD3941CE307 /* StreamPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamPlayer.swift; sourceTree = "<group>"; };
+		652693D49B33B2A4773BB7B1 /* MiniPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerBar.swift; sourceTree = "<group>"; };
+		6D1D8DA264BC15E9A0503DDF /* FavoritesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesViewModel.swift; sourceTree = "<group>"; };
+		71EB14F22A1739665D741293 /* EditSourceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditSourceView.swift; sourceTree = "<group>"; };
+		7772148A66405D3C0DBC8A1E /* ChannelLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelLogo.swift; sourceTree = "<group>"; };
+		7CB833E3DFC916E4AE8668EF /* ChannelRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelRow.swift; sourceTree = "<group>"; };
+		8D877A93D476F2838ABD9212 /* OpenTiviApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenTiviApp.swift; sourceTree = "<group>"; };
+		92C51F4B80DB27846A430B9F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		9B6A5D49C4FD29D265F7521F /* ChannelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelsView.swift; sourceTree = "<group>"; };
+		A1C29556493CA48450F1243B /* EpgNowNextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpgNowNextView.swift; sourceTree = "<group>"; };
+		A7DEB3B82BF6946CA463D22C /* Color+Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Theme.swift"; sourceTree = "<group>"; };
+		B75187A82B708340B7740F0A /* SourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesView.swift; sourceTree = "<group>"; };
+		B7AFA30107D440F28FBDAA12 /* ChannelsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelsViewModel.swift; sourceTree = "<group>"; };
+		CCC92F9A8DE0A9A13A62D10D /* Date+Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+Formatting.swift"; sourceTree = "<group>"; };
+		D756FA28AD56240FC4C1C204 /* GroupFilterChips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupFilterChips.swift; sourceTree = "<group>"; };
+		D98051C62E8F36F60003B03A /* FavoritesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesView.swift; sourceTree = "<group>"; };
+		DEA19293455DF621FBAFD97F /* RecentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentsView.swift; sourceTree = "<group>"; };
+		ED563FB5D1E3C92B36EB9B61 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		EDAB8C5C8FB2936573198102 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+		EE9E33B54B51BD9E688019D3 /* RustBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RustBridge.swift; sourceTree = "<group>"; };
+		F4E9174EBF40656396833710 /* RecentsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentsViewModel.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		104BECCF68F7B437ED452365 /* Player */ = {
+			isa = PBXGroup;
+			children = (
+				652693D49B33B2A4773BB7B1 /* MiniPlayerBar.swift */,
+				20363AA3740491688D216F49 /* PlayerOverlay.swift */,
+				EDAB8C5C8FB2936573198102 /* PlayerView.swift */,
+			);
+			path = Player;
+			sourceTree = "<group>";
+		};
+		14B0827FA274676B529E0453 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				4355C692DF2630D87175705A /* AddSourceView.swift */,
+				71EB14F22A1739665D741293 /* EditSourceView.swift */,
+				B75187A82B708340B7740F0A /* SourcesView.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		18A445D42CE3B0B4B7E9FEAB /* Favorites */ = {
+			isa = PBXGroup;
+			children = (
+				D98051C62E8F36F60003B03A /* FavoritesView.swift */,
+			);
+			path = Favorites;
+			sourceTree = "<group>";
+		};
+		24998112FB5A970D5C82DDB8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				57611A176AE913662778FD5B /* OpenTivi.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2A587682E9A76A5C21B25049 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				7772148A66405D3C0DBC8A1E /* ChannelLogo.swift */,
+				A1C29556493CA48450F1243B /* EpgNowNextView.swift */,
+				D756FA28AD56240FC4C1C204 /* GroupFilterChips.swift */,
+				1FD1A3C6DE86D7B51D35EFB3 /* LoadingView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		3A498A9C2322693F0F76E903 = {
+			isa = PBXGroup;
+			children = (
+				4B9B4779EA6EAE4919258A58 /* OpenTivi */,
+				24998112FB5A970D5C82DDB8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4B6A7EA6D65A0C9DE825C302 /* Channels */ = {
+			isa = PBXGroup;
+			children = (
+				19EF402F3AF61250AADCC353 /* ChannelDetailView.swift */,
+				7CB833E3DFC916E4AE8668EF /* ChannelRow.swift */,
+				9B6A5D49C4FD29D265F7521F /* ChannelsView.swift */,
+			);
+			path = Channels;
+			sourceTree = "<group>";
+		};
+		4B9B4779EA6EAE4919258A58 /* OpenTivi */ = {
+			isa = PBXGroup;
+			children = (
+				ED563FB5D1E3C92B36EB9B61 /* ContentView.swift */,
+				197E8D252200AF8F1377B365 /* Info.plist */,
+				8D877A93D476F2838ABD9212 /* OpenTiviApp.swift */,
+				E9EB507A27B83A324FCD9BD8 /* Bridge */,
+				64329A74370AD312C61A8FB5 /* Extensions */,
+				B62A405EBC50FBCF0F0BFF81 /* Models */,
+				DE0B15C962F1E3FE2715054E /* Player */,
+				65FDA417E83CB2942AE49F66 /* Resources */,
+				58C518A960F516B987A1C537 /* ViewModels */,
+				DF46BF539E4DCF8720953AC6 /* Views */,
+			);
+			path = OpenTivi;
+			sourceTree = "<group>";
+		};
+		58C518A960F516B987A1C537 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				B7AFA30107D440F28FBDAA12 /* ChannelsViewModel.swift */,
+				6D1D8DA264BC15E9A0503DDF /* FavoritesViewModel.swift */,
+				0F2E9B5277A99579824B3762 /* PlayerViewModel.swift */,
+				F4E9174EBF40656396833710 /* RecentsViewModel.swift */,
+				605AAB9CBA5B2D329A916159 /* SettingsViewModel.swift */,
+				06BA8E59BFAC75C93D12588E /* SourcesViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		64329A74370AD312C61A8FB5 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				A7DEB3B82BF6946CA463D22C /* Color+Theme.swift */,
+				CCC92F9A8DE0A9A13A62D10D /* Date+Formatting.swift */,
+			);
+			path = Extensions;
+			sourceTree = "<group>";
+		};
+		65FDA417E83CB2942AE49F66 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				482EC4685CDB1FC5F98BC9B9 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		8A6077ED122A08B9A3B13637 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				92C51F4B80DB27846A430B9F /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		B142A7B02F498808D957977D /* Recents */ = {
+			isa = PBXGroup;
+			children = (
+				DEA19293455DF621FBAFD97F /* RecentsView.swift */,
+			);
+			path = Recents;
+			sourceTree = "<group>";
+		};
+		B62A405EBC50FBCF0F0BFF81 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				4F2C1FD392486FB5C1EF08DE /* Models.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		DE0B15C962F1E3FE2715054E /* Player */ = {
+			isa = PBXGroup;
+			children = (
+				60F405454E8D8CD3941CE307 /* StreamPlayer.swift */,
+			);
+			path = Player;
+			sourceTree = "<group>";
+		};
+		DF46BF539E4DCF8720953AC6 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				4B6A7EA6D65A0C9DE825C302 /* Channels */,
+				2A587682E9A76A5C21B25049 /* Components */,
+				18A445D42CE3B0B4B7E9FEAB /* Favorites */,
+				104BECCF68F7B437ED452365 /* Player */,
+				B142A7B02F498808D957977D /* Recents */,
+				8A6077ED122A08B9A3B13637 /* Settings */,
+				14B0827FA274676B529E0453 /* Sources */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		E9EB507A27B83A324FCD9BD8 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				EE9E33B54B51BD9E688019D3 /* RustBridge.swift */,
+			);
+			path = Bridge;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D9E2C04DFEC017A3F20C43F4 /* OpenTivi */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 892A8CC852989D2ED65AF6C4 /* Build configuration list for PBXNativeTarget "OpenTivi" */;
+			buildPhases = (
+				A8658944EC3F60E6A965BF9B /* Sources */,
+				A8A09ED813B697E7DEC9A64C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenTivi;
+			packageProductDependencies = (
+			);
+			productName = OpenTivi;
+			productReference = 57611A176AE913662778FD5B /* OpenTivi.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B59FEA4FFAFBFD61B3A35D19 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					D9E2C04DFEC017A3F20C43F4 = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = B4C97A3A82554C8DB7FD917B /* Build configuration list for PBXProject "OpenTivi" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 3A498A9C2322693F0F76E903;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 24998112FB5A970D5C82DDB8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D9E2C04DFEC017A3F20C43F4 /* OpenTivi */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A8A09ED813B697E7DEC9A64C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD2D4BC640ED64F5FC921BD4 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A8658944EC3F60E6A965BF9B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				189229D30CE9D43E28B3E13B /* AddSourceView.swift in Sources */,
+				9D9CC211D7032B00794115E4 /* ChannelDetailView.swift in Sources */,
+				9E63F68B259D6FF09BDE0560 /* ChannelLogo.swift in Sources */,
+				E72CE7822B2D133D0A874E99 /* ChannelRow.swift in Sources */,
+				7B89F3E4B1A9228AFB7A4EA1 /* ChannelsView.swift in Sources */,
+				8D041BBED6E2EF4DBDA293B8 /* ChannelsViewModel.swift in Sources */,
+				2EDF48B6F2BF7894A990FCCD /* Color+Theme.swift in Sources */,
+				0EC69C56A2F8FB809EFB3894 /* ContentView.swift in Sources */,
+				502A724A71A1C3D0D4285CEC /* Date+Formatting.swift in Sources */,
+				61ACF0E45B0084F0B2242C54 /* EditSourceView.swift in Sources */,
+				E5C07E4545615F7CC73DB513 /* EpgNowNextView.swift in Sources */,
+				1F3E0A6A7222D9EF638C3651 /* FavoritesView.swift in Sources */,
+				9D77C25D523782EF52111C86 /* FavoritesViewModel.swift in Sources */,
+				891DA5A337775A18FE12361C /* GroupFilterChips.swift in Sources */,
+				8278D36164F825B9B44421FD /* LoadingView.swift in Sources */,
+				B8BE9723FBDC2C709F19C6C4 /* MiniPlayerBar.swift in Sources */,
+				6B932CE52B92332BCBEABABF /* Models.swift in Sources */,
+				39DA5E69C2BBF9218C580039 /* OpenTiviApp.swift in Sources */,
+				94C27BFC2D422CBB88CC2597 /* PlayerOverlay.swift in Sources */,
+				C9D21462BD3DC4618DF1B5EA /* PlayerView.swift in Sources */,
+				3BB61F07C77A510C8B28C0E6 /* PlayerViewModel.swift in Sources */,
+				85B3017946B644C379D62CE5 /* RecentsView.swift in Sources */,
+				D97D4656420A6BA342D78B08 /* RecentsViewModel.swift in Sources */,
+				6F46D0F68AA3DBBBF4FBE817 /* RustBridge.swift in Sources */,
+				6F42AFD3686A5FC31366C16A /* SettingsView.swift in Sources */,
+				E05697019E53F1A8BA50D700 /* SettingsViewModel.swift in Sources */,
+				2146DF2D14270127D76DFBA3 /* SourcesView.swift in Sources */,
+				FBCC71F19B5B86B3EAD07AA2 /* SourcesViewModel.swift in Sources */,
+				EAC9745A74964D89274C42C6 /* StreamPlayer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		655924A204349AB7CB814D4D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		AB050952D46228D0DC7F6309 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = OpenTivi/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.opentivi.ios;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		DD2181558D22A1A176B51D2F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		F52CAA48E2E125AA9833213F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = OpenTivi/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.opentivi.ios;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		892A8CC852989D2ED65AF6C4 /* Build configuration list for PBXNativeTarget "OpenTivi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F52CAA48E2E125AA9833213F /* Debug */,
+				AB050952D46228D0DC7F6309 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B4C97A3A82554C8DB7FD917B /* Build configuration list for PBXProject "OpenTivi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DD2181558D22A1A176B51D2F /* Debug */,
+				655924A204349AB7CB814D4D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B59FEA4FFAFBFD61B3A35D19 /* Project object */;
+}

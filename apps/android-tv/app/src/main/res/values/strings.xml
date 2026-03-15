@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenTivi</string>
+
+    <!-- Tabs -->
+    <string name="tab_home">Home</string>
+    <string name="tab_channels">Channels</string>
+    <string name="tab_favorites">Favorites</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Home -->
+    <string name="home_continue_watching">Continue Watching</string>
+    <string name="home_favorites">Favorites</string>
+
+    <!-- Channels -->
+    <string name="channels_all">All</string>
+    <string name="channels_groups">Groups</string>
+    <string name="channels_search">Search channels…</string>
+
+    <!-- Favorites -->
+    <string name="favorites_empty">No favorites yet. Browse channels and add some.</string>
+
+    <!-- Sources -->
+    <string name="sources_title">Sources</string>
+    <string name="sources_add">Add Source</string>
+    <string name="sources_empty">No sources. Press \"Add Source\" to import.</string>
+    <string name="sources_tab_xtream">Xtream Account</string>
+    <string name="sources_form_name">Name</string>
+    <string name="sources_form_location">M3U URL or file path</string>
+    <string name="sources_form_server_url">Server URL</string>
+    <string name="sources_form_username">Username</string>
+    <string name="sources_form_password">Password</string>
+    <string name="sources_import_m3u">Import M3U</string>
+    <string name="sources_import_xtream">Import Xtream</string>
+    <string name="sources_refresh">Refresh</string>
+    <string name="sources_delete">Delete</string>
+
+    <!-- Player -->
+    <string name="player_now">Now</string>
+    <string name="player_next">Next</string>
+
+    <!-- Settings -->
+    <string name="settings_category_general">General</string>
+    <string name="settings_category_playback">Playback</string>
+    <string name="settings_category_epg">EPG</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_start_view">Start View</string>
+    <string name="settings_autoplay">Autoplay</string>
+    <string name="settings_epg_auto_refresh">Auto-refresh EPG</string>
+    <string name="settings_on">On</string>
+    <string name="settings_off">Off</string>
+
+    <!-- Common -->
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="save">Save</string>
+</resources>

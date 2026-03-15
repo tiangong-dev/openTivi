@@ -1,8 +1,11 @@
 mod commands;
-mod core;
-mod error;
-mod platform;
 mod state;
+
+// Re-export from shared crate for use in commands
+pub use opentivi_core::core;
+pub use opentivi_core::dto;
+pub use opentivi_core::error;
+pub use opentivi_core::platform;
 
 use state::AppState;
 

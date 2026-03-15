@@ -1,0 +1,218 @@
+namespace opentivi {
+
+    // ── Initialization ──────────────────────────────────────────────────
+
+    [Throws=string]
+    u16 init_engine(string data_dir);
+
+    // ── Sources ─────────────────────────────────────────────────────────
+
+    [Throws=string]
+    sequence<SourceInfo> list_sources();
+
+    [Throws=string]
+    ImportResult import_m3u(string name, string location, u32? auto_refresh_minutes);
+
+    [Throws=string]
+    ImportResult import_xtream(string name, string server_url, string username, string password);
+
+    [Throws=string]
+    ImportResult import_xmltv(string name, string location);
+
+    [Throws=string]
+    ImportResult refresh_source(i64 source_id);
+
+    [Throws=string]
+    void update_source(
+        i64 source_id,
+        string name,
+        string location,
+        string? username,
+        string? password,
+        u32? auto_refresh_minutes,
+        boolean enabled
+    );
+
+    [Throws=string]
+    void delete_source(i64 source_id);
+
+    // ── Channels ────────────────────────────────────────────────────────
+
+    [Throws=string]
+    sequence<ChannelInfo> list_channels(
+        i64? source_id,
+        string? group_name,
+        string? search,
+        boolean? favorites_only,
+        u32 limit,
+        u32 offset
+    );
+
+    [Throws=string]
+    sequence<string> list_groups(i64? source_id);
+
+    [Throws=string]
+    ChannelInfo? get_channel(i64 channel_id);
+
+    // ── EPG ─────────────────────────────────────────────────────────────
+
+    [Throws=string]
+    sequence<EpgProgramInfo> get_channel_epg(i64 channel_id, string? from_ts, string? to_ts);
+
+    [Throws=string]
+    sequence<ChannelEpgSnapshot> get_channels_epg_snapshots(
+        sequence<i64> channel_ids,
+        i64? window_start_ts,
+        i64? window_end_ts
+    );
+
+    [Throws=string]
+    sequence<EpgSearchResult> search_epg(string? search, string? state, u32? limit);
+
+    // ── Favorites ───────────────────────────────────────────────────────
+
+    [Throws=string]
+    sequence<ChannelInfo> list_favorites();
+
+    [Throws=string]
+    void set_favorite(i64 channel_id, boolean favorite);
+
+    // ── Recents ─────────────────────────────────────────────────────────
+
+    [Throws=string]
+    sequence<RecentChannelInfo> list_recents();
+
+    [Throws=string]
+    void mark_recent_watched(i64 channel_id);
+
+    // ── Playback ────────────────────────────────────────────────────────
+
+    [Throws=string]
+    PlaybackInfo resolve_playback(i64 channel_id);
+
+    [Throws=string]
+    sequence<PlaybackInfo> list_playback_candidates(i64 channel_id);
+
+    // ── Settings ────────────────────────────────────────────────────────
+
+    [Throws=string]
+    sequence<SettingInfo> get_all_settings();
+
+    [Throws=string]
+    void set_setting(string key, string value);
+
+    // ── Proxy ───────────────────────────────────────────────────────────
+
+    [Throws=string]
+    u16 get_proxy_port();
+};
+
+// ── Records ─────────────────────────────────────────────────────────────
+
+dictionary SourceInfo {
+    i64 id;
+    string kind;
+    string name;
+    string location;
+    string? username;
+    string? password;
+    boolean enabled;
+    string? disabled_reason;
+    u32? auto_refresh_minutes;
+    u32 channel_count;
+    u32 group_count;
+    u32 channels_with_tvg_id;
+    u32 epg_program_count;
+    string? last_imported_at;
+    string? last_refresh_error;
+    string? last_refresh_attempt_at;
+    u32 consecutive_refresh_failures;
+    string? next_retry_at;
+    string created_at;
+    string updated_at;
+};
+
+dictionary ChannelInfo {
+    i64 id;
+    i64 source_id;
+    string name;
+    string? channel_number;
+    string? group_name;
+    string? tvg_id;
+    string? logo_url;
+    string stream_url;
+    boolean is_favorite;
+};
+
+dictionary EpgProgramInfo {
+    i64 id;
+    string channel_tvg_id;
+    string start_at;
+    string end_at;
+    string title;
+    string? description;
+    string? category;
+};
+
+dictionary EpgProgramMini {
+    string title;
+    string start_at;
+    string end_at;
+};
+
+dictionary ChannelEpgSnapshot {
+    i64 channel_id;
+    EpgProgramMini? now;
+    EpgProgramMini? next;
+    sequence<EpgProgramMini> timeline_programs;
+};
+
+dictionary ImportResult {
+    i64 source_id;
+    u32 channels_imported;
+    u32 channels_updated;
+    u32 channels_removed;
+};
+
+dictionary RecentChannelInfo {
+    i64 id;
+    i64 source_id;
+    string name;
+    string? channel_number;
+    string? group_name;
+    string? tvg_id;
+    string? logo_url;
+    string stream_url;
+    boolean is_favorite;
+    string last_watched_at;
+    i64 play_count;
+};
+
+dictionary SettingInfo {
+    string key;
+    string value;
+    string updated_at;
+};
+
+dictionary PlaybackInfo {
+    i64 channel_id;
+    i64 resolved_channel_id;
+    i64 source_id;
+    string channel_name;
+    string stream_url;
+    string? logo_url;
+};
+
+dictionary EpgSearchResult {
+    i64 id;
+    i64 channel_id;
+    i64 source_id;
+    string channel_name;
+    string? channel_number;
+    string channel_tvg_id;
+    string start_at;
+    string end_at;
+    string title;
+    string? description;
+    string? category;
+};

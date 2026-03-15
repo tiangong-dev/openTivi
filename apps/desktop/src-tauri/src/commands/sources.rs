@@ -82,7 +82,7 @@ pub fn update_source(state: State<AppState>, input: UpdateSourceInput) -> AppRes
 
 async fn run_import_job<F>(job: F) -> AppResult<ImportSummaryDto>
 where
-    F: FnOnce(&rusqlite::Connection) -> AppResult<ImportSummaryDto> + Send + 'static,
+    F: FnOnce(&opentivi_core::rusqlite::Connection) -> AppResult<ImportSummaryDto> + Send + 'static,
 {
     tauri::async_runtime::spawn_blocking(move || {
         let conn = crate::platform::db::connection::open_connection()

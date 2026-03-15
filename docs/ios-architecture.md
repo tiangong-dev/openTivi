@@ -94,12 +94,15 @@ opentivi-ios ──────────────┘ (staticlib + uniffi)
 ### 3.3 多平台路径
 
 与 Android 共享 `platform/fs/paths.rs` 的 `set_data_dir()` + `OnceLock` 机制。
-iOS 端在 `OpenTiviApp.init()` 中传入 `documentDirectory`：
+iOS 端在 `OpenTiviApp.init()` 中传入 `applicationSupportDirectory`：
 
 ```swift
-let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-RustBridge.shared.initialize(dataDir: docsDir.path)
+let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+try? FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
+RustBridge.shared.initialize(dataDir: appSupportDir.path)
 ```
+
+选择 `Application Support/` 而非 `Documents/`，因为后者会暴露给用户"文件"App 且默认 iCloud 备份。
 
 ---
 
@@ -376,6 +379,6 @@ opentivi-core
 | 状态管理 | @MainActor ViewModel + @Published | SwiftUI 标准、线程安全、自动 UI 刷新 |
 | 迷你播放器 | MiniPlayerBar + fullScreenCover | 参考 Apple Music / Podcasts 模式 |
 | Import 并发 | 独立 DB 连接 | 避免 Mutex 锁竞争、长操作不阻塞 UI 查询 |
-| iOS 路径 | `set_data_dir()` + OnceLock | 由 App.init() 传入 documentDirectory |
+| iOS 路径 | `set_data_dir()` + OnceLock | 由 App.init() 传入 applicationSupportDirectory |
 | Bridge 并发 | nonisolated async throws | FFI 调用不阻塞主线程 |
 | 占位类型 | Models.swift 手写 struct | UniFFI codegen 接入后替换为生成类型 |

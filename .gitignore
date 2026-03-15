@@ -29,3 +29,6 @@ apps/desktop/src-tauri/gen/
 # Environment
 .env
 .env.local
+
+# Xcode user state
+*.xcuserstate

@@ -36,7 +36,7 @@ struct ChannelInfo: Identifiable, Hashable {
     let tvgId: String?
     let logoUrl: String?
     let streamUrl: String
-    let isFavorite: Bool
+    var isFavorite: Bool
 }
 
 struct EpgProgramInfo: Identifiable, Hashable {

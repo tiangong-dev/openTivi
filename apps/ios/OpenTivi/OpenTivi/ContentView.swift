@@ -44,10 +44,15 @@ struct ContentView: View {
             }
 
             if playerVM.isPlaying {
-                MiniPlayerBar()
-                    .environmentObject(playerVM)
-                    .transition(.move(edge: .bottom))
-                    .padding(.bottom, 49) // above tab bar
+                GeometryReader { geo in
+                    VStack {
+                        Spacer()
+                        MiniPlayerBar()
+                            .environmentObject(playerVM)
+                            .transition(.move(edge: .bottom))
+                            .padding(.bottom, 49 + geo.safeAreaInsets.bottom)
+                    }
+                }
             }
         }
     }

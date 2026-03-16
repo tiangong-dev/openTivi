@@ -37,6 +37,9 @@
 		E72CE7822B2D133D0A874E99 /* ChannelRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CB833E3DFC916E4AE8668EF /* ChannelRow.swift */; };
 		EAC9745A74964D89274C42C6 /* StreamPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60F405454E8D8CD3941CE307 /* StreamPlayer.swift */; };
 		FBCC71F19B5B86B3EAD07AA2 /* SourcesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BA8E59BFAC75C93D12588E /* SourcesViewModel.swift */; };
+		A1B2C3D4E5F60718A9B0C1D2 /* LocaleManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718A9B0C1D3 /* LocaleManager.swift */; };
+		A1B2C3D4E5F60718A9B0C1D4 /* en-US.json in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718A9B0C1D5 /* en-US.json */; };
+		A1B2C3D4E5F60718A9B0C1D6 /* zh-CN.json in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718A9B0C1D7 /* zh-CN.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,7 +52,7 @@
 		4355C692DF2630D87175705A /* AddSourceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddSourceView.swift; sourceTree = "<group>"; };
 		482EC4685CDB1FC5F98BC9B9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4F2C1FD392486FB5C1EF08DE /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		57611A176AE913662778FD5B /* OpenTivi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenTivi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		57611A176AE913662778FD5B /* OpenTivi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenTivi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		605AAB9CBA5B2D329A916159 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
 		60F405454E8D8CD3941CE307 /* StreamPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamPlayer.swift; sourceTree = "<group>"; };
 		652693D49B33B2A4773BB7B1 /* MiniPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerBar.swift; sourceTree = "<group>"; };
@@ -72,6 +75,9 @@
 		EDAB8C5C8FB2936573198102 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		EE9E33B54B51BD9E688019D3 /* RustBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RustBridge.swift; sourceTree = "<group>"; };
 		F4E9174EBF40656396833710 /* RecentsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentsViewModel.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718A9B0C1D3 /* LocaleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocaleManager.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718A9B0C1D5 /* en-US.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "en-US.json"; path = "../../../../shared/locales/en-US.json"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718A9B0C1D7 /* zh-CN.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "zh-CN.json"; path = "../../../../shared/locales/zh-CN.json"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -127,6 +133,8 @@
 			children = (
 				4B9B4779EA6EAE4919258A58 /* OpenTivi */,
 				24998112FB5A970D5C82DDB8 /* Products */,
+				A1B2C3D4E5F60718A9B0C1D5 /* en-US.json */,
+				A1B2C3D4E5F60718A9B0C1D7 /* zh-CN.json */,
 			);
 			sourceTree = "<group>";
 		};
@@ -206,6 +214,7 @@
 		B62A405EBC50FBCF0F0BFF81 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3D4E5F60718A9B0C1D3 /* LocaleManager.swift */,
 				4F2C1FD392486FB5C1EF08DE /* Models.swift */,
 			);
 			path = Models;
@@ -270,11 +279,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1500;
-				TargetAttributes = {
-					D9E2C04DFEC017A3F20C43F4 = {
-						DevelopmentTeam = "";
-					};
-				};
 			};
 			buildConfigurationList = B4C97A3A82554C8DB7FD917B /* Build configuration list for PBXProject "OpenTivi" */;
 			developmentRegion = en;
@@ -301,6 +305,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				CD2D4BC640ED64F5FC921BD4 /* Assets.xcassets in Resources */,
+				A1B2C3D4E5F60718A9B0C1D4 /* en-US.json in Resources */,
+				A1B2C3D4E5F60718A9B0C1D6 /* zh-CN.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -317,6 +323,7 @@
 				E72CE7822B2D133D0A874E99 /* ChannelRow.swift in Sources */,
 				7B89F3E4B1A9228AFB7A4EA1 /* ChannelsView.swift in Sources */,
 				8D041BBED6E2EF4DBDA293B8 /* ChannelsViewModel.swift in Sources */,
+				A1B2C3D4E5F60718A9B0C1D2 /* LocaleManager.swift in Sources */,
 				2EDF48B6F2BF7894A990FCCD /* Color+Theme.swift in Sources */,
 				0EC69C56A2F8FB809EFB3894 /* ContentView.swift in Sources */,
 				502A724A71A1C3D0D4285CEC /* Date+Formatting.swift in Sources */,
@@ -409,7 +416,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 44874822KS;
 				INFOPLIST_FILE = OpenTivi/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -491,7 +498,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 44874822KS;
 				INFOPLIST_FILE = OpenTivi/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

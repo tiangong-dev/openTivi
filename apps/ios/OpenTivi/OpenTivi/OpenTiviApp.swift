@@ -3,18 +3,24 @@ import SwiftUI
 @main
 struct OpenTiviApp: App {
     @StateObject private var playerVM = PlayerViewModel()
-
-    init() {
-        let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        try? FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
-        RustBridge.shared.initialize(dataDir: appSupportDir.path)
-    }
+    @ObservedObject private var bridge = RustBridge.shared
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(playerVM)
-                .preferredColorScheme(.dark)
+            Group {
+                if bridge.isInitialized {
+                    ContentView()
+                        .environmentObject(playerVM)
+                } else {
+                    ProgressView("Loading…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black)
+                }
+            }
+            .preferredColorScheme(.dark)
+            .task {
+                await bridge.initializeAsync()
+            }
         }
     }
 }

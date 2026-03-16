@@ -6,7 +6,7 @@ import Foundation
 final class RustBridge: ObservableObject {
     static let shared = RustBridge()
     private(set) var proxyPort: UInt16 = 0
-    private(set) var isInitialized = false
+    @Published private(set) var isInitialized = false
 
     private init() {}
 
@@ -20,6 +20,21 @@ final class RustBridge: ObservableObject {
         } catch {
             print("Failed to initialize Rust engine: \(error)")
         }
+    }
+
+    func initializeAsync() async {
+        guard !isInitialized else { return }
+        let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        try? FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
+        let dataDir = appSupportDir.path
+
+        let port: UInt16 = await Task.detached(priority: .userInitiated) {
+            // TODO: return try initEngine(dataDir: dataDir)
+            return UInt16(0)
+        }.value
+
+        proxyPort = port
+        isInitialized = true
     }
 
     // MARK: - Sources

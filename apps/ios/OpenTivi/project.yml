@@ -18,6 +18,11 @@ targets:
     platform: iOS
     sources:
       - OpenTivi
+    resources:
+      - path: ../../../../shared/locales
+        includes:
+          - "*.json"
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.opentivi.ios

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SourcesView: View {
     @StateObject private var vm = SourcesViewModel()
+    @ObservedObject private var locale = LocaleManager.shared
     @State private var showAddSheet = false
 
     var body: some View {
@@ -39,13 +40,13 @@ struct SourcesView: View {
                     Button(role: .destructive) {
                         vm.deleteSource(sourceId: source.id)
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        Label(locale.t("sources.action.delete"), systemImage: "trash")
                     }
 
                     Button {
                         Task { await vm.refreshSource(sourceId: source.id) }
                     } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
+                        Label(locale.t("sources.action.refresh"), systemImage: "arrow.clockwise")
                     }
                     .tint(.blue)
                 }
@@ -53,7 +54,7 @@ struct SourcesView: View {
         }
         .listStyle(.insetGrouped)
         .refreshable { await vm.load() }
-        .navigationTitle("Sources")
+        .navigationTitle(locale.t("sources.title"))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -69,9 +70,9 @@ struct SourcesView: View {
         .overlay {
             if vm.sources.isEmpty && !vm.isLoading {
                 ContentUnavailableView(
-                    "No Sources",
+                    locale.t("sources.empty"),
                     systemImage: "antenna.radiowaves.left.and.right",
-                    description: Text("Tap + to import an M3U or Xtream source.")
+                    description: Text(locale.t("sources.empty"))
                 )
             }
             if vm.isLoading && vm.sources.isEmpty { LoadingView() }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var playerVM: PlayerViewModel
+    @ObservedObject private var locale = LocaleManager.shared
     @State private var selectedTab: Tab = .channels
 
     enum Tab: String {
@@ -14,31 +15,31 @@ struct ContentView: View {
                 NavigationStack {
                     ChannelsView()
                 }
-                .tabItem { Label("Channels", systemImage: "tv") }
+                .tabItem { Label(locale.t("nav.channels"), systemImage: "tv") }
                 .tag(Tab.channels)
 
                 NavigationStack {
                     FavoritesView()
                 }
-                .tabItem { Label("Favorites", systemImage: "star.fill") }
+                .tabItem { Label(locale.t("nav.favorites"), systemImage: "star.fill") }
                 .tag(Tab.favorites)
 
                 NavigationStack {
                     RecentsView()
                 }
-                .tabItem { Label("Recents", systemImage: "clock") }
+                .tabItem { Label(locale.t("nav.recents"), systemImage: "clock") }
                 .tag(Tab.recents)
 
                 NavigationStack {
                     SourcesView()
                 }
-                .tabItem { Label("Sources", systemImage: "antenna.radiowaves.left.and.right") }
+                .tabItem { Label(locale.t("nav.sources"), systemImage: "antenna.radiowaves.left.and.right") }
                 .tag(Tab.sources)
 
                 NavigationStack {
                     SettingsView()
                 }
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tabItem { Label(locale.t("nav.settings"), systemImage: "gearshape") }
                 .tag(Tab.settings)
             }
 

@@ -198,11 +198,7 @@ fn query_programs_by_candidates(
         })
     })?;
 
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(row?);
-    }
-    Ok(results)
+    crate::platform::db::collect_rows(rows)
 }
 
 fn push_unique(values: &mut Vec<String>, value: String) {
@@ -271,9 +267,5 @@ pub fn search_programs(
         })
     })?;
 
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(row?);
-    }
-    Ok(results)
+    crate::platform::db::collect_rows(rows)
 }

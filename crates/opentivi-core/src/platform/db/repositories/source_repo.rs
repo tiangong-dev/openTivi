@@ -72,11 +72,7 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
         })
     })?;
 
-    let mut sources = Vec::new();
-    for row in rows {
-        sources.push(row?);
-    }
-    Ok(sources)
+    crate::platform::db::collect_rows(rows)
 }
 
 pub fn get_by_id(conn: &Connection, id: i64) -> AppResult<Option<Source>> {

@@ -159,11 +159,7 @@ pub fn list_channels(
         })
     })?;
 
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(row?);
-    }
-    Ok(results)
+    crate::platform::db::collect_rows(rows)
 }
 
 pub fn list_groups(conn: &Connection, source_id: Option<i64>) -> AppResult<Vec<String>> {
@@ -184,11 +180,7 @@ pub fn list_groups(conn: &Connection, source_id: Option<i64>) -> AppResult<Vec<S
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params_ref.as_slice(), |row| row.get::<_, String>(0))?;
 
-    let mut groups = Vec::new();
-    for row in rows {
-        groups.push(row?);
-    }
-    Ok(groups)
+    crate::platform::db::collect_rows(rows)
 }
 
 pub fn get_enabled_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel>> {
@@ -279,11 +271,7 @@ pub fn list_playback_candidates(conn: &Connection, channel_id: i64) -> AppResult
         })
     })?;
 
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(row?);
-    }
-    Ok(results)
+    crate::platform::db::collect_rows(rows)
 }
 
 /// Backfill normalized_name for channels that don't have one yet.

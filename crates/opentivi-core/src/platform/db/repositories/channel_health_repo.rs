@@ -45,11 +45,7 @@ pub fn list_due_channels(
         rusqlite::params![stale_minutes, limit],
         |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
     )?;
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(row?);
-    }
-    Ok(results)
+    crate::platform::db::collect_rows(rows)
 }
 
 /// Check if a channel's health is freshly dead (checked within `fresh_minutes` and status = 'dead').

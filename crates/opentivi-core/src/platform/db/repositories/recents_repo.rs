@@ -31,11 +31,7 @@ pub fn list_recents(conn: &Connection, limit: u32) -> AppResult<Vec<RecentChanne
         })
     })?;
 
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(row?);
-    }
-    Ok(results)
+    crate::platform::db::collect_rows(rows)
 }
 
 pub fn mark_watched(conn: &Connection, channel_id: i64) -> AppResult<()> {

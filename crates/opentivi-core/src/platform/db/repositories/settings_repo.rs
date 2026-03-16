@@ -17,11 +17,7 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SettingDto>> {
         })
     })?;
 
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(row?);
-    }
-    Ok(results)
+    crate::platform::db::collect_rows(rows)
 }
 
 pub fn upsert(conn: &Connection, key: &str, value: &serde_json::Value) -> AppResult<SettingDto> {

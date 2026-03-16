@@ -27,11 +27,7 @@ pub fn list_favorites(conn: &Connection) -> AppResult<Vec<ChannelListItemDto>> {
         })
     })?;
 
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(row?);
-    }
-    Ok(results)
+    crate::platform::db::collect_rows(rows)
 }
 
 pub fn add_favorite(conn: &Connection, channel_id: i64) -> AppResult<()> {

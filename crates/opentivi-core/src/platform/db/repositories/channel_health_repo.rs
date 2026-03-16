@@ -43,7 +43,7 @@ pub fn list_due_channels(
     )?;
     let rows = stmt.query_map(
         rusqlite::params![stale_minutes, limit],
-        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        |row| Ok((row.get::<_, i64>("id")?, row.get::<_, String>("stream_url")?)),
     )?;
     crate::platform::db::collect_rows(rows)
 }

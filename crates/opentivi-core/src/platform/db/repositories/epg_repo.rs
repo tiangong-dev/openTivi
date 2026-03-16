@@ -67,7 +67,7 @@ pub fn get_channel_epg(
         .query_row(
             "SELECT tvg_id, tvg_name, name FROM channels WHERE id = ?1",
             [channel_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get("tvg_id")?, row.get("tvg_name")?, row.get("name")?)),
         )
         .map_err(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => {
@@ -121,7 +121,7 @@ fn lookup_channel_ids_by_aliases(
 
     let params_ref: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_ref.as_slice(), |row| row.get::<_, String>(0))?;
+    let rows = stmt.query_map(params_ref.as_slice(), |row| row.get::<_, String>("channel_tvg_id"))?;
 
     let mut ids = Vec::new();
     for row in rows {
@@ -188,13 +188,13 @@ fn query_programs_by_candidates(
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params_ref.as_slice(), |row| {
         Ok(EpgProgramDto {
-            id: row.get(0)?,
-            channel_tvg_id: row.get(1)?,
-            start_at: row.get(2)?,
-            end_at: row.get(3)?,
-            title: row.get(4)?,
-            description: row.get(5)?,
-            category: row.get(6)?,
+            id: row.get("id")?,
+            channel_tvg_id: row.get("channel_tvg_id")?,
+            start_at: row.get("start_at")?,
+            end_at: row.get("end_at")?,
+            title: row.get("title")?,
+            description: row.get("description")?,
+            category: row.get("category")?,
         })
     })?;
 
@@ -222,8 +222,8 @@ pub fn search_programs(
             FROM epg_channel_aliases
         )
         SELECT DISTINCT
-            ep.id,
-            c.id,
+            ep.id AS ep_id,
+            c.id AS channel_id,
             c.source_id,
             c.name,
             c.channel_number,
@@ -253,17 +253,17 @@ pub fn search_programs(
 
     let rows = stmt.query_map(rusqlite::params![pattern, limit], |row| {
         Ok(EpgProgramSearchResultDto {
-            id: row.get(0)?,
-            channel_id: row.get(1)?,
-            source_id: row.get(2)?,
-            channel_name: row.get(3)?,
-            channel_number: row.get(4)?,
-            channel_tvg_id: row.get(5)?,
-            start_at: row.get(6)?,
-            end_at: row.get(7)?,
-            title: row.get(8)?,
-            description: row.get(9)?,
-            category: row.get(10)?,
+            id: row.get("ep_id")?,
+            channel_id: row.get("channel_id")?,
+            source_id: row.get("source_id")?,
+            channel_name: row.get("name")?,
+            channel_number: row.get("channel_number")?,
+            channel_tvg_id: row.get("channel_tvg_id")?,
+            start_at: row.get("start_at")?,
+            end_at: row.get("end_at")?,
+            title: row.get("title")?,
+            description: row.get("description")?,
+            category: row.get("category")?,
         })
     })?;
 

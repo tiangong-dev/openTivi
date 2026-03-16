@@ -147,15 +147,15 @@ pub fn list_channels(
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params_ref.as_slice(), |row| {
         Ok(ChannelListItemDto {
-            id: row.get(0)?,
-            source_id: row.get(1)?,
-            name: row.get(2)?,
-            channel_number: row.get(3)?,
-            group_name: row.get(4)?,
-            tvg_id: row.get(5)?,
-            logo_url: row.get(6)?,
-            stream_url: row.get(7)?,
-            is_favorite: row.get::<_, i64>(8)? != 0,
+            id: row.get("id")?,
+            source_id: row.get("source_id")?,
+            name: row.get("name")?,
+            channel_number: row.get("channel_number")?,
+            group_name: row.get("group_name")?,
+            tvg_id: row.get("tvg_id")?,
+            logo_url: row.get("logo_url")?,
+            stream_url: row.get("stream_url")?,
+            is_favorite: row.get::<_, i64>("is_fav")? != 0,
         })
     })?;
 
@@ -193,20 +193,20 @@ pub fn get_enabled_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel
 
     crate::platform::db::optional_row(stmt.query_row([id], |row| {
         Ok(Channel {
-            id: row.get(0)?,
-            channel_key: row.get(1)?,
-            source_id: row.get(2)?,
-            external_id: row.get(3)?,
-            name: row.get(4)?,
-            normalized_name: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
-            channel_number: row.get(6)?,
-            group_name: row.get(7)?,
-            tvg_id: row.get(8)?,
-            tvg_name: row.get(9)?,
-            logo_url: row.get(10)?,
-            stream_url: row.get(11)?,
-            container_extension: row.get(12)?,
-            is_live: row.get::<_, i64>(13)? != 0,
+            id: row.get("id")?,
+            channel_key: row.get("channel_key")?,
+            source_id: row.get("source_id")?,
+            external_id: row.get("external_id")?,
+            name: row.get("name")?,
+            normalized_name: row.get::<_, Option<String>>("normalized_name")?.unwrap_or_default(),
+            channel_number: row.get("channel_number")?,
+            group_name: row.get("group_name")?,
+            tvg_id: row.get("tvg_id")?,
+            tvg_name: row.get("tvg_name")?,
+            logo_url: row.get("logo_url")?,
+            stream_url: row.get("stream_url")?,
+            container_extension: row.get("container_extension")?,
+            is_live: row.get::<_, i64>("is_live")? != 0,
         })
     }))
 }
@@ -225,15 +225,15 @@ pub fn get_enabled_channel_dto_by_id(
 
     crate::platform::db::optional_row(stmt.query_row([id], |row| {
         Ok(ChannelListItemDto {
-            id: row.get(0)?,
-            source_id: row.get(1)?,
-            name: row.get(2)?,
-            channel_number: row.get(3)?,
-            group_name: row.get(4)?,
-            tvg_id: row.get(5)?,
-            logo_url: row.get(6)?,
-            stream_url: row.get(7)?,
-            is_favorite: row.get::<_, i64>(8)? != 0,
+            id: row.get("id")?,
+            source_id: row.get("source_id")?,
+            name: row.get("name")?,
+            channel_number: row.get("channel_number")?,
+            group_name: row.get("group_name")?,
+            tvg_id: row.get("tvg_id")?,
+            logo_url: row.get("logo_url")?,
+            stream_url: row.get("stream_url")?,
+            is_favorite: row.get::<_, i64>("is_fav")? != 0,
         })
     }))
 }
@@ -254,20 +254,20 @@ pub fn list_playback_candidates(conn: &Connection, channel_id: i64) -> AppResult
 
     let rows = stmt.query_map([channel_id], |row| {
         Ok(Channel {
-            id: row.get(0)?,
-            channel_key: row.get(1)?,
-            source_id: row.get(2)?,
-            external_id: row.get(3)?,
-            name: row.get(4)?,
-            normalized_name: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
-            channel_number: row.get(6)?,
-            group_name: row.get(7)?,
-            tvg_id: row.get(8)?,
-            tvg_name: row.get(9)?,
-            logo_url: row.get(10)?,
-            stream_url: row.get(11)?,
-            container_extension: row.get(12)?,
-            is_live: row.get::<_, i64>(13)? != 0,
+            id: row.get("id")?,
+            channel_key: row.get("channel_key")?,
+            source_id: row.get("source_id")?,
+            external_id: row.get("external_id")?,
+            name: row.get("name")?,
+            normalized_name: row.get::<_, Option<String>>("normalized_name")?.unwrap_or_default(),
+            channel_number: row.get("channel_number")?,
+            group_name: row.get("group_name")?,
+            tvg_id: row.get("tvg_id")?,
+            tvg_name: row.get("tvg_name")?,
+            logo_url: row.get("logo_url")?,
+            stream_url: row.get("stream_url")?,
+            container_extension: row.get("container_extension")?,
+            is_live: row.get::<_, i64>("is_live")? != 0,
         })
     })?;
 
@@ -280,7 +280,7 @@ pub fn backfill_normalized_names(conn: &Connection) -> AppResult<u32> {
         "SELECT id, name FROM channels WHERE normalized_name IS NULL OR normalized_name = ''",
     )?;
     let rows: Vec<(i64, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .query_map([], |row| Ok((row.get("id")?, row.get("name")?)))?
         .filter_map(|r| r.ok())
         .collect();
 

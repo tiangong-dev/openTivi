@@ -17,17 +17,17 @@ pub fn list_recents(conn: &Connection, limit: u32) -> AppResult<Vec<RecentChanne
 
     let rows = stmt.query_map([limit], |row| {
         Ok(RecentChannelDto {
-            id: row.get(0)?,
-            source_id: row.get(1)?,
-            name: row.get(2)?,
-            channel_number: row.get(3)?,
-            group_name: row.get(4)?,
-            tvg_id: row.get(5)?,
-            logo_url: row.get(6)?,
-            stream_url: row.get(7)?,
-            is_favorite: row.get::<_, i64>(8)? != 0,
-            last_watched_at: row.get(9)?,
-            play_count: row.get(10)?,
+            id: row.get("id")?,
+            source_id: row.get("source_id")?,
+            name: row.get("name")?,
+            channel_number: row.get("channel_number")?,
+            group_name: row.get("group_name")?,
+            tvg_id: row.get("tvg_id")?,
+            logo_url: row.get("logo_url")?,
+            stream_url: row.get("stream_url")?,
+            is_favorite: row.get::<_, i64>("is_fav")? != 0,
+            last_watched_at: row.get("last_watched_at")?,
+            play_count: row.get("play_count")?,
         })
     })?;
 

@@ -15,14 +15,14 @@ pub fn list_favorites(conn: &Connection) -> AppResult<Vec<ChannelListItemDto>> {
 
     let rows = stmt.query_map([], |row| {
         Ok(ChannelListItemDto {
-            id: row.get(0)?,
-            source_id: row.get(1)?,
-            name: row.get(2)?,
-            channel_number: row.get(3)?,
-            group_name: row.get(4)?,
-            tvg_id: row.get(5)?,
-            logo_url: row.get(6)?,
-            stream_url: row.get(7)?,
+            id: row.get("id")?,
+            source_id: row.get("source_id")?,
+            name: row.get("name")?,
+            channel_number: row.get("channel_number")?,
+            group_name: row.get("group_name")?,
+            tvg_id: row.get("tvg_id")?,
+            logo_url: row.get("logo_url")?,
+            stream_url: row.get("stream_url")?,
             is_favorite: true,
         })
     })?;

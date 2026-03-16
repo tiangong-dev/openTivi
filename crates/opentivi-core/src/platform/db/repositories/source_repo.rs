@@ -49,26 +49,26 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
 
     let rows = stmt.query_map([], |row| {
         Ok(SourceDto {
-            id: row.get(0)?,
-            kind: row.get(1)?,
-            name: row.get(2)?,
-            location: row.get(3)?,
-            username: row.get(4)?,
-            password: row.get(5)?,
-            enabled: row.get::<_, i64>(6)? != 0,
-            disabled_reason: row.get(7)?,
-            auto_refresh_minutes: row.get(8)?,
-            channel_count: row.get(9)?,
-            group_count: row.get(10)?,
-            channels_with_tvg_id: row.get(11)?,
-            epg_program_count: row.get(12)?,
-            last_imported_at: row.get(13)?,
-            last_refresh_error: row.get(14)?,
-            last_refresh_attempt_at: row.get(15)?,
-            consecutive_refresh_failures: row.get(16)?,
-            next_retry_at: row.get(17)?,
-            created_at: row.get(18)?,
-            updated_at: row.get(19)?,
+            id: row.get("id")?,
+            kind: row.get("kind")?,
+            name: row.get("name")?,
+            location: row.get("location")?,
+            username: row.get("username")?,
+            password: row.get("password")?,
+            enabled: row.get::<_, i64>("enabled")? != 0,
+            disabled_reason: row.get("disabled_reason")?,
+            auto_refresh_minutes: row.get("auto_refresh_minutes")?,
+            channel_count: row.get("channel_count")?,
+            group_count: row.get("group_count")?,
+            channels_with_tvg_id: row.get("channels_with_tvg_id")?,
+            epg_program_count: row.get("epg_program_count")?,
+            last_imported_at: row.get("last_imported_at")?,
+            last_refresh_error: row.get("last_refresh_error")?,
+            last_refresh_attempt_at: row.get("last_refresh_attempt_at")?,
+            consecutive_refresh_failures: row.get("consecutive_refresh_failures")?,
+            next_retry_at: row.get("next_retry_at")?,
+            created_at: row.get("created_at")?,
+            updated_at: row.get("updated_at")?,
         })
     })?;
 
@@ -81,24 +81,24 @@ pub fn get_by_id(conn: &Connection, id: i64) -> AppResult<Option<Source>> {
     )?;
 
     crate::platform::db::optional_row(stmt.query_row([id], |row| {
-        let kind_str: String = row.get(1)?;
+        let kind_str: String = row.get("kind")?;
         Ok(Source {
-            id: row.get(0)?,
+            id: row.get("id")?,
             kind: SourceKind::from_str(&kind_str).unwrap_or(SourceKind::M3u),
-            name: row.get(2)?,
-            location: row.get(3)?,
-            username: row.get(4)?,
-            password: row.get(5)?,
-            enabled: row.get::<_, i64>(6)? != 0,
-            disabled_reason: row.get(7)?,
-            auto_refresh_minutes: row.get(8)?,
-            last_imported_at: row.get(9)?,
-            last_refresh_error: row.get(10)?,
-            last_refresh_attempt_at: row.get(11)?,
-            consecutive_refresh_failures: row.get(12)?,
-            next_retry_at: row.get(13)?,
-            created_at: row.get(14)?,
-            updated_at: row.get(15)?,
+            name: row.get("name")?,
+            location: row.get("location")?,
+            username: row.get("username")?,
+            password: row.get("password")?,
+            enabled: row.get::<_, i64>("enabled")? != 0,
+            disabled_reason: row.get("disabled_reason")?,
+            auto_refresh_minutes: row.get("auto_refresh_minutes")?,
+            last_imported_at: row.get("last_imported_at")?,
+            last_refresh_error: row.get("last_refresh_error")?,
+            last_refresh_attempt_at: row.get("last_refresh_attempt_at")?,
+            consecutive_refresh_failures: row.get("consecutive_refresh_failures")?,
+            next_retry_at: row.get("next_retry_at")?,
+            created_at: row.get("created_at")?,
+            updated_at: row.get("updated_at")?,
         })
     }))
 }

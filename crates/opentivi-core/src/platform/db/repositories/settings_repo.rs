@@ -7,13 +7,13 @@ pub fn list_all(conn: &Connection) -> AppResult<Vec<SettingDto>> {
     let mut stmt = conn.prepare("SELECT key, value_json, updated_at FROM settings ORDER BY key")?;
 
     let rows = stmt.query_map([], |row| {
-        let value_str: String = row.get(1)?;
+        let value_str: String = row.get("value_json")?;
         let value: serde_json::Value =
             serde_json::from_str(&value_str).unwrap_or(serde_json::Value::Null);
         Ok(SettingDto {
-            key: row.get(0)?,
+            key: row.get("key")?,
             value,
-            updated_at: row.get(2)?,
+            updated_at: row.get("updated_at")?,
         })
     })?;
 
@@ -32,13 +32,13 @@ pub fn upsert(conn: &Connection, key: &str, value: &serde_json::Value) -> AppRes
         "SELECT key, value_json, updated_at FROM settings WHERE key = ?1",
         [key],
         |row| {
-            let vstr: String = row.get(1)?;
+            let vstr: String = row.get("value_json")?;
             let v: serde_json::Value =
                 serde_json::from_str(&vstr).unwrap_or(serde_json::Value::Null);
             Ok(SettingDto {
-                key: row.get(0)?,
+                key: row.get("key")?,
                 value: v,
-                updated_at: row.get(2)?,
+                updated_at: row.get("updated_at")?,
             })
         },
     )?;

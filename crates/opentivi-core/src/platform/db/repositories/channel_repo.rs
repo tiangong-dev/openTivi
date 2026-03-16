@@ -78,13 +78,11 @@ pub fn upsert_channels(
             "DELETE FROM channels WHERE source_id = ?1 AND channel_key NOT IN ({})",
             placeholders.join(",")
         );
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(source_id)];
+        let mut params: Vec<rusqlite::types::Value> = vec![source_id.into()];
         for key in &keys {
-            params.push(Box::new(key.clone()));
+            params.push(key.clone().into());
         }
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|p| p.as_ref()).collect();
-        let count = tx.execute(&sql, params_ref.as_slice())?;
+        let count = tx.execute(&sql, rusqlite::params_from_iter(&params))?;
         count as u32
     };
 
@@ -110,24 +108,24 @@ pub fn list_channels(
     let mut sql = String::from(
         "SELECT c.id, c.source_id, c.name, c.channel_number, c.group_name, c.tvg_id, c.logo_url, c.stream_url, (f.channel_id IS NOT NULL) as is_fav FROM channels c INNER JOIN sources s ON s.id = c.source_id LEFT JOIN favorites f ON c.id = f.channel_id WHERE s.enabled = 1",
     );
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    let mut params: Vec<rusqlite::types::Value> = Vec::new();
     let mut idx = 1;
 
     if let Some(sid) = source_id {
         sql.push_str(&format!(" AND c.source_id = ?{}", idx));
-        params.push(Box::new(sid));
+        params.push(sid.into());
         idx += 1;
     }
 
     if let Some(g) = group_name {
         sql.push_str(&format!(" AND c.group_name = ?{}", idx));
-        params.push(Box::new(g.to_string()));
+        params.push(g.to_string().into());
         idx += 1;
     }
 
     if let Some(s) = search {
         sql.push_str(&format!(" AND c.name LIKE ?{}", idx));
-        params.push(Box::new(format!("%{}%", s)));
+        params.push(format!("%{}%", s).into());
         idx += 1;
     }
 
@@ -140,12 +138,11 @@ pub fn list_channels(
         idx,
         idx + 1
     ));
-    params.push(Box::new(limit));
-    params.push(Box::new(offset));
+    params.push((limit as i64).into());
+    params.push((offset as i64).into());
 
-    let params_ref: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_ref.as_slice(), |row| {
+    let rows = stmt.query_map(rusqlite::params_from_iter(&params), |row| {
         Ok(ChannelListItemDto {
             id: row.get("id")?,
             source_id: row.get("source_id")?,
@@ -163,11 +160,10 @@ pub fn list_channels(
 }
 
 pub fn list_groups(conn: &Connection, source_id: Option<i64>) -> AppResult<Vec<String>> {
-    let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(sid) = source_id
-    {
+    let (sql, params): (String, Vec<rusqlite::types::Value>) = if let Some(sid) = source_id {
         (
             "SELECT DISTINCT c.group_name FROM channels c INNER JOIN sources s ON s.id = c.source_id WHERE c.group_name IS NOT NULL AND s.enabled = 1 AND c.source_id = ?1 ORDER BY c.group_name".to_string(),
-            vec![Box::new(sid)],
+            vec![sid.into()],
         )
     } else {
         (
@@ -176,9 +172,8 @@ pub fn list_groups(conn: &Connection, source_id: Option<i64>) -> AppResult<Vec<S
         )
     };
 
-    let params_ref: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_ref.as_slice(), |row| row.get::<_, String>(0))?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(&params), |row| row.get::<_, String>(0))?;
 
     crate::platform::db::collect_rows(rows)
 }

@@ -109,19 +109,18 @@ fn lookup_channel_ids_by_aliases(
     let mut sql = String::from(
         "SELECT DISTINCT channel_tvg_id FROM epg_channel_aliases WHERE alias_normalized IN (",
     );
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    let mut params: Vec<rusqlite::types::Value> = Vec::new();
     for (idx, candidate) in normalized.iter().enumerate() {
         if idx > 0 {
             sql.push(',');
         }
         sql.push_str(&format!("?{}", idx + 1));
-        params.push(Box::new(candidate.clone()));
+        params.push(candidate.clone().into());
     }
     sql.push(')');
 
-    let params_ref: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_ref.as_slice(), |row| row.get::<_, String>("channel_tvg_id"))?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(&params), |row| row.get::<_, String>("channel_tvg_id"))?;
 
     let mut ids = Vec::new();
     for row in rows {
@@ -139,7 +138,7 @@ fn query_programs_by_candidates(
 ) -> AppResult<Vec<EpgProgramDto>> {
     let mut lower_placeholders = Vec::new();
     let mut compact_placeholders = Vec::new();
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    let mut params: Vec<rusqlite::types::Value> = Vec::new();
     let mut idx = 1;
 
     for candidate in candidates {
@@ -148,7 +147,7 @@ fn query_programs_by_candidates(
             continue;
         }
         lower_placeholders.push(format!("?{}", idx));
-        params.push(Box::new(trimmed.to_string()));
+        params.push(trimmed.to_string().into());
         idx += 1;
     }
     for candidate in candidates {
@@ -157,7 +156,7 @@ fn query_programs_by_candidates(
             continue;
         }
         compact_placeholders.push(format!("?{}", idx));
-        params.push(Box::new(compact));
+        params.push(compact.into());
         idx += 1;
     }
 
@@ -175,18 +174,17 @@ fn query_programs_by_candidates(
 
     if let Some(f) = from {
         sql.push_str(&format!(" AND end_at >= ?{}", idx));
-        params.push(Box::new(f.to_string()));
+        params.push(f.to_string().into());
         idx += 1;
     }
     if let Some(t) = to {
         sql.push_str(&format!(" AND start_at <= ?{}", idx));
-        params.push(Box::new(t.to_string()));
+        params.push(t.to_string().into());
     }
     sql.push_str(" ORDER BY start_at");
 
-    let params_ref: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_ref.as_slice(), |row| {
+    let rows = stmt.query_map(rusqlite::params_from_iter(&params), |row| {
         Ok(EpgProgramDto {
             id: row.get("id")?,
             channel_tvg_id: row.get("channel_tvg_id")?,

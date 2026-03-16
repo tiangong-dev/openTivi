@@ -19,7 +19,7 @@ targets:
     sources:
       - OpenTivi
     resources:
-      - path: ../../../../shared/locales
+      - path: ../../../shared/locales
         includes:
           - "*.json"
         buildPhase: resources

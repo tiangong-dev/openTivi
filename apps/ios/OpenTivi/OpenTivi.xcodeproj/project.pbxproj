@@ -76,8 +76,8 @@
 		EE9E33B54B51BD9E688019D3 /* RustBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RustBridge.swift; sourceTree = "<group>"; };
 		F4E9174EBF40656396833710 /* RecentsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentsViewModel.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718A9B0C1D3 /* LocaleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocaleManager.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718A9B0C1D5 /* en-US.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "en-US.json"; path = "../../../../shared/locales/en-US.json"; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718A9B0C1D7 /* zh-CN.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "zh-CN.json"; path = "../../../../shared/locales/zh-CN.json"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718A9B0C1D5 /* en-US.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "en-US.json"; path = "../../../shared/locales/en-US.json"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718A9B0C1D7 /* zh-CN.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "zh-CN.json"; path = "../../../shared/locales/zh-CN.json"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */

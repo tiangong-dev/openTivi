@@ -70,7 +70,7 @@ struct SourcesView: View {
         .overlay {
             if vm.sources.isEmpty && !vm.isLoading {
                 ContentUnavailableView(
-                    locale.t("sources.empty"),
+                    locale.t("sources.title"),
                     systemImage: "antenna.radiowaves.left.and.right",
                     description: Text(locale.t("sources.empty"))
                 )

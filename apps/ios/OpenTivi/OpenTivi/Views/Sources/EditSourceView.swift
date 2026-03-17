@@ -35,8 +35,18 @@ struct EditSourceView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        // TODO: Call RustBridge.shared.updateSource(...)
-                        dismiss()
+                        Task {
+                            try? await RustBridge.shared.updateSource(
+                                sourceId: source.id,
+                                name: name,
+                                location: location,
+                                username: source.username,
+                                password: source.password,
+                                autoRefreshMinutes: source.autoRefreshMinutes,
+                                enabled: source.enabled
+                            )
+                            dismiss()
+                        }
                     }
                     .disabled(name.isEmpty || location.isEmpty)
                 }

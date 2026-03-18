@@ -11,6 +11,7 @@ name = "opentivi_ios"
 opentivi-core = { path = "../../../crates/opentivi-core" }
 uniffi = { version = "0.28", features = ["build"] }
 serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [build-dependencies]
 uniffi = { version = "0.28", features = ["build"] }

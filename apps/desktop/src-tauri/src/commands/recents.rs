@@ -6,16 +6,14 @@ use crate::state::AppState;
 use super::dto::*;
 
 #[tauri::command]
-pub fn list_recents(
-    state: State<AppState>,
+pub async fn list_recents(
+    state: State<'_, AppState>,
     limit: Option<u32>,
 ) -> AppResult<Vec<RecentChannelDto>> {
-    let conn = state.db.lock().unwrap();
-    crate::core::services::recents_service::list_recents(&conn, limit.unwrap_or(50))
+    crate::core::services::recents_service::list_recents(&state.ctx, limit.unwrap_or(50)).await
 }
 
 #[tauri::command]
-pub fn mark_recent_watched(state: State<AppState>, channel_id: i64) -> AppResult<()> {
-    let conn = state.db.lock().unwrap();
-    crate::core::services::recents_service::mark_recent_watched(&conn, channel_id)
+pub async fn mark_recent_watched(state: State<'_, AppState>, channel_id: i64) -> AppResult<()> {
+    crate::core::services::recents_service::mark_recent_watched(&state.ctx, channel_id).await
 }

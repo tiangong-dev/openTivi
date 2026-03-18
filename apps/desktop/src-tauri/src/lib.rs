@@ -7,14 +7,21 @@ pub use opentivi_core::dto;
 pub use opentivi_core::error;
 pub use opentivi_core::platform;
 
+use tauri::Manager;
+
 use state::AppState;
 
 pub fn run() {
-    let app_state = AppState::new().expect("Failed to initialize app state");
-
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(app_state)
+        .setup(|app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::block_on(async {
+                let app_state = AppState::new().await.expect("Failed to initialize app state");
+                handle.manage(app_state);
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::health::health,
             commands::health::get_proxy_port,

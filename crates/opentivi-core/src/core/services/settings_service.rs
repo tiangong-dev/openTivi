@@ -1,16 +1,19 @@
-use rusqlite::Connection;
-
+use crate::context::CoreContext;
 use crate::dto::SettingDto;
 use crate::error::AppResult;
 
-pub fn get_settings(conn: &Connection) -> AppResult<Vec<SettingDto>> {
-    crate::platform::db::repositories::settings_repo::list_all(conn)
+pub async fn get_settings(ctx: &CoreContext) -> AppResult<Vec<SettingDto>> {
+    ctx.db
+        .run(|conn| crate::platform::db::repositories::settings_repo::list_all(conn))
+        .await
 }
 
-pub fn set_setting(
-    conn: &Connection,
-    key: &str,
-    value: &serde_json::Value,
+pub async fn set_setting(
+    ctx: &CoreContext,
+    key: String,
+    value: serde_json::Value,
 ) -> AppResult<SettingDto> {
-    crate::platform::db::repositories::settings_repo::upsert(conn, key, value)
+    ctx.db
+        .run(move |conn| crate::platform::db::repositories::settings_repo::upsert(conn, &key, &value))
+        .await
 }

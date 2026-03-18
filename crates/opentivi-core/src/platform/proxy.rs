@@ -34,7 +34,7 @@ struct CachedPlaylist {
 
 /// Start a local HTTP proxy server for streaming.
 /// Returns the port it's listening on.
-pub fn start_proxy_server() -> u16 {
+pub async fn start_proxy_server() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind proxy port");
     let port = listener.local_addr().unwrap().port();
     drop(listener);
@@ -59,11 +59,8 @@ pub fn start_proxy_server() -> u16 {
         .and_then(handle_warm);
     let route = stream_route.or(warm_route);
 
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create proxy runtime");
-        rt.block_on(async move {
-            warp::serve(route).run(([127, 0, 0, 1], port)).await;
-        });
+    tokio::spawn(async move {
+        warp::serve(route).run(([127, 0, 0, 1], port)).await;
     });
 
     port

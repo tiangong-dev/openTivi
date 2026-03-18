@@ -1,8 +1,6 @@
-use reqwest::blocking::Client;
 use reqwest::StatusCode;
 use semver::Version;
 use serde::Deserialize;
-use std::time::Duration;
 
 use crate::dto::AppUpdateInfoDto;
 use crate::error::{AppError, AppResult};
@@ -23,17 +21,17 @@ struct GithubTag {
     name: String,
 }
 
-pub fn check_app_update() -> AppResult<AppUpdateInfoDto> {
+pub async fn check_app_update(client: &reqwest::Client) -> AppResult<AppUpdateInfoDto> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
     let mut latest_version = current_version.clone();
     let mut release_url = RELEASES_PAGE_URL.to_string();
     let mut published_at = None;
 
-    if let Some(release) = fetch_latest_release()? {
+    if let Some(release) = fetch_latest_release(client).await? {
         latest_version = normalize_tag(&release.tag_name);
         release_url = release.html_url;
         published_at = release.published_at;
-    } else if let Some(tag) = fetch_latest_semver_tag()? {
+    } else if let Some(tag) = fetch_latest_semver_tag(client).await? {
         latest_version = normalize_tag(&tag.name);
         release_url = format!("{}/tag/{}", RELEASES_PAGE_URL, tag.name);
     }
@@ -49,17 +47,13 @@ pub fn check_app_update() -> AppResult<AppUpdateInfoDto> {
     })
 }
 
-fn fetch_latest_release() -> AppResult<Option<GithubRelease>> {
-    let client = Client::builder()
-        .connect_timeout(Duration::from_secs(8))
-        .timeout(Duration::from_secs(20))
-        .build()?;
-
+async fn fetch_latest_release(client: &reqwest::Client) -> AppResult<Option<GithubRelease>> {
     let response = client
         .get(RELEASE_LATEST_URL)
         .header(reqwest::header::USER_AGENT, "OpenTivi-Desktop")
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-        .send()?;
+        .send()
+        .await?;
 
     if response.status() == StatusCode::NOT_FOUND {
         return Ok(None);
@@ -72,20 +66,16 @@ fn fetch_latest_release() -> AppResult<Option<GithubRelease>> {
         )));
     }
 
-    Ok(Some(response.json::<GithubRelease>()?))
+    Ok(Some(response.json::<GithubRelease>().await?))
 }
 
-fn fetch_latest_semver_tag() -> AppResult<Option<GithubTag>> {
-    let client = Client::builder()
-        .connect_timeout(Duration::from_secs(8))
-        .timeout(Duration::from_secs(20))
-        .build()?;
-
+async fn fetch_latest_semver_tag(client: &reqwest::Client) -> AppResult<Option<GithubTag>> {
     let response = client
         .get(TAGS_URL)
         .header(reqwest::header::USER_AGENT, "OpenTivi-Desktop")
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-        .send()?;
+        .send()
+        .await?;
 
     if response.status() == StatusCode::NOT_FOUND {
         return Ok(None);
@@ -98,7 +88,7 @@ fn fetch_latest_semver_tag() -> AppResult<Option<GithubTag>> {
         )));
     }
 
-    let tags = response.json::<Vec<GithubTag>>()?;
+    let tags = response.json::<Vec<GithubTag>>().await?;
     let mut semver_tags: Vec<(Version, GithubTag)> = Vec::new();
     for tag in tags {
         let normalized = normalize_tag(&tag.name);

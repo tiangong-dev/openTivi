@@ -4,13 +4,15 @@ use std::net::{TcpListener, UdpSocket};
 use serde::{Deserialize, Serialize};
 use warp::Filter;
 
+use crate::context::CoreContext;
+
 pub struct RemoteServerInfo {
     pub url: String,
 }
 
 /// Start a LAN-accessible HTTP server for remote source configuration.
-/// Returns the port, full URL (with LAN IP), and session token.
-pub fn start_remote_config_server() -> RemoteServerInfo {
+/// Returns the full URL (with LAN IP and session token).
+pub async fn start_remote_config_server(ctx: CoreContext) -> RemoteServerInfo {
     let token = generate_token();
     let listener = TcpListener::bind("0.0.0.0:0").expect("Failed to bind remote config port");
     let port = listener.local_addr().unwrap().port();
@@ -20,96 +22,97 @@ pub fn start_remote_config_server() -> RemoteServerInfo {
     let url = format!("http://{}:{}/remote?t={}", lan_ip, port, token);
 
     let token_for_routes = token.clone();
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create remote config runtime");
-        rt.block_on(async move {
-            let token = token_for_routes;
+    tokio::spawn(async move {
+        let token = token_for_routes;
 
-            let page = {
-                let t = token.clone();
-                warp::path("remote")
-                    .and(warp::get())
-                    .and(warp::query::<HashMap<String, String>>())
-                    .map(move |params: HashMap<String, String>| {
+        let page = {
+            let t = token.clone();
+            warp::path("remote")
+                .and(warp::get())
+                .and(warp::query::<HashMap<String, String>>())
+                .map(move |params: HashMap<String, String>| {
+                    if params.get("t").map(|s| s.as_str()) != Some(&t) {
+                        return warp::reply::with_status(
+                            warp::reply::html("Unauthorized".to_string()),
+                            warp::http::StatusCode::UNAUTHORIZED,
+                        );
+                    }
+                    warp::reply::with_status(
+                        warp::reply::html(remote_page_html(&t)),
+                        warp::http::StatusCode::OK,
+                    )
+                })
+        };
+
+        let import_m3u = {
+            let t = token.clone();
+            let ctx = ctx.clone();
+            warp::path!("api" / "import" / "m3u")
+                .and(warp::post())
+                .and(warp::query::<HashMap<String, String>>())
+                .and(warp::body::json::<RemoteImportM3uInput>())
+                .and_then(move |params: HashMap<String, String>, input: RemoteImportM3uInput| {
+                    let t = t.clone();
+                    let ctx = ctx.clone();
+                    async move {
                         if params.get("t").map(|s| s.as_str()) != Some(&t) {
-                            return warp::reply::with_status(
-                                warp::reply::html("Unauthorized".to_string()),
+                            return Ok::<_, warp::Rejection>(warp::reply::with_status(
+                                warp::reply::json(&serde_json::json!({"error": "Unauthorized"})),
                                 warp::http::StatusCode::UNAUTHORIZED,
-                            );
+                            ));
                         }
-                        warp::reply::with_status(
-                            warp::reply::html(remote_page_html(&t)),
-                            warp::http::StatusCode::OK,
-                        )
-                    })
-            };
-
-            let import_m3u = {
-                let t = token.clone();
-                warp::path!("api" / "import" / "m3u")
-                    .and(warp::post())
-                    .and(warp::query::<HashMap<String, String>>())
-                    .and(warp::body::json::<RemoteImportM3uInput>())
-                    .and_then(move |params: HashMap<String, String>, input: RemoteImportM3uInput| {
-                        let t = t.clone();
-                        async move {
-                            if params.get("t").map(|s| s.as_str()) != Some(&t) {
-                                return Ok::<_, warp::Rejection>(warp::reply::with_status(
-                                    warp::reply::json(&serde_json::json!({"error": "Unauthorized"})),
-                                    warp::http::StatusCode::UNAUTHORIZED,
-                                ));
-                            }
-                            match handle_import_m3u(input) {
-                                Ok(summary) => Ok(warp::reply::with_status(
-                                    warp::reply::json(&summary),
-                                    warp::http::StatusCode::OK,
-                                )),
-                                Err(e) => Ok(warp::reply::with_status(
-                                    warp::reply::json(&serde_json::json!({"error": e})),
-                                    warp::http::StatusCode::BAD_REQUEST,
-                                )),
-                            }
+                        match handle_import_m3u(&ctx, input).await {
+                            Ok(summary) => Ok(warp::reply::with_status(
+                                warp::reply::json(&summary),
+                                warp::http::StatusCode::OK,
+                            )),
+                            Err(e) => Ok(warp::reply::with_status(
+                                warp::reply::json(&serde_json::json!({"error": e})),
+                                warp::http::StatusCode::BAD_REQUEST,
+                            )),
                         }
-                    })
-            };
+                    }
+                })
+        };
 
-            let import_xtream = {
-                let t = token.clone();
-                warp::path!("api" / "import" / "xtream")
-                    .and(warp::post())
-                    .and(warp::query::<HashMap<String, String>>())
-                    .and(warp::body::json::<RemoteImportXtreamInput>())
-                    .and_then(move |params: HashMap<String, String>, input: RemoteImportXtreamInput| {
-                        let t = t.clone();
-                        async move {
-                            if params.get("t").map(|s| s.as_str()) != Some(&t) {
-                                return Ok::<_, warp::Rejection>(warp::reply::with_status(
-                                    warp::reply::json(&serde_json::json!({"error": "Unauthorized"})),
-                                    warp::http::StatusCode::UNAUTHORIZED,
-                                ));
-                            }
-                            match handle_import_xtream(input) {
-                                Ok(summary) => Ok(warp::reply::with_status(
-                                    warp::reply::json(&summary),
-                                    warp::http::StatusCode::OK,
-                                )),
-                                Err(e) => Ok(warp::reply::with_status(
-                                    warp::reply::json(&serde_json::json!({"error": e})),
-                                    warp::http::StatusCode::BAD_REQUEST,
-                                )),
-                            }
+        let import_xtream = {
+            let t = token.clone();
+            let ctx = ctx.clone();
+            warp::path!("api" / "import" / "xtream")
+                .and(warp::post())
+                .and(warp::query::<HashMap<String, String>>())
+                .and(warp::body::json::<RemoteImportXtreamInput>())
+                .and_then(move |params: HashMap<String, String>, input: RemoteImportXtreamInput| {
+                    let t = t.clone();
+                    let ctx = ctx.clone();
+                    async move {
+                        if params.get("t").map(|s| s.as_str()) != Some(&t) {
+                            return Ok::<_, warp::Rejection>(warp::reply::with_status(
+                                warp::reply::json(&serde_json::json!({"error": "Unauthorized"})),
+                                warp::http::StatusCode::UNAUTHORIZED,
+                            ));
                         }
-                    })
-            };
+                        match handle_import_xtream(&ctx, input).await {
+                            Ok(summary) => Ok(warp::reply::with_status(
+                                warp::reply::json(&summary),
+                                warp::http::StatusCode::OK,
+                            )),
+                            Err(e) => Ok(warp::reply::with_status(
+                                warp::reply::json(&serde_json::json!({"error": e})),
+                                warp::http::StatusCode::BAD_REQUEST,
+                            )),
+                        }
+                    }
+                })
+        };
 
-            let cors = warp::cors()
-                .allow_any_origin()
-                .allow_methods(vec!["GET", "POST"])
-                .allow_headers(vec!["content-type"]);
+        let cors = warp::cors()
+            .allow_any_origin()
+            .allow_methods(vec!["GET", "POST"])
+            .allow_headers(vec!["content-type"]);
 
-            let routes = page.or(import_m3u).or(import_xtream).with(cors);
-            warp::serve(routes).run(([0, 0, 0, 0], port)).await;
-        });
+        let routes = page.or(import_m3u).or(import_xtream).with(cors);
+        warp::serve(routes).run(([0, 0, 0, 0], port)).await;
     });
 
     RemoteServerInfo {
@@ -143,15 +146,14 @@ struct RemoteImportResult {
     channels_removed: u32,
 }
 
-fn handle_import_m3u(input: RemoteImportM3uInput) -> Result<RemoteImportResult, String> {
-    let conn = crate::platform::db::connection::open_connection()
-        .map_err(|e| format!("DB error: {}", e))?;
+async fn handle_import_m3u(ctx: &CoreContext, input: RemoteImportM3uInput) -> Result<RemoteImportResult, String> {
     let summary = crate::core::services::import_service::import_m3u(
-        &conn,
+        ctx,
         &input.name,
         &input.location,
         input.auto_refresh_minutes,
     )
+    .await
     .map_err(|e| format!("{}", e))?;
     Ok(RemoteImportResult {
         source_id: summary.source_id,
@@ -161,16 +163,15 @@ fn handle_import_m3u(input: RemoteImportM3uInput) -> Result<RemoteImportResult, 
     })
 }
 
-fn handle_import_xtream(input: RemoteImportXtreamInput) -> Result<RemoteImportResult, String> {
-    let conn = crate::platform::db::connection::open_connection()
-        .map_err(|e| format!("DB error: {}", e))?;
+async fn handle_import_xtream(ctx: &CoreContext, input: RemoteImportXtreamInput) -> Result<RemoteImportResult, String> {
     let summary = crate::core::services::import_service::import_xtream(
-        &conn,
+        ctx,
         &input.name,
         &input.server_url,
         &input.username,
         &input.password,
     )
+    .await
     .map_err(|e| format!("{}", e))?;
     Ok(RemoteImportResult {
         source_id: summary.source_id,

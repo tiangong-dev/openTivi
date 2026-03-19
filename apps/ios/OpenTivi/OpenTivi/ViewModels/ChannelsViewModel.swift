@@ -45,7 +45,13 @@ final class ChannelsViewModel: ObservableObject {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
         Task {
-            try? await RustBridge.shared.setFavorite(channelId: channelId, favorite: newValue)
+            do {
+                try await RustBridge.shared.setFavorite(channelId: channelId, favorite: newValue)
+            } catch {
+                if let idx = channels.firstIndex(where: { $0.id == channelId }) {
+                    channels[idx].isFavorite = !newValue
+                }
+            }
         }
     }
 }

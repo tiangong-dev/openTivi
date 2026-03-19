@@ -15,10 +15,12 @@ final class FavoritesViewModel: ObservableObject {
         }
     }
 
-    func removeFavorite(channelId: Int64) {
-        favorites.removeAll { $0.id == channelId }
-        Task {
-            try? await RustBridge.shared.setFavorite(channelId: channelId, favorite: false)
+    func removeFavorite(channelId: Int64) async {
+        do {
+            try await RustBridge.shared.setFavorite(channelId: channelId, favorite: false)
+            favorites.removeAll { $0.id == channelId }
+        } catch {
+            print("Remove favorite error: \(error)")
         }
     }
 }

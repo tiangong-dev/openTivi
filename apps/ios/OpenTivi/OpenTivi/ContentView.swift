@@ -44,14 +44,11 @@ struct ContentView: View {
             }
 
             if playerVM.isPlaying {
-                GeometryReader { geo in
-                    VStack {
-                        Spacer()
-                        MiniPlayerBar()
-                            .environmentObject(playerVM)
-                            .transition(.move(edge: .bottom))
-                            .padding(.bottom, 49 + geo.safeAreaInsets.bottom)
-                    }
+                VStack {
+                    Spacer()
+                    MiniPlayerBar()
+                        .environmentObject(playerVM)
+                        .transition(.move(edge: .bottom))
                 }
             }
         }

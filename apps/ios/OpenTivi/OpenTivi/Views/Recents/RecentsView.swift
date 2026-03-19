@@ -68,7 +68,6 @@ struct RecentsView: View {
     }
 
     private func relativeTime(_ isoString: String) -> String {
-        // Simplified relative time
-        return isoString
+        isoString.toDate()?.relativeDescription() ?? isoString
     }
 }

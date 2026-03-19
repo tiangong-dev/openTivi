@@ -36,16 +36,20 @@ struct EditSourceView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
-                            try? await RustBridge.shared.updateSource(
-                                sourceId: source.id,
-                                name: name,
-                                location: location,
-                                username: source.username,
-                                password: source.password,
-                                autoRefreshMinutes: source.autoRefreshMinutes,
-                                enabled: source.enabled
-                            )
-                            dismiss()
+                            do {
+                                try await RustBridge.shared.updateSource(
+                                    sourceId: source.id,
+                                    name: name,
+                                    location: location,
+                                    username: source.username,
+                                    password: source.password,
+                                    autoRefreshMinutes: source.autoRefreshMinutes,
+                                    enabled: source.enabled
+                                )
+                                dismiss()
+                            } catch {
+                                print("Save source error: \(error)")
+                            }
                         }
                     }
                     .disabled(name.isEmpty || location.isEmpty)

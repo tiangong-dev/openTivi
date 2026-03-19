@@ -38,7 +38,7 @@ struct SourcesView: View {
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
-                        vm.deleteSource(sourceId: source.id)
+                        Task { await vm.deleteSource(sourceId: source.id) }
                     } label: {
                         Label(locale.t("sources.action.delete"), systemImage: "trash")
                     }

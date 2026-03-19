@@ -36,10 +36,12 @@ final class SourcesViewModel: ObservableObject {
         }
     }
 
-    func deleteSource(sourceId: Int64) {
-        sources.removeAll { $0.id == sourceId }
-        Task {
-            try? await RustBridge.shared.deleteSource(sourceId: sourceId)
+    func deleteSource(sourceId: Int64) async {
+        do {
+            try await RustBridge.shared.deleteSource(sourceId: sourceId)
+            sources.removeAll { $0.id == sourceId }
+        } catch {
+            importMessage = "Delete failed: \(error.localizedDescription)"
         }
     }
 

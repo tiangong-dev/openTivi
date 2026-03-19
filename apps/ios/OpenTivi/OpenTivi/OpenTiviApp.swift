@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct OpenTiviApp: App {
     @StateObject private var playerVM = PlayerViewModel()
-    @ObservedObject private var bridge = RustBridge.shared
+    @StateObject private var bridge = RustBridge.shared
 
     var body: some Scene {
         WindowGroup {

@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -15,7 +14,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.ui.PlayerView
@@ -29,8 +27,10 @@ fun PlayerScreen(
     modifier: Modifier = Modifier,
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {
-    val context = LocalContext.current
     var showOverlay by remember { mutableStateOf(true) }
+    val channelName by viewModel.channelName.collectAsState()
+    val currentProgram by viewModel.currentProgram.collectAsState()
+    val nextProgram by viewModel.nextProgram.collectAsState()
 
     LaunchedEffect(channelId) {
         viewModel.loadChannel(channelId)
@@ -41,12 +41,6 @@ fun PlayerScreen(
         if (showOverlay) {
             delay(5000)
             showOverlay = false
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            viewModel.releasePlayer()
         }
     }
 
@@ -65,12 +59,12 @@ fun PlayerScreen(
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_UP -> {
-                        // TODO: Switch to previous channel
+                        viewModel.switchToPreviousChannel()
                         showOverlay = true
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_DOWN -> {
-                        // TODO: Switch to next channel
+                        viewModel.switchToNextChannel()
                         showOverlay = true
                         true
                     }
@@ -83,7 +77,7 @@ fun PlayerScreen(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     useController = false
-                    // TODO: Set player from viewModel.player
+                    player = viewModel.exoPlayer
                 }
             },
             modifier = Modifier.fillMaxSize(),
@@ -92,9 +86,9 @@ fun PlayerScreen(
         // Overlay
         if (showOverlay) {
             PlayerOverlay(
-                channelName = "", // TODO: Get from viewModel
-                currentProgram = null,
-                nextProgram = null,
+                channelName = channelName,
+                currentProgram = currentProgram,
+                nextProgram = nextProgram,
             )
         }
     }

@@ -36,6 +36,7 @@ fun AppNavigation() {
         stringResource(R.string.tab_home) to Screen.Home.route,
         stringResource(R.string.tab_channels) to Screen.Channels.route,
         stringResource(R.string.tab_favorites) to Screen.Favorites.route,
+        stringResource(R.string.sources_title) to Screen.Sources.route,
         stringResource(R.string.tab_settings) to Screen.Settings.route,
     )
 

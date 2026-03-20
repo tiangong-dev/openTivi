@@ -16,6 +16,8 @@ class PlayerViewModel @Inject constructor(
 
     private val tiviPlayer = TiviPlayer(application)
 
+    val exoPlayer get() = tiviPlayer.exoPlayer
+
     private val _channelName = MutableStateFlow("")
     val channelName: StateFlow<String> = _channelName.asStateFlow()
 
@@ -27,15 +29,6 @@ class PlayerViewModel @Inject constructor(
 
     fun loadChannel(channelId: Long) {
         // TODO: Call Rust bridge to get channel info and stream URL
-        // val channel = RustBridge.getChannel(channelId)
-        // _channelName.value = channel.name
-        // val proxyPort = RustBridge.getProxyPort()
-        // tiviPlayer.play(channel.streamUrl, proxyPort)
-
-        // TODO: Load EPG data for current/next program
-        // val epg = RustBridge.getEpg(channelId)
-        // _currentProgram.value = epg.current?.title
-        // _nextProgram.value = epg.next?.title
     }
 
     fun switchToPreviousChannel() {
@@ -44,10 +37,6 @@ class PlayerViewModel @Inject constructor(
 
     fun switchToNextChannel() {
         // TODO: Call Rust bridge to get next channel and switch
-    }
-
-    fun releasePlayer() {
-        tiviPlayer.release()
     }
 
     override fun onCleared() {

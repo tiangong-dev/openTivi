@@ -1,3 +1,3 @@
 fn main() {
-    uniffi::generate_scaffolding("src/opentivi.udl").unwrap();
+    println!("cargo:rerun-if-changed=src/lib.rs");
 }

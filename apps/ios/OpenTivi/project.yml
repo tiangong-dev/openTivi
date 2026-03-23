@@ -12,20 +12,46 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     MARKETING_VERSION: "0.1.0"
 
+packages:
+  VLCKitSPM:
+    url: https://github.com/tylerjonesio/vlckit-spm
+    from: 3.6.0
+
 targets:
   OpenTivi:
     type: application
     platform: iOS
+    dependencies:
+      - package: VLCKitSPM
     sources:
       - OpenTivi
+    preBuildScripts:
+      - name: Build Rust Bridge
+        script: |
+          "$PROJECT_DIR/../rust/build-xcode.sh"
+        basedOnDependencyAnalysis: false
     resources:
-      - path: ../../../shared/locales
+      - path: OpenTivi/Resources/locales
         includes:
           - "*.json"
+        excludes:
+          - "README.md"
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.opentivi.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.caoyunlong.opentivi.ios
         INFOPLIST_FILE: OpenTivi/Info.plist
         DEVELOPMENT_TEAM: ""
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(PROJECT_DIR)/RustGenerated/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)
+        SWIFT_INCLUDE_PATHS:
+          - $(inherited)
+          - $(PROJECT_DIR)/RustGenerated/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(PROJECT_DIR)/RustGenerated/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -lopentivi_ios

@@ -112,11 +112,7 @@ async fn check_http(url: &str) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client
-        .head(url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let resp = client.head(url).send().await.map_err(|e| e.to_string())?;
 
     let status = resp.status().as_u16();
     if status < 400 {

@@ -3,17 +3,24 @@ import SwiftUI
 struct FavoritesView: View {
     @StateObject private var vm = FavoritesViewModel()
     @EnvironmentObject var playerVM: PlayerViewModel
+    @ObservedObject private var locale = LocaleManager.shared
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 12)]
 
     var body: some View {
         ScrollView {
             if vm.favorites.isEmpty && !vm.isLoading {
-                ContentUnavailableView(
-                    "No Favorites",
-                    systemImage: "star",
-                    description: Text("Swipe right on a channel and tap ★ to add it here.")
-                )
+                VStack(spacing: 12) {
+                    Image(systemName: "star")
+                        .font(.system(size: 36))
+                        .foregroundColor(.secondary)
+                    Text(locale.t("favorites.noFavorites"))
+                        .font(.headline)
+                    Text(locale.t("favorites.addHint"))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
                 .padding(.top, 100)
             } else {
                 LazyVGrid(columns: columns, spacing: 16) {
@@ -35,7 +42,7 @@ struct FavoritesView: View {
             }
         }
         .refreshable { await vm.load() }
-        .navigationTitle("Favorites")
+        .navigationTitle(locale.t("favorites.title"))
         .overlay {
             if vm.isLoading && vm.favorites.isEmpty { LoadingView() }
         }

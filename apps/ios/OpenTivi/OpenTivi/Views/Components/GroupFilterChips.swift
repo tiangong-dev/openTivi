@@ -3,10 +3,11 @@ import SwiftUI
 struct GroupFilterChips: View {
     let groups: [String]
     @Binding var selected: String?
+    @ObservedObject private var locale = LocaleManager.shared
 
     var body: some View {
         HStack(spacing: 8) {
-            chipButton(label: "All", isSelected: selected == nil) {
+            chipButton(label: locale.t("channels.all"), isSelected: selected == nil) {
                 selected = nil
             }
 

@@ -3,6 +3,7 @@ import SwiftUI
 struct AddSourceView: View {
     @ObservedObject var vm: SourcesViewModel
     @Binding var isPresented: Bool
+    @ObservedObject private var locale = LocaleManager.shared
 
     @State private var selectedTab = 0
     @State private var isImporting = false
@@ -17,32 +18,44 @@ struct AddSourceView: View {
     @State private var xtreamUsername = ""
     @State private var xtreamPassword = ""
 
+    // XMLTV fields
+    @State private var xmltvName = ""
+    @State private var xmltvLocation = ""
+
     var body: some View {
         NavigationStack {
             Form {
-                Picker("Type", selection: $selectedTab) {
+                Picker(locale.t("sources.form.type"), selection: $selectedTab) {
                     Text("M3U").tag(0)
                     Text("Xtream").tag(1)
+                    Text("XMLTV").tag(2)
                 }
                 .pickerStyle(.segmented)
                 .listRowBackground(Color.clear)
 
                 if selectedTab == 0 {
-                    Section("M3U Source") {
-                        TextField("Name", text: $m3uName)
-                        TextField("M3U URL or file path", text: $m3uLocation)
+                    Section(locale.t("sources.form.m3uSection")) {
+                        TextField(locale.t("sources.form.name"), text: $m3uName)
+                        TextField(locale.t("sources.form.m3uLocation"), text: $m3uLocation)
                             .textInputAutocapitalization(.never)
                             .keyboardType(.URL)
                     }
-                } else {
-                    Section("Xtream Codes") {
-                        TextField("Name", text: $xtreamName)
-                        TextField("Server URL", text: $xtreamServer)
+                } else if selectedTab == 1 {
+                    Section(locale.t("sources.form.xtreamSection")) {
+                        TextField(locale.t("sources.form.name"), text: $xtreamName)
+                        TextField(locale.t("sources.form.serverUrl"), text: $xtreamServer)
                             .textInputAutocapitalization(.never)
                             .keyboardType(.URL)
-                        TextField("Username", text: $xtreamUsername)
+                        TextField(locale.t("sources.form.username"), text: $xtreamUsername)
                             .textInputAutocapitalization(.never)
-                        SecureField("Password", text: $xtreamPassword)
+                        SecureField(locale.t("sources.form.password"), text: $xtreamPassword)
+                    }
+                } else {
+                    Section(locale.t("sources.form.sourceDetails")) {
+                        TextField(locale.t("sources.form.name"), text: $xmltvName)
+                        TextField(locale.t("sources.form.xmltvLocation"), text: $xmltvLocation)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
                     }
                 }
 
@@ -55,7 +68,7 @@ struct AddSourceView: View {
                             if isImporting {
                                 ProgressView()
                             } else {
-                                Text("Import")
+                                Text(locale.t("sources.form.import"))
                                     .fontWeight(.semibold)
                             }
                             Spacer()
@@ -64,21 +77,24 @@ struct AddSourceView: View {
                     .disabled(isImporting || !isFormValid)
                 }
             }
-            .navigationTitle("Add Source")
+            .navigationTitle(locale.t("sources.add.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { isPresented = false }
+                    Button(locale.t("sources.edit.cancel")) { isPresented = false }
                 }
             }
+            .interactiveDismissDisabled(isImporting)
         }
     }
 
     private var isFormValid: Bool {
         if selectedTab == 0 {
             return !m3uName.isEmpty && !m3uLocation.isEmpty
-        } else {
+        } else if selectedTab == 1 {
             return !xtreamName.isEmpty && !xtreamServer.isEmpty && !xtreamUsername.isEmpty && !xtreamPassword.isEmpty
+        } else {
+            return !xmltvName.isEmpty && !xmltvLocation.isEmpty
         }
     }
 
@@ -88,8 +104,10 @@ struct AddSourceView: View {
 
         if selectedTab == 0 {
             await vm.importM3u(name: m3uName, location: m3uLocation, autoRefreshMinutes: nil)
-        } else {
+        } else if selectedTab == 1 {
             await vm.importXtream(name: xtreamName, serverUrl: xtreamServer, username: xtreamUsername, password: xtreamPassword)
+        } else {
+            await vm.importXmltv(name: xmltvName, location: xmltvLocation)
         }
 
         isPresented = false

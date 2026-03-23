@@ -44,12 +44,15 @@ struct ContentView: View {
             }
 
             if playerVM.isPlaying {
-                VStack {
-                    Spacer()
-                    MiniPlayerBar()
-                        .environmentObject(playerVM)
-                        .transition(.move(edge: .bottom))
-                }
+                MiniPlayerBar()
+                    .environmentObject(playerVM)
+                    .transition(.move(edge: .bottom))
+                    .padding(.bottom, 50) // clear the tab bar
+            }
+        }
+        .fullScreenCover(isPresented: $playerVM.isFullScreen) {
+            FullScreenPlayerContainer(preferredOrientation: $playerVM.preferredOrientation) {
+                PlayerView().environmentObject(playerVM)
             }
         }
     }

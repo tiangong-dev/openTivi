@@ -5,7 +5,8 @@ use serde::Deserialize;
 use crate::dto::AppUpdateInfoDto;
 use crate::error::{AppError, AppResult};
 
-const RELEASE_LATEST_URL: &str = "https://api.github.com/repos/tiangong-dev/openTivi/releases/latest";
+const RELEASE_LATEST_URL: &str =
+    "https://api.github.com/repos/tiangong-dev/openTivi/releases/latest";
 const TAGS_URL: &str = "https://api.github.com/repos/tiangong-dev/openTivi/tags?per_page=100";
 const RELEASES_PAGE_URL: &str = "https://github.com/tiangong-dev/openTivi/releases";
 
@@ -115,12 +116,8 @@ fn is_update_available(current_raw: &str, latest_raw: &str) -> AppResult<bool> {
 }
 
 fn parse_semver(raw: &str, field_name: &str) -> AppResult<Version> {
-    Version::parse(raw).map_err(|e| {
-        AppError::Parse(format!(
-            "invalid {} version '{}': {}",
-            field_name, raw, e
-        ))
-    })
+    Version::parse(raw)
+        .map_err(|e| AppError::Parse(format!("invalid {} version '{}': {}", field_name, raw, e)))
 }
 
 #[cfg(test)]

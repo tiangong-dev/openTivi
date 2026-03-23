@@ -10,11 +10,10 @@ pub async fn import_m3u(
     auto_refresh_minutes: Option<u32>,
 ) -> AppResult<ImportSummaryDto> {
     let content = fetch_content(&ctx.http, location).await?;
-    let channels = tokio::task::spawn_blocking(move || {
-        crate::core::parsers::m3u::parse_m3u(&content)
-    })
-    .await
-    .map_err(|e| AppError::Internal(format!("parse task failed: {e}")))??;
+    let channels =
+        tokio::task::spawn_blocking(move || crate::core::parsers::m3u::parse_m3u(&content))
+            .await
+            .map_err(|e| AppError::Internal(format!("parse task failed: {e}")))??;
 
     let name = name.to_string();
     let location = location.to_string();
@@ -93,11 +92,10 @@ pub async fn import_xmltv(
 ) -> AppResult<ImportSummaryDto> {
     let content = fetch_content(&ctx.http, location).await?;
     let content2 = content.clone();
-    let programs = tokio::task::spawn_blocking(move || {
-        crate::core::parsers::xmltv::parse_xmltv(&content)
-    })
-    .await
-    .map_err(|e| AppError::Internal(format!("parse task failed: {e}")))??;
+    let programs =
+        tokio::task::spawn_blocking(move || crate::core::parsers::xmltv::parse_xmltv(&content))
+            .await
+            .map_err(|e| AppError::Internal(format!("parse task failed: {e}")))??;
 
     let aliases = tokio::task::spawn_blocking(move || {
         crate::core::parsers::xmltv::parse_xmltv_channel_aliases(&content2)
@@ -119,10 +117,9 @@ pub async fn import_xmltv(
                 None,
             )?;
 
-            let programs_imported =
-                crate::platform::db::repositories::epg_repo::replace_programs(
-                    conn, source_id, &programs,
-                )?;
+            let programs_imported = crate::platform::db::repositories::epg_repo::replace_programs(
+                conn, source_id, &programs,
+            )?;
             let _ = crate::platform::db::repositories::epg_repo::replace_channel_aliases(
                 conn, source_id, &aliases,
             )?;
@@ -143,9 +140,7 @@ pub async fn refresh_source(ctx: &CoreContext, source_id: i64) -> AppResult<Impo
         .run(move |conn| {
             let source =
                 crate::platform::db::repositories::source_repo::get_by_id(conn, source_id)?
-                    .ok_or_else(|| {
-                        AppError::NotFound(format!("Source {} not found", source_id))
-                    })?;
+                    .ok_or_else(|| AppError::NotFound(format!("Source {} not found", source_id)))?;
             Ok(source)
         })
         .await?;
@@ -171,7 +166,13 @@ pub async fn refresh_source(ctx: &CoreContext, source_id: i64) -> AppResult<Impo
 
     let result = match source.kind {
         SourceKind::M3u => {
-            import_m3u(ctx, &source.name, &source.location, source.auto_refresh_minutes).await
+            import_m3u(
+                ctx,
+                &source.name,
+                &source.location,
+                source.auto_refresh_minutes,
+            )
+            .await
         }
         SourceKind::Xtream => {
             let username = source.username.unwrap_or_default();
@@ -197,9 +198,7 @@ pub async fn refresh_source(ctx: &CoreContext, source_id: i64) -> AppResult<Impo
             ctx.db
                 .run(move |conn| {
                     crate::platform::db::repositories::source_repo::record_refresh_failure(
-                        conn,
-                        source_id,
-                        &error_msg,
+                        conn, source_id, &error_msg,
                     )
                 })
                 .await?;

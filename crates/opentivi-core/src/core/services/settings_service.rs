@@ -14,6 +14,8 @@ pub async fn set_setting(
     value: serde_json::Value,
 ) -> AppResult<SettingDto> {
     ctx.db
-        .run(move |conn| crate::platform::db::repositories::settings_repo::upsert(conn, &key, &value))
+        .run(move |conn| {
+            crate::platform::db::repositories::settings_repo::upsert(conn, &key, &value)
+        })
         .await
 }

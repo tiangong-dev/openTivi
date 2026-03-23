@@ -7,10 +7,7 @@ use crate::error::{AppError, AppResult};
 const HEALTH_FRESH_MINUTES: i64 = 10;
 const PLAYBACK_PROBE_TIMEOUT: Duration = Duration::from_millis(1200);
 
-pub async fn resolve_playback(
-    ctx: &CoreContext,
-    channel_id: i64,
-) -> AppResult<PlaybackSourceDto> {
+pub async fn resolve_playback(ctx: &CoreContext, channel_id: i64) -> AppResult<PlaybackSourceDto> {
     let candidates = list_playback_candidates(ctx, channel_id).await?;
     Ok(candidates
         .into_iter()
@@ -24,16 +21,12 @@ pub async fn list_playback_candidates(
 ) -> AppResult<Vec<PlaybackSourceDto>> {
     ctx.db
         .run(move |conn| {
-            let channel =
-                crate::platform::db::repositories::channel_repo::get_enabled_by_id(
-                    conn, channel_id,
-                )?
-                .ok_or_else(|| {
-                    AppError::NotFound(format!("Channel {} not found", channel_id))
-                })?;
+            let channel = crate::platform::db::repositories::channel_repo::get_enabled_by_id(
+                conn, channel_id,
+            )?
+            .ok_or_else(|| AppError::NotFound(format!("Channel {} not found", channel_id)))?;
 
-            let _ =
-                crate::platform::db::repositories::recents_repo::mark_watched(conn, channel_id);
+            let _ = crate::platform::db::repositories::recents_repo::mark_watched(conn, channel_id);
 
             let candidates =
                 crate::platform::db::repositories::channel_repo::list_playback_candidates(
@@ -198,12 +191,20 @@ mod tests {
 
     #[test]
     fn infers_hls_from_extended_url_patterns() {
-        assert_eq!(infer_playback_kind_from_url("https://a.test/live?id=1&type=hls"), "hls");
-        assert_eq!(infer_playback_kind_from_url("https://a.test/play?output=m3u8"), "hls");
+        assert_eq!(
+            infer_playback_kind_from_url("https://a.test/live?id=1&type=hls"),
+            "hls"
+        );
+        assert_eq!(
+            infer_playback_kind_from_url("https://a.test/play?output=m3u8"),
+            "hls"
+        );
     }
 
     #[test]
     fn detects_hls_from_playlist_body() {
-        assert!(looks_like_hls_playlist(b"#EXTM3U\n#EXT-X-VERSION:3\nsegment.ts"));
+        assert!(looks_like_hls_playlist(
+            b"#EXTM3U\n#EXT-X-VERSION:3\nsegment.ts"
+        ));
     }
 }

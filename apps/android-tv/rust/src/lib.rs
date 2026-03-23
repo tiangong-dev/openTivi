@@ -13,8 +13,19 @@ struct Engine {
     proxy_port: u16,
 }
 
-fn with_engine<T>(f: impl FnOnce(&Engine) -> Result<T, String>) -> Result<T, String> {
-    let engine = ENGINE.get().ok_or("Engine not initialized")?;
+#[derive(Debug, thiserror::Error)]
+pub enum OpenTiviError {
+    #[error("OpenTivi runtime error")]
+    Runtime,
+}
+
+fn runtime_error(message: impl Into<String>) -> OpenTiviError {
+    eprintln!("OpenTivi Android bridge error: {}", message.into());
+    OpenTiviError::Runtime
+}
+
+fn with_engine<T>(f: impl FnOnce(&Engine) -> Result<T, OpenTiviError>) -> Result<T, OpenTiviError> {
+    let engine = ENGINE.get().ok_or_else(|| runtime_error("Engine not initialized"))?;
     f(engine)
 }
 
@@ -130,13 +141,13 @@ pub struct EpgSearchResult {
 
 // ── Initialization ──────────────────────────────────────────────────────
 
-pub fn init_engine(data_dir: String) -> Result<u16, String> {
+pub fn init_engine(data_dir: String) -> Result<u16, OpenTiviError> {
     opentivi_core::platform::fs::paths::set_data_dir(&data_dir);
 
-    let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| runtime_error(e.to_string()))?;
 
     let db_path = opentivi_core::platform::fs::paths::db_path()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| runtime_error(e.to_string()))?;
     let db_exec = DbExecutor::new(db_path);
     let ctx = CoreContext::new(db_exec);
 
@@ -151,9 +162,9 @@ pub fn init_engine(data_dir: String) -> Result<u16, String> {
             })
             .await
     })
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| runtime_error(e.to_string()))?;
 
-    let proxy_port = opentivi_core::platform::proxy::start_proxy_server();
+    let proxy_port = runtime.block_on(opentivi_core::platform::proxy::start_proxy_server());
 
     let engine = Engine {
         runtime,
@@ -162,20 +173,20 @@ pub fn init_engine(data_dir: String) -> Result<u16, String> {
     };
     ENGINE
         .set(engine)
-        .map_err(|_| "Already initialized".to_string())?;
+        .map_err(|_| runtime_error("Already initialized"))?;
 
     Ok(proxy_port)
 }
 
 // ── Sources ─────────────────────────────────────────────────────────────
 
-pub fn list_sources() -> Result<Vec<SourceInfo>, String> {
+pub fn list_sources() -> Result<Vec<SourceInfo>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
             .block_on(opentivi_core::core::services::source_service::list_sources(&engine.ctx))
             .map(|sources| sources.into_iter().map(SourceInfo::from).collect())
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
@@ -183,7 +194,7 @@ pub fn import_m3u(
     name: String,
     location: String,
     auto_refresh_minutes: Option<u32>,
-) -> Result<ImportResult, String> {
+) -> Result<ImportResult, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -194,7 +205,7 @@ pub fn import_m3u(
                 auto_refresh_minutes,
             ))
             .map(ImportResult::from)
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
@@ -203,7 +214,7 @@ pub fn import_xtream(
     server_url: String,
     username: String,
     password: String,
-) -> Result<ImportResult, String> {
+) -> Result<ImportResult, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -215,11 +226,11 @@ pub fn import_xtream(
                 &password,
             ))
             .map(ImportResult::from)
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn import_xmltv(name: String, location: String) -> Result<ImportResult, String> {
+pub fn import_xmltv(name: String, location: String) -> Result<ImportResult, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -229,11 +240,11 @@ pub fn import_xmltv(name: String, location: String) -> Result<ImportResult, Stri
                 &location,
             ))
             .map(ImportResult::from)
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn refresh_source(source_id: i64) -> Result<ImportResult, String> {
+pub fn refresh_source(source_id: i64) -> Result<ImportResult, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -242,7 +253,7 @@ pub fn refresh_source(source_id: i64) -> Result<ImportResult, String> {
                 source_id,
             ))
             .map(ImportResult::from)
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
@@ -254,7 +265,7 @@ pub fn update_source(
     password: Option<String>,
     auto_refresh_minutes: Option<u32>,
     enabled: bool,
-) -> Result<(), String> {
+) -> Result<(), OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -268,11 +279,11 @@ pub fn update_source(
                 auto_refresh_minutes,
                 enabled,
             ))
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn delete_source(source_id: i64) -> Result<(), String> {
+pub fn delete_source(source_id: i64) -> Result<(), OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -280,7 +291,7 @@ pub fn delete_source(source_id: i64) -> Result<(), String> {
                 &engine.ctx,
                 source_id,
             ))
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
@@ -293,7 +304,7 @@ pub fn list_channels(
     favorites_only: Option<bool>,
     limit: u32,
     offset: u32,
-) -> Result<Vec<ChannelInfo>, String> {
+) -> Result<Vec<ChannelInfo>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -307,11 +318,11 @@ pub fn list_channels(
                 offset,
             ))
             .map(|channels| channels.into_iter().map(ChannelInfo::from).collect())
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn list_groups(source_id: Option<i64>) -> Result<Vec<String>, String> {
+pub fn list_groups(source_id: Option<i64>) -> Result<Vec<String>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -319,11 +330,11 @@ pub fn list_groups(source_id: Option<i64>) -> Result<Vec<String>, String> {
                 &engine.ctx,
                 source_id,
             ))
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn get_channel(channel_id: i64) -> Result<Option<ChannelInfo>, String> {
+pub fn get_channel(channel_id: i64) -> Result<Option<ChannelInfo>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -334,7 +345,7 @@ pub fn get_channel(channel_id: i64) -> Result<Option<ChannelInfo>, String> {
                 )
             }))
             .map(|opt| opt.map(ChannelInfo::from))
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
@@ -344,7 +355,7 @@ pub fn get_channel_epg(
     channel_id: i64,
     from_ts: Option<String>,
     to_ts: Option<String>,
-) -> Result<Vec<EpgProgramInfo>, String> {
+) -> Result<Vec<EpgProgramInfo>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -355,7 +366,7 @@ pub fn get_channel_epg(
                 to_ts,
             ))
             .map(|programs| programs.into_iter().map(EpgProgramInfo::from).collect())
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
@@ -363,7 +374,7 @@ pub fn get_channels_epg_snapshots(
     channel_ids: Vec<i64>,
     window_start_ts: Option<i64>,
     window_end_ts: Option<i64>,
-) -> Result<Vec<ChannelEpgSnapshot>, String> {
+) -> Result<Vec<ChannelEpgSnapshot>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -374,7 +385,7 @@ pub fn get_channels_epg_snapshots(
                 window_end_ts,
             ))
             .map(|snapshots| snapshots.into_iter().map(ChannelEpgSnapshot::from).collect())
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
@@ -382,7 +393,7 @@ pub fn search_epg(
     search: Option<String>,
     state: Option<String>,
     limit: Option<u32>,
-) -> Result<Vec<EpgSearchResult>, String> {
+) -> Result<Vec<EpgSearchResult>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -393,13 +404,13 @@ pub fn search_epg(
                 limit.unwrap_or(100),
             ))
             .map(|results| results.into_iter().map(EpgSearchResult::from).collect())
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── Favorites ───────────────────────────────────────────────────────────
 
-pub fn list_favorites() -> Result<Vec<ChannelInfo>, String> {
+pub fn list_favorites() -> Result<Vec<ChannelInfo>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -407,11 +418,11 @@ pub fn list_favorites() -> Result<Vec<ChannelInfo>, String> {
                 &engine.ctx,
             ))
             .map(|channels| channels.into_iter().map(ChannelInfo::from).collect())
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn set_favorite(channel_id: i64, favorite: bool) -> Result<(), String> {
+pub fn set_favorite(channel_id: i64, favorite: bool) -> Result<(), OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -420,13 +431,13 @@ pub fn set_favorite(channel_id: i64, favorite: bool) -> Result<(), String> {
                 channel_id,
                 favorite,
             ))
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── Recents ─────────────────────────────────────────────────────────────
 
-pub fn list_recents() -> Result<Vec<RecentChannelInfo>, String> {
+pub fn list_recents() -> Result<Vec<RecentChannelInfo>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -435,11 +446,11 @@ pub fn list_recents() -> Result<Vec<RecentChannelInfo>, String> {
                 50,
             ))
             .map(|recents| recents.into_iter().map(RecentChannelInfo::from).collect())
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn mark_recent_watched(channel_id: i64) -> Result<(), String> {
+pub fn mark_recent_watched(channel_id: i64) -> Result<(), OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -447,13 +458,13 @@ pub fn mark_recent_watched(channel_id: i64) -> Result<(), String> {
                 &engine.ctx,
                 channel_id,
             ))
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── Playback ────────────────────────────────────────────────────────────
 
-pub fn resolve_playback(channel_id: i64) -> Result<PlaybackInfo, String> {
+pub fn resolve_playback(channel_id: i64) -> Result<PlaybackInfo, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -462,11 +473,11 @@ pub fn resolve_playback(channel_id: i64) -> Result<PlaybackInfo, String> {
                 channel_id,
             ))
             .map(PlaybackInfo::from)
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn list_playback_candidates(channel_id: i64) -> Result<Vec<PlaybackInfo>, String> {
+pub fn list_playback_candidates(channel_id: i64) -> Result<Vec<PlaybackInfo>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -475,13 +486,13 @@ pub fn list_playback_candidates(channel_id: i64) -> Result<Vec<PlaybackInfo>, St
                 channel_id,
             ))
             .map(|candidates| candidates.into_iter().map(PlaybackInfo::from).collect())
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── Settings ────────────────────────────────────────────────────────────
 
-pub fn get_all_settings() -> Result<Vec<SettingInfo>, String> {
+pub fn get_all_settings() -> Result<Vec<SettingInfo>, OpenTiviError> {
     with_engine(|engine| {
         engine
             .runtime
@@ -489,11 +500,11 @@ pub fn get_all_settings() -> Result<Vec<SettingInfo>, String> {
                 &engine.ctx,
             ))
             .map(|settings| settings.into_iter().map(SettingInfo::from).collect())
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn set_setting(key: String, value: String) -> Result<(), String> {
+pub fn set_setting(key: String, value: String) -> Result<(), OpenTiviError> {
     with_engine(|engine| {
         let json_value: serde_json::Value =
             serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value.clone()));
@@ -505,13 +516,13 @@ pub fn set_setting(key: String, value: String) -> Result<(), String> {
                 json_value,
             ))
             .map(|_| ())
-            .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── Proxy ───────────────────────────────────────────────────────────────
 
-pub fn get_proxy_port() -> Result<u16, String> {
+pub fn get_proxy_port() -> Result<u16, OpenTiviError> {
     with_engine(|engine| Ok(engine.proxy_port))
 }
 

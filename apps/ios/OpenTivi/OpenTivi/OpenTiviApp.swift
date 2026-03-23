@@ -4,6 +4,7 @@ import SwiftUI
 struct OpenTiviApp: App {
     @StateObject private var playerVM = PlayerViewModel()
     @StateObject private var bridge = RustBridge.shared
+    private let appLaunchUptime = ProcessInfo.processInfo.systemUptime
 
     var body: some Scene {
         WindowGroup {
@@ -19,7 +20,15 @@ struct OpenTiviApp: App {
             }
             .preferredColorScheme(.dark)
             .task {
+                RustBridge.logStartup(
+                    "App task started, waiting for bridge initialization",
+                    since: appLaunchUptime
+                )
                 await bridge.initializeAsync()
+                RustBridge.logStartup(
+                    "App task finished bridge initialization",
+                    since: appLaunchUptime
+                )
             }
         }
     }

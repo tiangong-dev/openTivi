@@ -3,6 +3,7 @@ import SwiftUI
 struct ChannelDetailView: View {
     let channel: ChannelInfo
     @EnvironmentObject var playerVM: PlayerViewModel
+    @ObservedObject private var locale = LocaleManager.shared
 
     var body: some View {
         List {
@@ -19,17 +20,17 @@ struct ChannelDetailView: View {
                 .listRowBackground(Color.clear)
             }
 
-            Section("Actions") {
+            Section(locale.t("channels.detail.actions")) {
                 Button {
                     playerVM.play(channel: channel)
                 } label: {
-                    Label("Play", systemImage: "play.fill")
+                    Label(locale.t("channels.detail.play"), systemImage: "play.fill")
                 }
             }
 
             if let number = channel.channelNumber {
-                Section("Info") {
-                    LabeledContent("Channel Number", value: number)
+                Section(locale.t("channels.detail.info")) {
+                    LabeledContent(locale.t("channels.detail.channelNumber"), value: number)
                 }
             }
         }

@@ -3,6 +3,7 @@ import SwiftUI
 struct RecentsView: View {
     @StateObject private var vm = RecentsViewModel()
     @EnvironmentObject var playerVM: PlayerViewModel
+    @ObservedObject private var locale = LocaleManager.shared
 
     var body: some View {
         List {
@@ -22,7 +23,7 @@ struct RecentsView: View {
                                 .foregroundColor(.secondary)
                             Text("·")
                                 .foregroundColor(.secondary)
-                            Text("\(recent.playCount)× played")
+                            Text(locale.t("recents.playedCount", ["count": "\(recent.playCount)"]))
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -53,14 +54,19 @@ struct RecentsView: View {
         }
         .listStyle(.plain)
         .refreshable { await vm.load() }
-        .navigationTitle("Recents")
+        .navigationTitle(locale.t("recents.title"))
         .overlay {
             if vm.recents.isEmpty && !vm.isLoading {
-                ContentUnavailableView(
-                    "No Recents",
-                    systemImage: "clock",
-                    description: Text("Channels you watch will appear here.")
-                )
+                VStack(spacing: 12) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 36))
+                        .foregroundColor(.secondary)
+                    Text(locale.t("recents.noRecents"))
+                        .font(.headline)
+                    Text(locale.t("recents.watchHint"))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
             }
             if vm.isLoading && vm.recents.isEmpty { LoadingView() }
         }

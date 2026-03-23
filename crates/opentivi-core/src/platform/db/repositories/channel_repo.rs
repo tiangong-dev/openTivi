@@ -1,8 +1,8 @@
 use rusqlite::Connection;
 
-use crate::dto::{ChannelListItemDto, ImportSummaryDto};
 use crate::core::models::channel::{Channel, ParsedChannel};
 use crate::core::services::channel_identity::normalize_channel_name;
+use crate::dto::{ChannelListItemDto, ImportSummaryDto};
 use crate::error::AppResult;
 
 pub fn upsert_channels(
@@ -173,7 +173,9 @@ pub fn list_groups(conn: &Connection, source_id: Option<i64>) -> AppResult<Vec<S
     };
 
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(&params), |row| row.get::<_, String>(0))?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(&params), |row| {
+        row.get::<_, String>(0)
+    })?;
 
     crate::platform::db::collect_rows(rows)
 }
@@ -193,7 +195,9 @@ pub fn get_enabled_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel
             source_id: row.get("source_id")?,
             external_id: row.get("external_id")?,
             name: row.get("name")?,
-            normalized_name: row.get::<_, Option<String>>("normalized_name")?.unwrap_or_default(),
+            normalized_name: row
+                .get::<_, Option<String>>("normalized_name")?
+                .unwrap_or_default(),
             channel_number: row.get("channel_number")?,
             group_name: row.get("group_name")?,
             tvg_id: row.get("tvg_id")?,
@@ -254,7 +258,9 @@ pub fn list_playback_candidates(conn: &Connection, channel_id: i64) -> AppResult
             source_id: row.get("source_id")?,
             external_id: row.get("external_id")?,
             name: row.get("name")?,
-            normalized_name: row.get::<_, Option<String>>("normalized_name")?.unwrap_or_default(),
+            normalized_name: row
+                .get::<_, Option<String>>("normalized_name")?
+                .unwrap_or_default(),
             channel_number: row.get("channel_number")?,
             group_name: row.get("group_name")?,
             tvg_id: row.get("tvg_id")?,
@@ -294,8 +300,8 @@ pub fn backfill_normalized_names(conn: &Connection) -> AppResult<u32> {
 mod tests {
     use super::*;
     use crate::core::models::source::SourceKind;
-    use crate::platform::db::repositories::source_repo;
     use crate::platform::db::migrations;
+    use crate::platform::db::repositories::source_repo;
 
     fn seed_source(conn: &Connection, name: &str, location: &str) -> i64 {
         source_repo::upsert_source(conn, SourceKind::M3u, name, location, None, None, None)

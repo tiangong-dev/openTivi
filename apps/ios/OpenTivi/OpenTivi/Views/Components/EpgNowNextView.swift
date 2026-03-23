@@ -2,13 +2,14 @@ import SwiftUI
 
 struct EpgNowNextView: View {
     let snapshot: ChannelEpgSnapshot?
+    @ObservedObject private var locale = LocaleManager.shared
 
     var body: some View {
         if let snapshot = snapshot {
             VStack(alignment: .leading, spacing: 4) {
                 if let now = snapshot.now {
                     HStack(spacing: 6) {
-                        Text("NOW")
+                        Text(locale.t("player.now").uppercased())
                             .font(.caption2)
                             .fontWeight(.bold)
                             .foregroundColor(.white)
@@ -25,7 +26,7 @@ struct EpgNowNextView: View {
 
                 if let next = snapshot.next {
                     HStack(spacing: 6) {
-                        Text("NEXT")
+                        Text(locale.t("player.next").uppercased())
                             .font(.caption2)
                             .fontWeight(.bold)
                             .foregroundColor(.secondary)

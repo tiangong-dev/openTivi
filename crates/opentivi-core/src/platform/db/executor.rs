@@ -31,8 +31,8 @@ impl DbExecutor {
 }
 
 fn open_at(db_path: &PathBuf) -> AppResult<rusqlite::Connection> {
-    let conn = rusqlite::Connection::open(db_path)
-        .map_err(|e| AppError::Database(e.to_string()))?;
+    let conn =
+        rusqlite::Connection::open(db_path).map_err(|e| AppError::Database(e.to_string()))?;
     conn.execute_batch(
         "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
     )

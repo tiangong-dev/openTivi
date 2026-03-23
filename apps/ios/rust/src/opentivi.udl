@@ -2,27 +2,27 @@ namespace opentivi {
 
     // ── Initialization ──────────────────────────────────────────────────
 
-    [Throws=string]
-    u16 init_engine(string data_dir);
+    [Throws=OpenTiviError]
+    void init_engine(string data_dir);
 
     // ── Sources ─────────────────────────────────────────────────────────
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     sequence<SourceInfo> list_sources();
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     ImportResult import_m3u(string name, string location, u32? auto_refresh_minutes);
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     ImportResult import_xtream(string name, string server_url, string username, string password);
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     ImportResult import_xmltv(string name, string location);
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     ImportResult refresh_source(i64 source_id);
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     void update_source(
         i64 source_id,
         string name,
@@ -33,12 +33,12 @@ namespace opentivi {
         boolean enabled
     );
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     void delete_source(i64 source_id);
 
     // ── Channels ────────────────────────────────────────────────────────
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     sequence<ChannelInfo> list_channels(
         i64? source_id,
         string? group_name,
@@ -48,63 +48,64 @@ namespace opentivi {
         u32 offset
     );
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     sequence<string> list_groups(i64? source_id);
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     ChannelInfo? get_channel(i64 channel_id);
 
     // ── EPG ─────────────────────────────────────────────────────────────
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     sequence<EpgProgramInfo> get_channel_epg(i64 channel_id, string? from_ts, string? to_ts);
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     sequence<ChannelEpgSnapshot> get_channels_epg_snapshots(
         sequence<i64> channel_ids,
         i64? window_start_ts,
         i64? window_end_ts
     );
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     sequence<EpgSearchResult> search_epg(string? search, string? state, u32? limit);
 
     // ── Favorites ───────────────────────────────────────────────────────
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     sequence<ChannelInfo> list_favorites();
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     void set_favorite(i64 channel_id, boolean favorite);
 
     // ── Recents ─────────────────────────────────────────────────────────
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     sequence<RecentChannelInfo> list_recents();
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     void mark_recent_watched(i64 channel_id);
 
     // ── Playback ────────────────────────────────────────────────────────
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     PlaybackInfo resolve_playback(i64 channel_id);
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     sequence<PlaybackInfo> list_playback_candidates(i64 channel_id);
 
     // ── Settings ────────────────────────────────────────────────────────
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     sequence<SettingInfo> get_all_settings();
 
-    [Throws=string]
+    [Throws=OpenTiviError]
     void set_setting(string key, string value);
 
-    // ── Proxy ───────────────────────────────────────────────────────────
+};
 
-    [Throws=string]
-    u16 get_proxy_port();
+[Error]
+enum OpenTiviError {
+    "Runtime"
 };
 
 // ── Records ─────────────────────────────────────────────────────────────

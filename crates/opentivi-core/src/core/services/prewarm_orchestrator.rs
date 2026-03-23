@@ -328,7 +328,6 @@ impl ResourcePrewarmOrchestrator {
             );
         });
     }
-
 }
 
 fn pick_warm_mode(reason: PrewarmReason, allow_high_cost: bool) -> WarmMode {

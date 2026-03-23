@@ -3,6 +3,7 @@ import SwiftUI
 struct ChannelsView: View {
     @StateObject private var vm = ChannelsViewModel()
     @EnvironmentObject var playerVM: PlayerViewModel
+    @ObservedObject private var locale = LocaleManager.shared
 
     var body: some View {
         List {
@@ -28,7 +29,7 @@ struct ChannelsView: View {
                             vm.toggleFavorite(channelId: channel.id)
                         } label: {
                             Label(
-                                channel.isFavorite ? "Unfavorite" : "Favorite",
+                                channel.isFavorite ? locale.t("channels.unfavorite") : locale.t("channels.favorite"),
                                 systemImage: channel.isFavorite ? "star.slash" : "star.fill"
                             )
                         }
@@ -37,18 +38,23 @@ struct ChannelsView: View {
             }
         }
         .listStyle(.plain)
-        .searchable(text: $vm.searchText, prompt: "Search channels...")
+        .searchable(text: $vm.searchText, prompt: Text(locale.t("channels.searchPlaceholder")))
         .refreshable { await vm.loadChannels() }
-        .navigationTitle("Channels")
+        .navigationTitle(locale.t("nav.channels"))
         .overlay {
             if vm.isLoading && vm.channels.isEmpty {
                 LoadingView()
             } else if vm.filteredChannels.isEmpty && !vm.isLoading {
-                ContentUnavailableView(
-                    "No Channels",
-                    systemImage: "tv.slash",
-                    description: Text("Import a source to get started.")
-                )
+                VStack(spacing: 12) {
+                    Image(systemName: "tv.slash")
+                        .font(.system(size: 36))
+                        .foregroundColor(.secondary)
+                    Text(locale.t("channels.noChannels"))
+                        .font(.headline)
+                    Text(locale.t("channels.importHint"))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
             }
         }
         .task {

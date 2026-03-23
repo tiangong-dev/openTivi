@@ -42,9 +42,9 @@ struct SettingsView: View {
                 }
             }
 
-            Section(locale.t("nav.settings")) {
-                LabeledContent("Version", value: "0.1.0")
-                LabeledContent("Build", value: "1")
+            Section(locale.t("settings.about")) {
+                LabeledContent(locale.t("settings.version"), value: "0.1.0")
+                LabeledContent(locale.t("settings.build"), value: "1")
                 Link("GitHub", destination: URL(string: "https://github.com/tiangong-dev/opentivi")!)
             }
         }

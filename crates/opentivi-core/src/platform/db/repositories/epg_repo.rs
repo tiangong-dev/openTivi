@@ -1,10 +1,10 @@
 use rusqlite::Connection;
 
-use crate::dto::{EpgProgramDto, EpgProgramSearchResultDto};
 use crate::core::models::epg::ParsedProgram;
 use crate::core::services::epg_matching::{
     build_channel_candidates, merge_mapped_ids, normalize_epg_key,
 };
+use crate::dto::{EpgProgramDto, EpgProgramSearchResultDto};
 use crate::error::AppResult;
 
 pub fn replace_programs(
@@ -120,7 +120,9 @@ fn lookup_channel_ids_by_aliases(
     sql.push(')');
 
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(&params), |row| row.get::<_, String>("channel_tvg_id"))?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(&params), |row| {
+        row.get::<_, String>("channel_tvg_id")
+    })?;
 
     let mut ids = Vec::new();
     for row in rows {

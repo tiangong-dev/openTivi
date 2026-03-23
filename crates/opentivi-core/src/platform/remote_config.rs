@@ -51,28 +51,32 @@ pub async fn start_remote_config_server(ctx: CoreContext) -> RemoteServerInfo {
                 .and(warp::post())
                 .and(warp::query::<HashMap<String, String>>())
                 .and(warp::body::json::<RemoteImportM3uInput>())
-                .and_then(move |params: HashMap<String, String>, input: RemoteImportM3uInput| {
-                    let t = t.clone();
-                    let ctx = ctx.clone();
-                    async move {
-                        if params.get("t").map(|s| s.as_str()) != Some(&t) {
-                            return Ok::<_, warp::Rejection>(warp::reply::with_status(
-                                warp::reply::json(&serde_json::json!({"error": "Unauthorized"})),
-                                warp::http::StatusCode::UNAUTHORIZED,
-                            ));
+                .and_then(
+                    move |params: HashMap<String, String>, input: RemoteImportM3uInput| {
+                        let t = t.clone();
+                        let ctx = ctx.clone();
+                        async move {
+                            if params.get("t").map(|s| s.as_str()) != Some(&t) {
+                                return Ok::<_, warp::Rejection>(warp::reply::with_status(
+                                    warp::reply::json(
+                                        &serde_json::json!({"error": "Unauthorized"}),
+                                    ),
+                                    warp::http::StatusCode::UNAUTHORIZED,
+                                ));
+                            }
+                            match handle_import_m3u(&ctx, input).await {
+                                Ok(summary) => Ok(warp::reply::with_status(
+                                    warp::reply::json(&summary),
+                                    warp::http::StatusCode::OK,
+                                )),
+                                Err(e) => Ok(warp::reply::with_status(
+                                    warp::reply::json(&serde_json::json!({"error": e})),
+                                    warp::http::StatusCode::BAD_REQUEST,
+                                )),
+                            }
                         }
-                        match handle_import_m3u(&ctx, input).await {
-                            Ok(summary) => Ok(warp::reply::with_status(
-                                warp::reply::json(&summary),
-                                warp::http::StatusCode::OK,
-                            )),
-                            Err(e) => Ok(warp::reply::with_status(
-                                warp::reply::json(&serde_json::json!({"error": e})),
-                                warp::http::StatusCode::BAD_REQUEST,
-                            )),
-                        }
-                    }
-                })
+                    },
+                )
         };
 
         let import_xtream = {
@@ -82,28 +86,32 @@ pub async fn start_remote_config_server(ctx: CoreContext) -> RemoteServerInfo {
                 .and(warp::post())
                 .and(warp::query::<HashMap<String, String>>())
                 .and(warp::body::json::<RemoteImportXtreamInput>())
-                .and_then(move |params: HashMap<String, String>, input: RemoteImportXtreamInput| {
-                    let t = t.clone();
-                    let ctx = ctx.clone();
-                    async move {
-                        if params.get("t").map(|s| s.as_str()) != Some(&t) {
-                            return Ok::<_, warp::Rejection>(warp::reply::with_status(
-                                warp::reply::json(&serde_json::json!({"error": "Unauthorized"})),
-                                warp::http::StatusCode::UNAUTHORIZED,
-                            ));
+                .and_then(
+                    move |params: HashMap<String, String>, input: RemoteImportXtreamInput| {
+                        let t = t.clone();
+                        let ctx = ctx.clone();
+                        async move {
+                            if params.get("t").map(|s| s.as_str()) != Some(&t) {
+                                return Ok::<_, warp::Rejection>(warp::reply::with_status(
+                                    warp::reply::json(
+                                        &serde_json::json!({"error": "Unauthorized"}),
+                                    ),
+                                    warp::http::StatusCode::UNAUTHORIZED,
+                                ));
+                            }
+                            match handle_import_xtream(&ctx, input).await {
+                                Ok(summary) => Ok(warp::reply::with_status(
+                                    warp::reply::json(&summary),
+                                    warp::http::StatusCode::OK,
+                                )),
+                                Err(e) => Ok(warp::reply::with_status(
+                                    warp::reply::json(&serde_json::json!({"error": e})),
+                                    warp::http::StatusCode::BAD_REQUEST,
+                                )),
+                            }
                         }
-                        match handle_import_xtream(&ctx, input).await {
-                            Ok(summary) => Ok(warp::reply::with_status(
-                                warp::reply::json(&summary),
-                                warp::http::StatusCode::OK,
-                            )),
-                            Err(e) => Ok(warp::reply::with_status(
-                                warp::reply::json(&serde_json::json!({"error": e})),
-                                warp::http::StatusCode::BAD_REQUEST,
-                            )),
-                        }
-                    }
-                })
+                    },
+                )
         };
 
         let cors = warp::cors()
@@ -115,9 +123,7 @@ pub async fn start_remote_config_server(ctx: CoreContext) -> RemoteServerInfo {
         warp::serve(routes).run(([0, 0, 0, 0], port)).await;
     });
 
-    RemoteServerInfo {
-        url,
-    }
+    RemoteServerInfo { url }
 }
 
 #[derive(Debug, Deserialize)]
@@ -146,7 +152,10 @@ struct RemoteImportResult {
     channels_removed: u32,
 }
 
-async fn handle_import_m3u(ctx: &CoreContext, input: RemoteImportM3uInput) -> Result<RemoteImportResult, String> {
+async fn handle_import_m3u(
+    ctx: &CoreContext,
+    input: RemoteImportM3uInput,
+) -> Result<RemoteImportResult, String> {
     let summary = crate::core::services::import_service::import_m3u(
         ctx,
         &input.name,
@@ -163,7 +172,10 @@ async fn handle_import_m3u(ctx: &CoreContext, input: RemoteImportM3uInput) -> Re
     })
 }
 
-async fn handle_import_xtream(ctx: &CoreContext, input: RemoteImportXtreamInput) -> Result<RemoteImportResult, String> {
+async fn handle_import_xtream(
+    ctx: &CoreContext,
+    input: RemoteImportXtreamInput,
+) -> Result<RemoteImportResult, String> {
     let summary = crate::core::services::import_service::import_xtream(
         ctx,
         &input.name,

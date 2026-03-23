@@ -29,9 +29,7 @@ pub async fn update_source(
         .run(move |conn| {
             let source =
                 crate::platform::db::repositories::source_repo::get_by_id(conn, source_id)?
-                    .ok_or_else(|| {
-                        AppError::NotFound(format!("Source {} not found", source_id))
-                    })?;
+                    .ok_or_else(|| AppError::NotFound(format!("Source {} not found", source_id)))?;
 
             let normalized_refresh = match source.kind {
                 SourceKind::M3u => auto_refresh_minutes,

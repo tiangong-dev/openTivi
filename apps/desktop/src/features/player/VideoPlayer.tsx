@@ -475,6 +475,23 @@ export function VideoPlayer({
       return Number.isFinite(total) && total > 0 ? total : null;
     };
 
+    let perfBytesAccum = 0;
+    let perfLastFlush = Date.now();
+    let observer: PerformanceObserver | null = null;
+    try {
+      observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          const res = entry as PerformanceResourceTiming;
+          if (res.transferSize > 0) {
+            perfBytesAccum += res.transferSize;
+          }
+        }
+      });
+      observer.observe({ type: "resource", buffered: false });
+    } catch {
+      observer = null;
+    }
+
     let lastBytes = readDecodedBytes();
     let lastTs = Date.now();
     speedFallbackTimerRef.current = setInterval(() => {
@@ -484,6 +501,18 @@ export function VideoPlayer({
       );
       if (Number.isFinite(hlsEstimate) && hlsEstimate > 0) {
         setNetworkSpeedBps((prev) => (prev === null ? hlsEstimate : prev * 0.4 + hlsEstimate * 0.6));
+        return;
+      }
+
+      if (perfBytesAccum > 0) {
+        const nowTs = Date.now();
+        const deltaMs = nowTs - perfLastFlush;
+        if (deltaMs > 0) {
+          const bitsPerSecond = (perfBytesAccum * 8 * 1000) / deltaMs;
+          setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.4 + bitsPerSecond * 0.6));
+        }
+        perfBytesAccum = 0;
+        perfLastFlush = nowTs;
         return;
       }
 
@@ -510,6 +539,7 @@ export function VideoPlayer({
         clearInterval(speedFallbackTimerRef.current);
         speedFallbackTimerRef.current = null;
       }
+      observer?.disconnect();
     };
   }, [channel.id, getVideoBySlot]);
 

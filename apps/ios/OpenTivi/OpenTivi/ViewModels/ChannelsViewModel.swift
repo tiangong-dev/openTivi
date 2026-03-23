@@ -7,6 +7,7 @@ final class ChannelsViewModel: ObservableObject {
     @Published var selectedGroup: String?
     @Published var searchText = ""
     @Published var isLoading = false
+    private let startupUptime = ProcessInfo.processInfo.systemUptime
 
     var filteredChannels: [ChannelInfo] {
         var result = channels
@@ -21,20 +22,29 @@ final class ChannelsViewModel: ObservableObject {
     }
 
     func loadChannels() async {
+        let start = ProcessInfo.processInfo.systemUptime
+        RustBridge.logStartup("ChannelsViewModel.loadChannels start", since: startupUptime)
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            RustBridge.logStartup("ChannelsViewModel.loadChannels end", since: start)
+        }
         do {
             channels = try await RustBridge.shared.fetchChannels()
+            RustBridge.logStartup("ChannelsViewModel.loadChannels success count=\(channels.count)", since: start)
         } catch {
-            print("Load channels error: \(error)")
+            RustBridge.logStartup("ChannelsViewModel.loadChannels failed: \(error.localizedDescription)", since: start)
         }
     }
 
     func loadGroups() async {
+        let start = ProcessInfo.processInfo.systemUptime
+        RustBridge.logStartup("ChannelsViewModel.loadGroups start", since: startupUptime)
         do {
             groups = try await RustBridge.shared.fetchGroups()
+            RustBridge.logStartup("ChannelsViewModel.loadGroups success count=\(groups.count)", since: start)
         } catch {
-            print("Load groups error: \(error)")
+            RustBridge.logStartup("ChannelsViewModel.loadGroups failed: \(error.localizedDescription)", since: start)
         }
     }
 

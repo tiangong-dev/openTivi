@@ -28,6 +28,8 @@ pub async fn list_channels(
 
 pub async fn list_groups(ctx: &CoreContext, source_id: Option<i64>) -> AppResult<Vec<String>> {
     ctx.db
-        .run(move |conn| crate::platform::db::repositories::channel_repo::list_groups(conn, source_id))
+        .run(move |conn| {
+            crate::platform::db::repositories::channel_repo::list_groups(conn, source_id)
+        })
         .await
 }

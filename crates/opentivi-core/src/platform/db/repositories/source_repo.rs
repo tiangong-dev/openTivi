@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 
-use crate::dto::SourceDto;
 use crate::core::models::source::{Source, SourceDisabledReason, SourceKind};
+use crate::dto::SourceDto;
 use crate::error::AppResult;
 
 pub fn list_all(conn: &Connection) -> AppResult<Vec<SourceDto>> {
@@ -237,12 +237,16 @@ mod tests {
         )
         .expect("source should be created");
 
-        record_refresh_failure(&conn, source_id, "network timeout").expect("failure should persist");
+        record_refresh_failure(&conn, source_id, "network timeout")
+            .expect("failure should persist");
         let source = get_by_id(&conn, source_id)
             .expect("query should succeed")
             .expect("source should exist");
         assert_eq!(source.consecutive_refresh_failures, 1);
-        assert_eq!(source.last_refresh_error.as_deref(), Some("network timeout"));
+        assert_eq!(
+            source.last_refresh_error.as_deref(),
+            Some("network timeout")
+        );
         assert!(source.next_retry_at.is_some());
 
         clear_refresh_failure_state(&conn, source_id).expect("success should clear failure state");

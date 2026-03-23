@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MiniPlayerBar: View {
     @EnvironmentObject var playerVM: PlayerViewModel
+    @ObservedObject private var locale = LocaleManager.shared
 
     var body: some View {
         HStack(spacing: 12) {
@@ -19,7 +20,7 @@ struct MiniPlayerBar: View {
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 } else {
-                    Text("Now playing")
+                    Text(locale.t("player.nowPlaying"))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -43,9 +44,6 @@ struct MiniPlayerBar: View {
         .padding(.horizontal, 8)
         .onTapGesture {
             playerVM.isFullScreen = true
-        }
-        .fullScreenCover(isPresented: $playerVM.isFullScreen) {
-            PlayerView().environmentObject(playerVM)
         }
     }
 }

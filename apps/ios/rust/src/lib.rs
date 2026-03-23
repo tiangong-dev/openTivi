@@ -1,7 +1,10 @@
 use std::sync::OnceLock;
+use std::time::Instant;
 
 use opentivi_core::context::CoreContext;
 use opentivi_core::platform::db::executor::DbExecutor;
+
+uniffi::setup_scaffolding!("opentivi");
 
 // ── Global state ────────────────────────────────────────────────────────
 
@@ -10,16 +13,38 @@ static ENGINE: OnceLock<Engine> = OnceLock::new();
 struct Engine {
     runtime: tokio::runtime::Runtime,
     ctx: CoreContext,
-    proxy_port: u16,
 }
 
-fn with_engine<T>(f: impl FnOnce(&Engine) -> Result<T, String>) -> Result<T, String> {
-    let engine = ENGINE.get().ok_or("Engine not initialized")?;
+fn runtime_error(message: impl Into<String>) -> OpenTiviError {
+    eprintln!("OpenTivi iOS bridge error: {}", message.into());
+    OpenTiviError::Runtime
+}
+
+fn log_timing(scope: &str, start: Instant, message: impl AsRef<str>) {
+    eprintln!(
+        "[OpenTivi][{}] {} | elapsed={}ms",
+        scope,
+        message.as_ref(),
+        start.elapsed().as_millis()
+    );
+}
+
+fn with_engine<T>(f: impl FnOnce(&Engine) -> Result<T, OpenTiviError>) -> Result<T, OpenTiviError> {
+    let engine = ENGINE
+        .get()
+        .ok_or_else(|| runtime_error("Engine not initialized"))?;
     f(engine)
 }
 
 // ── UniFFI record types ─────────────────────────────────────────────────
 
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum OpenTiviError {
+    #[error("OpenTivi runtime error")]
+    Runtime,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct SourceInfo {
     pub id: i64,
     pub kind: String,
@@ -43,6 +68,7 @@ pub struct SourceInfo {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct ChannelInfo {
     pub id: i64,
     pub source_id: i64,
@@ -55,6 +81,7 @@ pub struct ChannelInfo {
     pub is_favorite: bool,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct EpgProgramInfo {
     pub id: i64,
     pub channel_tvg_id: String,
@@ -65,12 +92,14 @@ pub struct EpgProgramInfo {
     pub category: Option<String>,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct EpgProgramMini {
     pub title: String,
     pub start_at: String,
     pub end_at: String,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct ChannelEpgSnapshot {
     pub channel_id: i64,
     pub now: Option<EpgProgramMini>,
@@ -78,6 +107,7 @@ pub struct ChannelEpgSnapshot {
     pub timeline_programs: Vec<EpgProgramMini>,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct ImportResult {
     pub source_id: i64,
     pub channels_imported: u32,
@@ -85,6 +115,7 @@ pub struct ImportResult {
     pub channels_removed: u32,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct RecentChannelInfo {
     pub id: i64,
     pub source_id: i64,
@@ -99,12 +130,14 @@ pub struct RecentChannelInfo {
     pub play_count: i64,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct SettingInfo {
     pub key: String,
     pub value: String,
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct PlaybackInfo {
     pub channel_id: i64,
     pub resolved_channel_id: i64,
@@ -114,6 +147,7 @@ pub struct PlaybackInfo {
     pub logo_url: Option<String>,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct EpgSearchResult {
     pub id: i64,
     pub channel_id: i64,
@@ -130,117 +164,153 @@ pub struct EpgSearchResult {
 
 // ── Initialization ──────────────────────────────────────────────────────
 
-pub fn init_engine(data_dir: String) -> Result<u16, String> {
+#[uniffi::export]
+pub fn init_engine(data_dir: String) -> Result<(), OpenTiviError> {
+    let start = Instant::now();
+    eprintln!("[OpenTivi][init_engine] start data_dir={}", data_dir);
     opentivi_core::platform::fs::paths::set_data_dir(&data_dir);
+    log_timing("init_engine", start, "data dir registered");
 
     let runtime = tokio::runtime::Runtime::new()
-        .map_err(|e| format!("Failed to create runtime: {e}"))?;
+        .map_err(|e| runtime_error(format!("Failed to create runtime: {e}")))?;
+    log_timing("init_engine", start, "tokio runtime created");
 
-    let db_path = opentivi_core::platform::fs::paths::db_path()
-        .map_err(|e| e.to_string())?;
+    let db_path =
+        opentivi_core::platform::fs::paths::db_path().map_err(|e| runtime_error(e.to_string()))?;
+    eprintln!(
+        "[OpenTivi][init_engine] resolved db_path={}",
+        db_path.display()
+    );
 
     // Ensure parent directory exists
     if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(parent).map_err(|e| runtime_error(e.to_string()))?;
     }
+    log_timing("init_engine", start, "database parent directory ensured");
 
     // Run migrations synchronously (one-time startup)
+    let open_conn_start = Instant::now();
     let conn = opentivi_core::platform::db::connection::open_connection()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| runtime_error(e.to_string()))?;
+    log_timing("init_engine", open_conn_start, "database connection opened");
+    let migration_start = Instant::now();
     opentivi_core::platform::db::migrations::run_migrations(&conn)
-        .map_err(|e| e.to_string())?;
-    let _ = opentivi_core::platform::db::repositories::channel_repo::backfill_normalized_names(&conn);
+        .map_err(|e| runtime_error(e.to_string()))?;
+    log_timing("init_engine", migration_start, "migrations finished");
+    let backfill_start = Instant::now();
+    let _ =
+        opentivi_core::platform::db::repositories::channel_repo::backfill_normalized_names(&conn);
+    log_timing(
+        "init_engine",
+        backfill_start,
+        "normalized-name backfill finished",
+    );
     drop(conn);
+    log_timing("init_engine", start, "startup sqlite work finished");
 
     let db = DbExecutor::new(db_path);
     let ctx = CoreContext::new(db);
 
-    let proxy_port = runtime.block_on(async {
-        opentivi_core::platform::proxy::start_proxy_server().await
-    });
+    let engine = Engine { runtime, ctx };
+    ENGINE
+        .set(engine)
+        .map_err(|_| runtime_error("Already initialized"))?;
+    log_timing("init_engine", start, "engine stored in OnceLock");
 
-    let engine = Engine { runtime, ctx, proxy_port };
-    ENGINE.set(engine).map_err(|_| "Already initialized".to_string())?;
-
-    Ok(proxy_port)
+    Ok(())
 }
 
 // ── Sources ─────────────────────────────────────────────────────────────
 
-pub fn list_sources() -> Result<Vec<SourceInfo>, String> {
+#[uniffi::export]
+pub fn list_sources() -> Result<Vec<SourceInfo>, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::source_service::list_sources(&engine.ctx)
-        )
-        .map(|sources| sources.into_iter().map(SourceInfo::from).collect())
-        .map_err(|e| e.to_string())
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::source_service::list_sources(
+                &engine.ctx,
+            ))
+            .map(|sources| sources.into_iter().map(SourceInfo::from).collect())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
+#[uniffi::export]
 pub fn import_m3u(
     name: String,
     location: String,
     auto_refresh_minutes: Option<u32>,
-) -> Result<ImportResult, String> {
+) -> Result<ImportResult, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::import_service::import_m3u(
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::import_service::import_m3u(
                 &engine.ctx,
                 &name,
                 &location,
                 auto_refresh_minutes,
-            )
-        )
-        .map(ImportResult::from)
-        .map_err(|e| e.to_string())
+            ))
+            .map(ImportResult::from)
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
+#[uniffi::export]
 pub fn import_xtream(
     name: String,
     server_url: String,
     username: String,
     password: String,
-) -> Result<ImportResult, String> {
+) -> Result<ImportResult, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::import_service::import_xtream(
-                &engine.ctx,
-                &name,
-                &server_url,
-                &username,
-                &password,
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::import_service::import_xtream(
+                    &engine.ctx,
+                    &name,
+                    &server_url,
+                    &username,
+                    &password,
+                ),
             )
-        )
-        .map(ImportResult::from)
-        .map_err(|e| e.to_string())
+            .map(ImportResult::from)
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn import_xmltv(name: String, location: String) -> Result<ImportResult, String> {
+#[uniffi::export]
+pub fn import_xmltv(name: String, location: String) -> Result<ImportResult, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::import_service::import_xmltv(
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::import_service::import_xmltv(
                 &engine.ctx,
                 &name,
                 &location,
-            )
-        )
-        .map(ImportResult::from)
-        .map_err(|e| e.to_string())
+            ))
+            .map(ImportResult::from)
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn refresh_source(source_id: i64) -> Result<ImportResult, String> {
+#[uniffi::export]
+pub fn refresh_source(source_id: i64) -> Result<ImportResult, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::import_service::refresh_source(&engine.ctx, source_id)
-        )
-        .map(ImportResult::from)
-        .map_err(|e| e.to_string())
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::import_service::refresh_source(
+                    &engine.ctx,
+                    source_id,
+                ),
+            )
+            .map(ImportResult::from)
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
+#[uniffi::export]
 pub fn update_source(
     source_id: i64,
     name: String,
@@ -249,35 +319,44 @@ pub fn update_source(
     password: Option<String>,
     auto_refresh_minutes: Option<u32>,
     enabled: bool,
-) -> Result<(), String> {
+) -> Result<(), OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::source_service::update_source(
-                &engine.ctx,
-                source_id,
-                name,
-                location,
-                username,
-                password,
-                auto_refresh_minutes,
-                enabled,
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::source_service::update_source(
+                    &engine.ctx,
+                    source_id,
+                    name,
+                    location,
+                    username,
+                    password,
+                    auto_refresh_minutes,
+                    enabled,
+                ),
             )
-        )
-        .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn delete_source(source_id: i64) -> Result<(), String> {
+#[uniffi::export]
+pub fn delete_source(source_id: i64) -> Result<(), OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::source_service::delete_source(&engine.ctx, source_id)
-        )
-        .map_err(|e| e.to_string())
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::source_service::delete_source(
+                    &engine.ctx,
+                    source_id,
+                ),
+            )
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── Channels ────────────────────────────────────────────────────────────
 
+#[uniffi::export]
 pub fn list_channels(
     source_id: Option<i64>,
     group_name: Option<String>,
@@ -285,34 +364,63 @@ pub fn list_channels(
     favorites_only: Option<bool>,
     limit: u32,
     offset: u32,
-) -> Result<Vec<ChannelInfo>, String> {
+) -> Result<Vec<ChannelInfo>, OpenTiviError> {
+    let start = Instant::now();
+    eprintln!(
+        "[OpenTivi][list_channels] start source_id={:?} group_name={:?} search={:?} favorites_only={:?} limit={} offset={}",
+        source_id, group_name, search, favorites_only, limit, offset
+    );
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::channel_service::list_channels(
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::channel_service::list_channels(
+                    &engine.ctx,
+                    source_id,
+                    group_name,
+                    search,
+                    favorites_only.unwrap_or(false),
+                    limit,
+                    offset,
+                ),
+            )
+            .map(|channels| {
+                log_timing(
+                    "list_channels",
+                    start,
+                    format!("query finished count={}", channels.len()),
+                );
+                channels.into_iter().map(ChannelInfo::from).collect()
+            })
+            .map_err(|e| runtime_error(e.to_string()))
+    })
+}
+
+#[uniffi::export]
+pub fn list_groups(source_id: Option<i64>) -> Result<Vec<String>, OpenTiviError> {
+    let start = Instant::now();
+    eprintln!("[OpenTivi][list_groups] start source_id={:?}", source_id);
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::channel_service::list_groups(
                 &engine.ctx,
                 source_id,
-                group_name,
-                search,
-                favorites_only.unwrap_or(false),
-                limit,
-                offset,
-            )
-        )
-        .map(|channels| channels.into_iter().map(ChannelInfo::from).collect())
-        .map_err(|e| e.to_string())
+            ))
+            .map(|groups| {
+                log_timing(
+                    "list_groups",
+                    start,
+                    format!("query finished count={}", groups.len()),
+                );
+                groups
+            })
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn list_groups(source_id: Option<i64>) -> Result<Vec<String>, String> {
-    with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::channel_service::list_groups(&engine.ctx, source_id)
-        )
-        .map_err(|e| e.to_string())
-    })
-}
-
-pub fn get_channel(channel_id: i64) -> Result<Option<ChannelInfo>, String> {
+#[uniffi::export]
+pub fn get_channel(channel_id: i64) -> Result<Option<ChannelInfo>, OpenTiviError> {
     with_engine(|engine| {
         engine.runtime.block_on(
             engine.ctx.db.run(move |conn| {
@@ -323,175 +431,200 @@ pub fn get_channel(channel_id: i64) -> Result<Option<ChannelInfo>, String> {
             })
         )
         .map(|opt| opt.map(ChannelInfo::from))
-        .map_err(|e| e.to_string())
+        .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── EPG ─────────────────────────────────────────────────────────────────
 
+#[uniffi::export]
 pub fn get_channel_epg(
     channel_id: i64,
     from_ts: Option<String>,
     to_ts: Option<String>,
-) -> Result<Vec<EpgProgramInfo>, String> {
+) -> Result<Vec<EpgProgramInfo>, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::epg_service::get_channel_epg(
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::epg_service::get_channel_epg(
                 &engine.ctx,
                 channel_id,
                 from_ts,
                 to_ts,
-            )
-        )
-        .map(|programs| programs.into_iter().map(EpgProgramInfo::from).collect())
-        .map_err(|e| e.to_string())
+            ))
+            .map(|programs| programs.into_iter().map(EpgProgramInfo::from).collect())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
+#[uniffi::export]
 pub fn get_channels_epg_snapshots(
     channel_ids: Vec<i64>,
     window_start_ts: Option<i64>,
     window_end_ts: Option<i64>,
-) -> Result<Vec<ChannelEpgSnapshot>, String> {
+) -> Result<Vec<ChannelEpgSnapshot>, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::epg_service::get_channels_epg_snapshots(
-                &engine.ctx,
-                channel_ids,
-                window_start_ts,
-                window_end_ts,
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::epg_service::get_channels_epg_snapshots(
+                    &engine.ctx,
+                    channel_ids,
+                    window_start_ts,
+                    window_end_ts,
+                ),
             )
-        )
-        .map(|snapshots| snapshots.into_iter().map(ChannelEpgSnapshot::from).collect())
-        .map_err(|e| e.to_string())
+            .map(|snapshots| {
+                snapshots
+                    .into_iter()
+                    .map(ChannelEpgSnapshot::from)
+                    .collect()
+            })
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
+#[uniffi::export]
 pub fn search_epg(
     search: Option<String>,
     state: Option<String>,
     limit: Option<u32>,
-) -> Result<Vec<EpgSearchResult>, String> {
+) -> Result<Vec<EpgSearchResult>, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::epg_service::search_programs(
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::epg_service::search_programs(
                 &engine.ctx,
                 search,
                 state,
                 limit.unwrap_or(100),
-            )
-        )
-        .map(|results| results.into_iter().map(EpgSearchResult::from).collect())
-        .map_err(|e| e.to_string())
+            ))
+            .map(|results| results.into_iter().map(EpgSearchResult::from).collect())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── Favorites ───────────────────────────────────────────────────────────
 
-pub fn list_favorites() -> Result<Vec<ChannelInfo>, String> {
+#[uniffi::export]
+pub fn list_favorites() -> Result<Vec<ChannelInfo>, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::favorites_service::list_favorites(&engine.ctx)
-        )
-        .map(|channels| channels.into_iter().map(ChannelInfo::from).collect())
-        .map_err(|e| e.to_string())
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::favorites_service::list_favorites(&engine.ctx))
+            .map(|channels| channels.into_iter().map(ChannelInfo::from).collect())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn set_favorite(channel_id: i64, favorite: bool) -> Result<(), String> {
+#[uniffi::export]
+pub fn set_favorite(channel_id: i64, favorite: bool) -> Result<(), OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::favorites_service::set_favorite(
-                &engine.ctx,
-                channel_id,
-                favorite,
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::favorites_service::set_favorite(
+                    &engine.ctx,
+                    channel_id,
+                    favorite,
+                ),
             )
-        )
-        .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── Recents ─────────────────────────────────────────────────────────────
 
-pub fn list_recents() -> Result<Vec<RecentChannelInfo>, String> {
+#[uniffi::export]
+pub fn list_recents() -> Result<Vec<RecentChannelInfo>, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::recents_service::list_recents(&engine.ctx, 50)
-        )
-        .map(|recents| recents.into_iter().map(RecentChannelInfo::from).collect())
-        .map_err(|e| e.to_string())
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::recents_service::list_recents(&engine.ctx, 50))
+            .map(|recents| recents.into_iter().map(RecentChannelInfo::from).collect())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn mark_recent_watched(channel_id: i64) -> Result<(), String> {
+#[uniffi::export]
+pub fn mark_recent_watched(channel_id: i64) -> Result<(), OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::recents_service::mark_recent_watched(
-                &engine.ctx,
-                channel_id,
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::recents_service::mark_recent_watched(
+                    &engine.ctx,
+                    channel_id,
+                ),
             )
-        )
-        .map_err(|e| e.to_string())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── Playback ────────────────────────────────────────────────────────────
 
-pub fn resolve_playback(channel_id: i64) -> Result<PlaybackInfo, String> {
+#[uniffi::export]
+pub fn resolve_playback(channel_id: i64) -> Result<PlaybackInfo, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::playback_service::resolve_playback(&engine.ctx, channel_id)
-        )
-        .map(PlaybackInfo::from)
-        .map_err(|e| e.to_string())
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::playback_service::resolve_playback(
+                    &engine.ctx,
+                    channel_id,
+                ),
+            )
+            .map(PlaybackInfo::from)
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn list_playback_candidates(channel_id: i64) -> Result<Vec<PlaybackInfo>, String> {
+#[uniffi::export]
+pub fn list_playback_candidates(channel_id: i64) -> Result<Vec<PlaybackInfo>, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::playback_service::list_playback_candidates(
-                &engine.ctx,
-                channel_id,
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::playback_service::list_playback_candidates(
+                    &engine.ctx,
+                    channel_id,
+                ),
             )
-        )
-        .map(|candidates| candidates.into_iter().map(PlaybackInfo::from).collect())
-        .map_err(|e| e.to_string())
+            .map(|candidates| candidates.into_iter().map(PlaybackInfo::from).collect())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
 // ── Settings ────────────────────────────────────────────────────────────
 
-pub fn get_all_settings() -> Result<Vec<SettingInfo>, String> {
+#[uniffi::export]
+pub fn get_all_settings() -> Result<Vec<SettingInfo>, OpenTiviError> {
     with_engine(|engine| {
-        engine.runtime.block_on(
-            opentivi_core::core::services::settings_service::get_settings(&engine.ctx)
-        )
-        .map(|settings| settings.into_iter().map(SettingInfo::from).collect())
-        .map_err(|e| e.to_string())
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::settings_service::get_settings(&engine.ctx))
+            .map(|settings| settings.into_iter().map(SettingInfo::from).collect())
+            .map_err(|e| runtime_error(e.to_string()))
     })
 }
 
-pub fn set_setting(key: String, value: String) -> Result<(), String> {
+#[uniffi::export]
+pub fn set_setting(key: String, value: String) -> Result<(), OpenTiviError> {
     with_engine(|engine| {
         let json_value: serde_json::Value =
             serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value.clone()));
-        engine.runtime.block_on(
-            opentivi_core::core::services::settings_service::set_setting(
-                &engine.ctx,
-                key,
-                json_value,
+        engine
+            .runtime
+            .block_on(
+                opentivi_core::core::services::settings_service::set_setting(
+                    &engine.ctx,
+                    key,
+                    json_value,
+                ),
             )
-        )
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+            .map(|_| ())
+            .map_err(|e| runtime_error(e.to_string()))
     })
-}
-
-// ── Proxy ───────────────────────────────────────────────────────────────
-
-pub fn get_proxy_port() -> Result<u16, String> {
-    with_engine(|engine| Ok(engine.proxy_port))
 }
 
 // ── DTO → UniFFI record conversions ─────────────────────────────────────
@@ -647,5 +780,3 @@ impl From<opentivi_core::dto::EpgProgramSearchResultDto> for EpgSearchResult {
         }
     }
 }
-
-uniffi::include_scaffolding!("opentivi");

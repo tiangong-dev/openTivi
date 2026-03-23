@@ -7,11 +7,13 @@ edition = "2021"
 crate-type = ["staticlib"]
 name = "opentivi_ios"
 
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
 [dependencies]
 opentivi-core = { path = "../../../crates/opentivi-core" }
-uniffi = { version = "0.28", features = ["build"] }
+uniffi = { version = "0.28", features = ["build", "cli", "bindgen", "cargo-metadata"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
-
-[build-dependencies]
-uniffi = { version = "0.28", features = ["build"] }
+thiserror = "2"

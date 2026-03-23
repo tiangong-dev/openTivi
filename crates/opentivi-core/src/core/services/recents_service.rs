@@ -10,6 +10,8 @@ pub async fn list_recents(ctx: &CoreContext, limit: u32) -> AppResult<Vec<Recent
 
 pub async fn mark_recent_watched(ctx: &CoreContext, channel_id: i64) -> AppResult<()> {
     ctx.db
-        .run(move |conn| crate::platform::db::repositories::recents_repo::mark_watched(conn, channel_id))
+        .run(move |conn| {
+            crate::platform::db::repositories::recents_repo::mark_watched(conn, channel_id)
+        })
         .await
 }

@@ -7,7 +7,6 @@ import dagger.hilt.android.HiltAndroidApp
 class OpenTiviApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        // TODO: Initialize Rust bridge
-        // RustBridge.init(filesDir.absolutePath)
+        OpenTiviEngine.init(this)
     }
 }

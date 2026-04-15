@@ -184,10 +184,20 @@ final class RustBridge: ObservableObject {
         try await Task.detached { try OpenTivi.markRecentWatched(channelId: channelId) }.value
     }
 
+    // MARK: - EPG Search
+
+    func searchEpg(search: String?, state: String? = nil, limit: UInt32? = nil) async throws -> [EpgSearchResult] {
+        try await Task.detached { try OpenTivi.searchEpg(search: search, state: state, limit: limit) }.value
+    }
+
     // MARK: - Playback
 
     func resolvePlayback(channelId: Int64) async throws -> PlaybackInfo {
         try await Task.detached { try OpenTivi.resolvePlayback(channelId: channelId) }.value
+    }
+
+    func listPlaybackCandidates(channelId: Int64) async throws -> [PlaybackInfo] {
+        try await Task.detached { try OpenTivi.listPlaybackCandidates(channelId: channelId) }.value
     }
 
     // MARK: - Settings

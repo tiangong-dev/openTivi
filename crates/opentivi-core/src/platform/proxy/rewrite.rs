@@ -47,6 +47,12 @@ pub(super) fn insert_common_headers(
         warp::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
         warp::http::HeaderValue::from_static("*"),
     );
+    if is_playlist_content_type(content_type) {
+        headers.insert(
+            warp::http::header::CACHE_CONTROL,
+            warp::http::HeaderValue::from_static("no-cache, no-store, must-revalidate"),
+        );
+    }
 }
 
 pub(super) fn validate_stream_url(raw: &str) -> Result<(), &'static str> {

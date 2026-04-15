@@ -1,8 +1,16 @@
-# TV Remote Interaction Guide (v0.1)
+# TV Remote Interaction Profile (v0.2)
+
+Status: Companion Profile
+
+This document is a TV-specific companion to the canonical interaction spec in [interaction-navigation-spec.md](/Volumes/ssd1/code/opentivi/docs/interaction-navigation-spec.md).
+
+- use the interaction spec for shared contracts
+- use this document for TV-specific defaults and examples
+- if this document conflicts with the interaction spec, the interaction spec wins
 
 ## 1. Goal
 
-Unify TV remote behavior around **intent** instead of physical keys, and keep implementation small:
+Describe the current TV remote profile around **intent** instead of physical keys, and keep implementation small:
 
 - single input adapter for key-to-intent
 - single confirm gesture parser for single/double/long press
@@ -36,9 +44,9 @@ This follows KISS (small, direct flow) and Unix-style separation (adapter vs act
 
 Implementation note: gesture parsing happens in `createConfirmPressHandler` and is independent from UI components.
 
-## 2.4 Enum Contract
+## 2.4 Contract Notes
 
-- `TvIntent` and `ConfirmGesture` are the source of truth for action semantics.
+- `TvIntent` and `ConfirmGesture` names should stay aligned with the shared interaction spec and code.
 - UI modules must consume enum values, not scattered string literals.
 - Documentation and tests should reference the same enum names.
 - Focus groups can be nested. A child group handles movement first, and only bubbles to its parent when the move exceeds that group's configured edge.
@@ -73,6 +81,11 @@ Rules:
 - `ConfirmGesture.Single` on an entry opens its mode
 - `Back` exits the active mode first; otherwise it returns to NAV
 - text entry uses the user's own IME keyboard after entering edit mode via confirm
+
+Note:
+
+- this document describes the current inline-search structure
+- a dedicated TV search screen is a roadmap proposal, not current behavior, until the canonical interaction spec is updated
 
 ---
 

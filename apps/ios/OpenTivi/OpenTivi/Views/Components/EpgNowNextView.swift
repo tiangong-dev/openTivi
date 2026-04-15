@@ -12,11 +12,13 @@ struct EpgNowNextView: View {
                         Text(locale.t("player.now").uppercased())
                             .font(.caption2)
                             .fontWeight(.bold)
-                            .foregroundColor(.white)
+                            .foregroundColor(.tiviLive)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(Color.red)
-                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .strokeBorder(Color.tiviLive, lineWidth: 1)
+                            )
 
                         Text(now.title)
                             .font(.caption)
@@ -29,15 +31,15 @@ struct EpgNowNextView: View {
                         Text(locale.t("player.next").uppercased())
                             .font(.caption2)
                             .fontWeight(.bold)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.tiviMutedForeground)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(Color(.systemGray5))
+                            .background(Color.tiviMuted)
                             .clipShape(RoundedRectangle(cornerRadius: 3))
 
                         Text(next.title)
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.tiviMutedForeground)
                             .lineLimit(1)
                     }
                 }

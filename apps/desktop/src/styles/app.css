@@ -1,10 +1,7 @@
 body {
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 26%),
-    linear-gradient(180deg, #1b1b1f 0%, #101012 18%, var(--color-bg-canvas) 56%);
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-size: var(--font-size-md);
+  background-color: var(--background);
+  color: var(--foreground);
+  font-size: var(--font-size-body);
   line-height: var(--line-height-normal);
 }
 
@@ -29,10 +26,10 @@ button,
 [role="button"] {
   font: inherit;
   transition:
-    background-color var(--duration-fast) var(--easing-standard),
-    box-shadow var(--duration-fast) var(--easing-standard),
-    border-color var(--duration-fast) var(--easing-standard),
-    filter var(--duration-fast) var(--easing-standard);
+    background-color var(--duration-fast) var(--easing-default),
+    box-shadow var(--duration-fast) var(--easing-default),
+    border-color var(--duration-fast) var(--easing-default),
+    filter var(--duration-fast) var(--easing-default);
 }
 
 button:hover:not(:disabled) {
@@ -43,6 +40,6 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 [role="button"]:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ring);
   outline-offset: 1px;
 }

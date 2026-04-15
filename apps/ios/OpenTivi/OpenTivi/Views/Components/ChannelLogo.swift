@@ -27,12 +27,12 @@ struct ChannelLogo: View {
 
     private var placeholder: some View {
         RoundedRectangle(cornerRadius: 8)
-            .fill(Color(.systemGray5))
+            .fill(Color.tiviMuted)
             .frame(width: size, height: size)
             .overlay {
                 Image(systemName: "tv")
                     .font(.system(size: size * 0.35))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.tiviMutedForeground)
             }
     }
 }

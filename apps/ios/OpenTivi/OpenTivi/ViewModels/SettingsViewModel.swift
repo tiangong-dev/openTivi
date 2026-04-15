@@ -23,4 +23,13 @@ final class SettingsViewModel: ObservableObject {
             print("Set setting error: \(error)")
         }
     }
+
+    func settingValue(for key: String) -> String? {
+        guard let raw = settings.first(where: { $0.key == key })?.value else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count >= 2, trimmed.first == "\"", trimmed.last == "\"" {
+            return String(trimmed.dropFirst().dropLast())
+        }
+        return trimmed
+    }
 }

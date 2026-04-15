@@ -17,12 +17,12 @@ struct MiniPlayerBar: View {
                 if let now = playerVM.epgSnapshot?.now {
                     Text(now.title)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.tiviMutedForeground)
                         .lineLimit(1)
                 } else {
                     Text(locale.t("player.nowPlaying"))
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.tiviMutedForeground)
                 }
             }
 
@@ -33,15 +33,31 @@ struct MiniPlayerBar: View {
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title2)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.tiviMutedForeground)
             }
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(radius: 4)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background {
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+                .overlay {
+                    Capsule()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    .white.opacity(0.25),
+                                    .white.opacity(0.05),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
+                }
+        }
+        .padding(.horizontal, 24)
         .onTapGesture {
             playerVM.isFullScreen = true
         }

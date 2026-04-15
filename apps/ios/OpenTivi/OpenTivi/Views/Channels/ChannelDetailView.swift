@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChannelDetailView: View {
     let channel: ChannelInfo
+    let allChannels: [ChannelInfo]
     @EnvironmentObject var playerVM: PlayerViewModel
     @ObservedObject private var locale = LocaleManager.shared
 
@@ -22,7 +23,7 @@ struct ChannelDetailView: View {
 
             Section(locale.t("channels.detail.actions")) {
                 Button {
-                    playerVM.play(channel: channel)
+                    playerVM.play(channel: channel, allChannels: allChannels)
                 } label: {
                     Label(locale.t("channels.detail.play"), systemImage: "play.fill")
                 }

@@ -1,30 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">OpenTivi</string>
+    <string name="app_name">OpenTivi TV</string>
 
     <!-- Tabs -->
     <string name="tab_home">Home</string>
     <string name="tab_channels">Channels</string>
     <string name="tab_favorites">Favorites</string>
+    <string name="tab_recents">Recents</string>
     <string name="tab_settings">Settings</string>
+
+    <!-- Search -->
+    <string name="search_title">Search</string>
+    <string name="search_empty">No results found. Try a different query.</string>
+    <string name="search_hint">Type to search channels…</string>
 
     <!-- Home -->
     <string name="home_continue_watching">Continue Watching</string>
     <string name="home_favorites">Favorites</string>
+    <string name="home_hero_resume">Resume</string>
 
     <!-- Channels -->
     <string name="channels_all">All</string>
     <string name="channels_groups">Groups</string>
     <string name="channels_search">Search channels…</string>
+    <string name="channels_empty">No channels found. Import a source first.</string>
 
     <!-- Favorites -->
-    <string name="favorites_empty">No favorites yet. Browse channels and add some.</string>
+    <string name="favorites_empty">No favorites yet. Long-press a channel to add it.</string>
+    <string name="channels_favorite">Add to favorites</string>
+    <string name="channels_unfavorite">Remove from favorites</string>
+
+    <!-- Recents -->
+    <string name="recents_empty">No recently watched channels yet.</string>
+
+    <!-- Long press -->
+    <string name="long_press_hint">Long-press to favorite</string>
+    <string name="recents_play_count">Played %1$d times</string>
 
     <!-- Sources -->
     <string name="sources_title">Sources</string>
     <string name="sources_add">Add Source</string>
-    <string name="sources_empty">No sources. Press \"Add Source\" to import.</string>
-    <string name="sources_tab_xtream">Xtream Account</string>
+    <string name="sources_empty">No sources yet. Press \"Add Source\" to import one.</string>
+    <string name="sources_tab_xtream">Xtream Codes</string>
     <string name="sources_form_name">Name</string>
     <string name="sources_form_location">M3U URL or file path</string>
     <string name="sources_form_server_url">Server URL</string>
@@ -32,12 +49,54 @@
     <string name="sources_form_password">Password</string>
     <string name="sources_import_m3u">Import M3U</string>
     <string name="sources_import_xtream">Import Xtream</string>
+    <string name="sources_tab_xmltv">XMLTV / EPG</string>
+    <string name="sources_import_xmltv">Import XMLTV</string>
     <string name="sources_refresh">Refresh</string>
     <string name="sources_delete">Delete</string>
+    <string name="sources_edit">Edit</string>
+    <string name="sources_filter_all">All</string>
+    <string name="sources_filter_enabled">Enabled</string>
+    <string name="sources_filter_disabled">Disabled</string>
+    <string name="sources_filter_backoff">Backoff</string>
+    <string name="sources_filter_error">Error</string>
+    <string name="sources_enabled">Enabled</string>
+    <string name="sources_auto_refresh">Auto-refresh (min)</string>
+    <string name="sources_edit_title">Edit Source</string>
+    <string name="sources_auto_refresh_minutes">Auto-refresh interval (minutes)</string>
+    <string name="sources_status_disabled">Disabled</string>
+    <string name="sources_status_backoff">Backoff</string>
+    <string name="sources_status_error">Error</string>
+    <string name="sources_failures">%1$d failures</string>
+
+    <!-- Channels -->
+    <string name="channels_sort">Sort</string>
+    <string name="channels_sort_name">By Name</string>
+    <string name="channels_sort_number">By Number</string>
+    <string name="channels_sort_source">By Source</string>
+
+    <!-- EPG Search -->
+    <string name="epg_search_title">EPG Search</string>
+    <string name="epg_search_hint">Search programs…</string>
+    <string name="epg_search_empty">No programs found.</string>
+    <string name="epg_search_all">All</string>
+    <string name="epg_search_live">Live</string>
+    <string name="epg_search_upcoming">Upcoming</string>
+    <string name="epg_search_live_badge">LIVE</string>
 
     <!-- Player -->
     <string name="player_now">Now</string>
     <string name="player_next">Next</string>
+    <string name="player_diagnostics">Diagnostics</string>
+    <string name="player_channel_list">Channel List</string>
+    <string name="player_retry">Retry</string>
+    <string name="player_retry_count">Retry %1$d/%2$d</string>
+    <string name="player_error">Playback error</string>
+    <string name="player_source_label">Source %1$d/%2$d</string>
+    <string name="player_resolution">Resolution</string>
+    <string name="player_state">State</string>
+    <string name="player_url">URL</string>
+    <string name="player_video_codec">Video Codec</string>
+    <string name="player_audio_codec">Audio Codec</string>
 
     <!-- Settings -->
     <string name="settings_category_general">General</string>
@@ -49,6 +108,10 @@
     <string name="settings_epg_auto_refresh">Auto-refresh EPG</string>
     <string name="settings_on">On</string>
     <string name="settings_off">Off</string>
+    <string name="settings_instant_switch">Instant Switch</string>
+    <string name="settings_prefer_native_hls">Prefer Native HLS</string>
+    <string name="settings_epg_guide_window">EPG Guide Window</string>
+    <string name="settings_epg_guide_window_value">%1$d minutes</string>
 
     <!-- Common -->
     <string name="cancel">Cancel</string>

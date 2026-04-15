@@ -1,0 +1,77 @@
+{
+  "$description": "Icon manifest — maps logical names to Lucide icon names and platform equivalents",
+  "library": "lucide",
+  "license": "ISC",
+  "homepage": "https://lucide.dev",
+
+  "icons": {
+    "nav-home":        { "lucide": "house",          "sf": "house.fill" },
+    "nav-channels":    { "lucide": "tv",             "sf": "tv" },
+    "nav-favorites":   { "lucide": "star",           "sf": "star.fill" },
+    "nav-recents":     { "lucide": "clock",          "sf": "clock" },
+    "nav-sources":     { "lucide": "radio-tower",    "sf": "antenna.radiowaves.left.and.right" },
+    "nav-settings":    { "lucide": "settings",       "sf": "gearshape" },
+
+    "action-play":     { "lucide": "play",           "sf": "play.fill" },
+    "action-pause":    { "lucide": "pause",          "sf": "pause.fill" },
+    "action-stop":     { "lucide": "square",         "sf": "stop.fill" },
+    "action-star":     { "lucide": "star",           "sf": "star.fill" },
+    "action-unstar":   { "lucide": "star-off",       "sf": "star.slash" },
+    "action-plus":     { "lucide": "plus",           "sf": "plus" },
+    "action-trash":    { "lucide": "trash-2",        "sf": "trash" },
+    "action-edit":     { "lucide": "pencil",         "sf": "pencil" },
+    "action-refresh":  { "lucide": "refresh-cw",     "sf": "arrow.clockwise" },
+    "action-close":    { "lucide": "x",              "sf": "xmark" },
+    "action-search":   { "lucide": "search",         "sf": "magnifyingglass" },
+    "action-check":    { "lucide": "check",          "sf": "checkmark" },
+    "action-more":     { "lucide": "more-horizontal","sf": "ellipsis" },
+    "action-filter":   { "lucide": "sliders-horizontal", "sf": "slider.horizontal.3" },
+    "action-sort":     { "lucide": "arrow-up-down",  "sf": "arrow.up.arrow.down" },
+    "action-copy":     { "lucide": "copy",           "sf": "doc.on.doc" },
+    "action-share":    { "lucide": "share",          "sf": "square.and.arrow.up" },
+    "action-download": { "lucide": "download",       "sf": "arrow.down.circle" },
+    "action-external": { "lucide": "external-link",  "sf": "arrow.up.right" },
+
+    "player-play":     { "lucide": "play",           "sf": "play.circle" },
+    "player-fullscreen":{ "lucide": "maximize",      "sf": "arrow.up.left.and.arrow.down.right" },
+    "player-minimize": { "lucide": "minimize",       "sf": "chevron.down" },
+    "player-lock":     { "lucide": "lock",           "sf": "lock.fill" },
+    "player-unlock":   { "lucide": "lock-open",      "sf": "lock.open.fill" },
+    "player-live":     { "lucide": "radio",          "sf": "dot.radiowaves.left.and.right" },
+    "player-volume":   { "lucide": "volume-2",       "sf": "speaker.wave.2.fill" },
+    "player-mute":     { "lucide": "volume-x",       "sf": "speaker.slash.fill" },
+    "player-skip-fwd": { "lucide": "skip-forward",   "sf": "forward.fill" },
+    "player-skip-back":{ "lucide": "skip-back",      "sf": "backward.fill" },
+
+    "status-empty":    { "lucide": "tv-minimal",     "sf": "tv.slash" },
+    "status-loading":  { "lucide": "loader",         "sf": "hourglass" },
+    "status-error":    { "lucide": "alert-circle",   "sf": "exclamationmark.circle" },
+    "status-success":  { "lucide": "check-circle",   "sf": "checkmark.circle" },
+    "status-info":     { "lucide": "info",           "sf": "info.circle" },
+    "status-warning":  { "lucide": "alert-triangle", "sf": "exclamationmark.triangle" },
+
+    "misc-moon":       { "lucide": "moon",           "sf": "moon.fill" },
+    "misc-sun":        { "lucide": "sun",            "sf": "sun.max.fill" },
+    "misc-globe":      { "lucide": "globe",          "sf": "globe" },
+    "misc-user":       { "lucide": "user",           "sf": "person" },
+    "misc-chevron-right":{ "lucide": "chevron-right","sf": "chevron.right" },
+    "misc-chevron-left": { "lucide": "chevron-left", "sf": "chevron.left" },
+    "misc-chevron-down": { "lucide": "chevron-down", "sf": "chevron.down" },
+    "misc-arrow-left":   { "lucide": "arrow-left",   "sf": "arrow.left" }
+  },
+
+  "sizes": {
+    "xs": 14,
+    "sm": 16,
+    "md": 20,
+    "lg": 24,
+    "xl": 32
+  },
+
+  "style": {
+    "strokeWidth": 2,
+    "strokeLinecap": "round",
+    "strokeLinejoin": "round",
+    "$note": "Match Lucide defaults. All three platforms must use strokeWidth=2 for visual consistency."
+  }
+}

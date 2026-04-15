@@ -14,8 +14,15 @@ struct EditSourceView: View {
     @State private var autoRefreshMinutes: String
     @State private var enabled: Bool
     @State private var isSaving = false
+    @State private var saveError: String?
 
     private var isXtream: Bool { source.kind.lowercased() == "xtream" }
+
+    private var canSave: Bool {
+        guard !name.isEmpty, !location.isEmpty, !isSaving else { return false }
+        if isXtream { return !username.isEmpty }
+        return true
+    }
 
     init(source: SourceInfo, vm: SourcesViewModel) {
         self.source = source
@@ -85,7 +92,7 @@ struct EditSourceView: View {
                     if let error = source.lastRefreshError {
                         LabeledContent(locale.t("sources.edit.lastError")) {
                             Text(error)
-                                .foregroundColor(.red)
+                                .foregroundColor(.tiviDestructive)
                                 .font(.caption)
                         }
                     }
@@ -101,9 +108,20 @@ struct EditSourceView: View {
                     Button(locale.t("sources.edit.save")) {
                         Task {
                             isSaving = true
+                            saveError = nil
                             defer { isSaving = false }
-                            let refreshMins: UInt32? = autoRefreshEnabled ? UInt32(autoRefreshMinutes) : nil
-                            await vm.updateSource(
+                            let trimmedInterval = autoRefreshMinutes.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let refreshMins: UInt32?
+                            if autoRefreshEnabled {
+                                if let v = UInt32(trimmedInterval), v > 0 {
+                                    refreshMins = v
+                                } else {
+                                    refreshMins = 60
+                                }
+                            } else {
+                                refreshMins = nil
+                            }
+                            let err = await vm.updateSource(
                                 sourceId: source.id,
                                 name: name,
                                 location: location,
@@ -112,11 +130,23 @@ struct EditSourceView: View {
                                 autoRefreshMinutes: refreshMins,
                                 enabled: enabled
                             )
-                            dismiss()
+                            if let err {
+                                saveError = err
+                            } else {
+                                dismiss()
+                            }
                         }
                     }
-                    .disabled(name.isEmpty || location.isEmpty || isSaving)
+                    .disabled(!canSave)
                 }
+            }
+            .alert(locale.t("sources.edit.saveFailedTitle"), isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )) {
+                Button(locale.t("sources.edit.dismissError"), role: .cancel) { saveError = nil }
+            } message: {
+                Text(saveError ?? "")
             }
         }
     }

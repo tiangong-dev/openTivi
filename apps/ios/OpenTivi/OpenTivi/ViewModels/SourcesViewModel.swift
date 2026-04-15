@@ -47,7 +47,9 @@ final class SourcesViewModel: ObservableObject {
         }
     }
 
-    func updateSource(sourceId: Int64, name: String, location: String, username: String?, password: String?, autoRefreshMinutes: UInt32?, enabled: Bool) async {
+    /// Returns `nil` on success, or a user-visible error message on failure.
+    @discardableResult
+    func updateSource(sourceId: Int64, name: String, location: String, username: String?, password: String?, autoRefreshMinutes: UInt32?, enabled: Bool) async -> String? {
         do {
             try await RustBridge.shared.updateSource(
                 sourceId: sourceId,
@@ -60,8 +62,11 @@ final class SourcesViewModel: ObservableObject {
             )
             importMessage = locale.t("sources.message.sourceUpdated")
             await load()
+            return nil
         } catch {
-            importMessage = locale.t("sources.message.importFailed", ["error": error.localizedDescription])
+            let msg = locale.t("sources.message.importFailed", ["error": error.localizedDescription])
+            importMessage = msg
+            return msg
         }
     }
 

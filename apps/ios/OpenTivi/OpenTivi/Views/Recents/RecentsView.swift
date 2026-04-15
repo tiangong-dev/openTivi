@@ -13,19 +13,18 @@ struct RecentsView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(recent.name)
-                            .font(.body)
-                            .fontWeight(.medium)
+                            .font(.tiviH4)
                             .lineLimit(1)
 
                         HStack(spacing: 8) {
                             Text(relativeTime(recent.lastWatchedAt))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.tiviCaption)
+                                .foregroundColor(.tiviMutedForeground)
                             Text("·")
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.tiviMutedForeground)
                             Text(locale.t("recents.playedCount", ["count": "\(recent.playCount)"]))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.tiviCaption)
+                                .foregroundColor(.tiviMutedForeground)
                         }
                     }
 
@@ -33,7 +32,7 @@ struct RecentsView: View {
 
                     Image(systemName: "play.circle")
                         .font(.title3)
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.tiviPrimary)
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -53,19 +52,20 @@ struct RecentsView: View {
             }
         }
         .listStyle(.plain)
+        .contentMargins(.bottom, 100, for: .scrollContent)
         .refreshable { await vm.load() }
         .navigationTitle(locale.t("recents.title"))
         .overlay {
             if vm.recents.isEmpty && !vm.isLoading {
                 VStack(spacing: 12) {
                     Image(systemName: "clock")
-                        .font(.system(size: 36))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 32))
+                        .foregroundColor(.tiviMutedForeground)
                     Text(locale.t("recents.noRecents"))
-                        .font(.headline)
+                        .font(.tiviH3)
                     Text(locale.t("recents.watchHint"))
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .font(.tiviSmall)
+                        .foregroundColor(.tiviMutedForeground)
                 }
             }
             if vm.isLoading && vm.recents.isEmpty { LoadingView() }

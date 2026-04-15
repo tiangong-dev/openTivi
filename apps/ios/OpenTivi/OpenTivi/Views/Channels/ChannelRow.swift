@@ -10,21 +10,20 @@ struct ChannelRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(channel.name)
-                        .font(.body)
-                        .fontWeight(.medium)
+                        .font(.tiviH4)
                         .lineLimit(1)
 
                     if channel.isFavorite {
                         Image(systemName: "star.fill")
-                            .foregroundColor(.yellow)
+                            .foregroundColor(.tiviFavorite)
                             .font(.caption2)
                     }
                 }
 
                 if let group = channel.groupName, !group.isEmpty {
                     Text(group)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(.tiviCaption)
+                        .foregroundColor(.tiviMutedForeground)
                         .lineLimit(1)
                 }
             }
@@ -33,14 +32,14 @@ struct ChannelRow: View {
 
             if let number = channel.channelNumber, !number.isEmpty {
                 Text(number)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.tiviCaption)
+                    .foregroundColor(.tiviMutedForeground)
                     .monospacedDigit()
             }
 
             Image(systemName: "play.circle")
                 .font(.title3)
-                .foregroundColor(.accentColor)
+                .foregroundColor(.tiviPrimary)
         }
         .padding(.vertical, 4)
     }

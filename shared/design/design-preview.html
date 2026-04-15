@@ -1,0 +1,1837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenTivi Design System — Token Preview</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --page-bg: #0a0a0f;
+    --page-fg: #f2f2f5;
+    --section-bg: #12121a;
+    --card-bg: #1a1a26;
+    --border: rgba(255,255,255,0.08);
+    --accent: hsl(217, 91%, 60%);
+    --accent-dim: hsla(217, 91%, 60%, 0.18);
+    --muted: rgba(255,255,255,0.45);
+    --font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --radius: 10px;
+    --transition: 150ms cubic-bezier(0.16,1,0.3,1);
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--page-bg);
+    color: var(--page-fg);
+    line-height: 1.5;
+    padding: 0 0 80px;
+  }
+
+  /* ── Header ── */
+  .site-header {
+    background: rgba(10,10,15,0.92);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    height: 56px;
+  }
+  .site-header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--page-fg);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .site-header h1 .logo {
+    width: 28px; height: 28px;
+    background: var(--accent);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: white;
+  }
+  .site-header .version {
+    font-size: 11px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 100px;
+    border: 1px solid hsla(217,91%,60%,0.3);
+  }
+  .header-nav {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    align-items: center;
+  }
+  .header-nav a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    transition: all var(--transition);
+  }
+  .header-nav a:hover { color: var(--page-fg); background: rgba(255,255,255,0.06); }
+
+  /* Mode toggle */
+  .mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    margin-left: 16px;
+  }
+  .mode-btn {
+    padding: 4px 14px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+    border: none;
+    background: transparent;
+    color: var(--muted);
+  }
+  .mode-btn.active {
+    background: var(--accent);
+    color: white;
+  }
+
+  /* ── Layout ── */
+  .page-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 64px;
+  }
+
+  /* ── Section ── */
+  .section { display: flex; flex-direction: column; gap: 24px; }
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 16px;
+  }
+  .section-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .section-desc {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .section-number {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    opacity: 0.8;
+  }
+
+  /* ── Group headers ── */
+  .group-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* ── Color Swatches ── */
+  .color-mode-panel { display: none; }
+  .color-mode-panel.active { display: block; }
+
+  .color-groups { display: flex; flex-direction: column; gap: 32px; }
+  .color-group { }
+  .swatches-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .swatch {
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    transition: transform var(--transition), box-shadow var(--transition);
+    cursor: default;
+  }
+  .swatch:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .swatch-color {
+    height: 80px;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    padding: 8px;
+  }
+  .swatch-hex-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    background: rgba(0,0,0,0.35);
+    color: rgba(255,255,255,0.9);
+    padding: 2px 6px;
+    border-radius: 4px;
+    backdrop-filter: blur(4px);
+  }
+  .swatch-info {
+    padding: 10px 12px;
+  }
+  .swatch-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--page-fg);
+    margin-bottom: 2px;
+  }
+  .swatch-hsl {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .swatch-desc {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+    line-height: 1.3;
+    opacity: 0.7;
+  }
+
+  /* Pair swatch */
+  .pair-swatch {
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .pair-swatch-bg {
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .pair-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.6;
+  }
+  .pair-sample-text {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .pair-sample-small {
+    font-size: 12px;
+    opacity: 0.8;
+  }
+
+  .pairs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .pair-footer {
+    padding: 10px 16px;
+    background: rgba(0,0,0,0.2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .pair-footer-names {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .contrast-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 100px;
+    white-space: nowrap;
+  }
+  .contrast-badge.pass-aaa { background: hsla(142,64%,30%,0.3); color: hsl(142,71%,55%); border: 1px solid hsla(142,71%,45%,0.4); }
+  .contrast-badge.pass-aa  { background: hsla(210,90%,45%,0.2); color: hsl(210,92%,65%); border: 1px solid hsla(210,92%,55%,0.4); }
+  .contrast-badge.pass-large { background: hsla(38,92%,40%,0.2); color: hsl(38,92%,60%); border: 1px solid hsla(38,92%,50%,0.4); }
+  .contrast-badge.fail    { background: hsla(0,84%,50%,0.15); color: hsl(0,70%,65%); border: 1px solid hsla(0,84%,60%,0.3); }
+
+  /* Alpha/Soft swatches — shown over checkerboard */
+  .alpha-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+  }
+  .alpha-swatch {
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .alpha-swatch-color {
+    height: 70px;
+    background-image:
+      linear-gradient(45deg, #444 25%, transparent 25%),
+      linear-gradient(-45deg, #444 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #444 75%),
+      linear-gradient(-45deg, transparent 75%, #444 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0px;
+    background-color: #2a2a2a;
+    position: relative;
+  }
+  .alpha-swatch-overlay {
+    position: absolute;
+    inset: 0;
+  }
+  .alpha-swatch-info {
+    padding: 8px 10px;
+    background: var(--card-bg);
+  }
+  .alpha-swatch-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--page-fg);
+    margin-bottom: 2px;
+  }
+  .alpha-swatch-value {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  /* ── Typography ── */
+  .type-scale { display: flex; flex-direction: column; gap: 4px; }
+  .type-row {
+    display: grid;
+    grid-template-columns: 100px 1fr 200px;
+    gap: 16px;
+    align-items: center;
+    padding: 16px 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    transition: background var(--transition);
+  }
+  .type-row:hover { background: rgba(255,255,255,0.03); }
+  .type-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .type-sample { color: var(--page-fg); }
+  .type-meta {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .type-usage {
+    font-size: 10px;
+    color: var(--muted);
+    opacity: 0.6;
+    margin-top: 2px;
+  }
+
+  /* ── Spacing ── */
+  .spacing-list { display: flex; flex-direction: column; gap: 8px; }
+  .spacing-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+  }
+  .spacing-token {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    width: 40px;
+    flex-shrink: 0;
+  }
+  .spacing-bar-wrap {
+    flex: 1;
+    height: 24px;
+    display: flex;
+    align-items: center;
+  }
+  .spacing-bar {
+    height: 20px;
+    background: linear-gradient(90deg, var(--accent), hsla(217,91%,60%,0.5));
+    border-radius: 4px;
+    min-width: 2px;
+    transition: width 0.5s ease;
+  }
+  .spacing-px {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    width: 60px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  /* ── Radius ── */
+  .radius-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 16px;
+  }
+  .radius-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .radius-demo {
+    width: 80px;
+    height: 80px;
+    background: var(--accent-dim);
+    border: 2px solid var(--accent);
+    transition: border-radius 0.3s ease;
+  }
+  .radius-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .radius-value {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── Shadows ── */
+  .shadow-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 32px;
+    padding: 24px;
+  }
+  .shadow-card {
+    background: #1e1e2e;
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+  .shadow-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .shadow-value {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+    word-break: break-all;
+  }
+  .shadow-sample {
+    height: 60px;
+    background: #252535;
+    border-radius: 8px;
+  }
+
+  /* ── Overlays ── */
+  .overlay-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .overlay-card {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .overlay-preview {
+    height: 140px;
+    position: relative;
+    background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .overlay-layer {
+    position: absolute;
+    inset: 0;
+  }
+  .overlay-content {
+    position: relative;
+    z-index: 1;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    padding: 8px 16px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  }
+  .overlay-meta {
+    background: var(--card-bg);
+    padding: 12px 14px;
+  }
+  .overlay-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--page-fg);
+    margin-bottom: 4px;
+  }
+  .overlay-tokens {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  /* Player overlay preview */
+  .player-preview {
+    height: 160px;
+    position: relative;
+    background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #16213e 100%);
+    overflow: hidden;
+  }
+  .player-gradient-top {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 60px;
+  }
+  .player-gradient-bottom {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 60px;
+  }
+  .player-ui {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 10px 14px;
+  }
+  .player-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .player-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: white;
+  }
+  .player-time {
+    font-size: 10px;
+    color: rgba(255,255,255,0.7);
+  }
+  .player-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .player-btn {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: white;
+  }
+  .player-track {
+    height: 3px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
+    position: relative;
+    margin-top: 4px;
+  }
+  .player-track-fill {
+    height: 100%;
+    width: 40%;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  /* ── Contrast Table ── */
+  .contrast-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .contrast-table th {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .contrast-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+  }
+  .contrast-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .contrast-table tr:last-child td { border-bottom: none; }
+  .contrast-swatch-pair {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mini-swatch {
+    width: 24px; height: 24px;
+    border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.1);
+    flex-shrink: 0;
+  }
+  .contrast-ratio-value {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .contrast-mode-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+  .contrast-tab {
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    transition: all var(--transition);
+  }
+  .contrast-tab.active {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: hsla(217,91%,60%,0.35);
+  }
+
+  .contrast-panel { display: none; }
+  .contrast-panel.active { display: block; }
+
+  /* ── Motion ── */
+  .motion-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .motion-section-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .motion-list { display: flex; flex-direction: column; gap: 8px; }
+  .motion-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+  }
+  .motion-name { font-size: 13px; font-weight: 500; color: var(--page-fg); }
+  .motion-value { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+
+  /* ── Layout tokens ── */
+  .layout-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .layout-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .layout-card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .layout-prop {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 12px;
+  }
+  .layout-prop:last-child { border-bottom: none; }
+  .layout-prop-name { color: var(--muted); }
+  .layout-prop-value { font-family: var(--mono); color: var(--page-fg); font-size: 11px; }
+
+  /* ── Platform ── */
+  .platform-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .platform-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .platform-icon {
+    font-size: 24px;
+    margin-bottom: 10px;
+  }
+  .platform-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--page-fg);
+    margin-bottom: 4px;
+  }
+  .platform-desc {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    line-height: 1.4;
+  }
+  .platform-props { display: flex; flex-direction: column; gap: 6px; }
+  .platform-prop {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+  }
+  .platform-prop-name { color: var(--muted); }
+  .platform-prop-value { font-family: var(--mono); color: var(--page-fg); font-size: 11px; }
+
+  /* ── Iconography ── */
+  .icon-sizes {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 20px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .icon-size-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .icon-circle {
+    border-radius: 8px;
+    background: var(--accent-dim);
+    border: 1px solid hsla(217,91%,60%,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-size-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  /* ── Misc ── */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+  .tag-neutral {
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.6);
+  }
+
+  table.contrast-table { background: var(--card-bg); border-radius: var(--radius); overflow: hidden; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <h1>
+    <span class="logo">OT</span>
+    OpenTivi Design System
+  </h1>
+  <span class="version">v2.0.0</span>
+  <nav class="header-nav">
+    <a href="#colors">Colors</a>
+    <a href="#typography">Type</a>
+    <a href="#spacing">Space</a>
+    <a href="#radius">Radius</a>
+    <a href="#shadows">Shadows</a>
+    <a href="#overlays">Overlays</a>
+    <a href="#contrast">Contrast</a>
+    <a href="#motion">Motion</a>
+    <a href="#layout">Layout</a>
+    <a href="#platform">Platform</a>
+  </nav>
+</header>
+
+<div class="page-content">
+
+  <!-- ══════════════════════════════════════════
+       1. COLOR PALETTE
+  ══════════════════════════════════════════ -->
+  <section class="section" id="colors">
+    <div class="section-header">
+      <span class="section-number">01</span>
+      <h2 class="section-title">Color Palette</h2>
+      <span class="section-desc">HSL-based, perceptually consistent. Light &amp; dark modes share hue families.</span>
+    </div>
+
+    <div class="mode-toggle" style="align-self:flex-start">
+      <button class="mode-btn active" onclick="showColorMode('dark')">Dark Mode</button>
+      <button class="mode-btn" onclick="showColorMode('light')">Light Mode</button>
+    </div>
+
+    <!-- DARK MODE COLORS -->
+    <div class="color-mode-panel active" id="color-dark">
+      <div class="color-groups">
+
+        <div class="color-group">
+          <div class="group-title">Surfaces</div>
+          <div class="swatches-grid" id="dark-surfaces"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Text / Foreground</div>
+          <div class="swatches-grid" id="dark-text"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Brand</div>
+          <div class="swatches-grid" id="dark-brand"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Status</div>
+          <div class="swatches-grid" id="dark-status"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Semantic</div>
+          <div class="swatches-grid" id="dark-semantic"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Borders &amp; Inputs</div>
+          <div class="swatches-grid" id="dark-borders"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Foreground / Background Pairings</div>
+          <div class="pairs-grid" id="dark-pairs"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Soft / Alpha Variants</div>
+          <div class="alpha-grid" id="soft-alpha"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- LIGHT MODE COLORS -->
+    <div class="color-mode-panel" id="color-light">
+      <div class="color-groups">
+
+        <div class="color-group">
+          <div class="group-title">Surfaces</div>
+          <div class="swatches-grid" id="light-surfaces"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Text / Foreground</div>
+          <div class="swatches-grid" id="light-text"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Brand</div>
+          <div class="swatches-grid" id="light-brand"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Status</div>
+          <div class="swatches-grid" id="light-status"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Semantic</div>
+          <div class="swatches-grid" id="light-semantic"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Borders &amp; Inputs</div>
+          <div class="swatches-grid" id="light-borders"></div>
+        </div>
+
+        <div class="color-group">
+          <div class="group-title">Foreground / Background Pairings</div>
+          <div class="pairs-grid" id="light-pairs"></div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       2. TYPOGRAPHY
+  ══════════════════════════════════════════ -->
+  <section class="section" id="typography">
+    <div class="section-header">
+      <span class="section-number">02</span>
+      <h2 class="section-title">Typography Scale</h2>
+      <span class="section-desc">Major Second (1.125) scale — Inter / SF Pro Display, px sizes, ratio line-heights</span>
+    </div>
+
+    <div class="type-scale" id="type-scale"></div>
+
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;flex:1;min-width:220px">
+        <div class="group-title" style="margin-bottom:12px">Font Weights</div>
+        <div style="display:flex;flex-direction:column;gap:6px" id="weight-list"></div>
+      </div>
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;flex:1;min-width:220px">
+        <div class="group-title" style="margin-bottom:12px">Line Heights</div>
+        <div style="display:flex;flex-direction:column;gap:6px" id="lh-list"></div>
+      </div>
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;flex:2;min-width:280px">
+        <div class="group-title" style="margin-bottom:12px">Font Families</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Sans (UI)</div>
+            <div style="font-size:14px">Inter, SF Pro Display, -apple-system…</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Mono (Code)</div>
+            <div style="font-family:var(--mono);font-size:14px">JetBrains Mono, SF Mono, Consolas…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       3. SPACING
+  ══════════════════════════════════════════ -->
+  <section class="section" id="spacing">
+    <div class="section-header">
+      <span class="section-number">03</span>
+      <h2 class="section-title">Spacing</h2>
+      <span class="section-desc">4px base unit — all values are multiples of 4</span>
+    </div>
+    <div class="spacing-list" id="spacing-list"></div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       4. BORDER RADIUS
+  ══════════════════════════════════════════ -->
+  <section class="section" id="radius">
+    <div class="section-header">
+      <span class="section-number">04</span>
+      <h2 class="section-title">Border Radius</h2>
+      <span class="section-desc">From none to pill — 6 levels plus full/pill</span>
+    </div>
+    <div class="radius-grid" id="radius-grid"></div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       5. SHADOWS
+  ══════════════════════════════════════════ -->
+  <section class="section" id="shadows">
+    <div class="section-header">
+      <span class="section-number">05</span>
+      <h2 class="section-title">Shadows</h2>
+      <span class="section-desc">Four levels of depth using HSLA black</span>
+    </div>
+    <div style="background:var(--section-bg);border-radius:16px;border:1px solid var(--border)">
+      <div class="shadow-grid" id="shadow-grid"></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       6. OVERLAYS
+  ══════════════════════════════════════════ -->
+  <section class="section" id="overlays">
+    <div class="section-header">
+      <span class="section-number">06</span>
+      <h2 class="section-title">Overlay Tokens</h2>
+      <span class="section-desc">Semi-transparent surfaces shown over a gradient background</span>
+    </div>
+    <div class="overlay-grid" id="overlay-grid"></div>
+
+    <div class="group-title" style="margin-top:8px">Player Overlays</div>
+    <div class="overlay-card" style="max-width:480px">
+      <div class="player-preview">
+        <div class="player-gradient-top" id="player-grad-top"></div>
+        <div class="player-gradient-bottom" id="player-grad-bot"></div>
+        <div class="player-ui">
+          <div class="player-top-bar">
+            <span class="player-title">BBC One HD</span>
+            <span class="player-time">22:45 — 23:30</span>
+          </div>
+          <div>
+            <div class="player-controls">
+              <div class="player-btn" style="background:rgba(255,255,255,0.15)">&#9664;</div>
+              <div class="player-btn" style="width:36px;height:36px;background:rgba(255,255,255,0.15);font-size:13px">&#9646;&#9646;</div>
+              <div class="player-btn" style="background:rgba(255,255,255,0.15)">&#9654;</div>
+            </div>
+            <div class="player-track">
+              <div class="player-track-fill"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="overlay-meta">
+        <div class="overlay-name">Player UI Overlays</div>
+        <div class="overlay-tokens">
+          gradientTop: hsl(240,10%,4%) @ 0.80 → bottom<br>
+          gradientBottom: hsl(240,10%,4%) @ 0.85 → top<br>
+          btn: rgba(white, 0.15) &nbsp;|&nbsp; track: rgba(white, 0.20)<br>
+          textDim: rgba(white, 0.70) &nbsp;|&nbsp; text: hsl(0,0%,100%)
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       7. CONTRAST RATIOS
+  ══════════════════════════════════════════ -->
+  <section class="section" id="contrast">
+    <div class="section-header">
+      <span class="section-number">07</span>
+      <h2 class="section-title">Contrast Ratios</h2>
+      <span class="section-desc">WCAG 2.1 — AA requires 4.5:1 (normal text) / 3:1 (large text &amp; UI)</span>
+    </div>
+
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
+      <div class="contrast-mode-tabs">
+        <button class="contrast-tab active" onclick="showContrastMode('dark')">Dark Mode</button>
+        <button class="contrast-tab" onclick="showContrastMode('light')">Light Mode</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="contrast-badge pass-aaa">AAA 7:1+</span>
+        <span class="contrast-badge pass-aa">AA 4.5:1+</span>
+        <span class="contrast-badge pass-large">Large 3:1+</span>
+        <span class="contrast-badge fail">FAIL</span>
+      </div>
+    </div>
+
+    <div class="contrast-panel active" id="contrast-dark">
+      <table class="contrast-table">
+        <thead>
+          <tr>
+            <th>Foreground</th>
+            <th>Background</th>
+            <th style="text-align:right">Ratio</th>
+            <th style="text-align:right">WCAG</th>
+          </tr>
+        </thead>
+        <tbody id="contrast-dark-body"></tbody>
+      </table>
+    </div>
+
+    <div class="contrast-panel" id="contrast-light">
+      <table class="contrast-table">
+        <thead>
+          <tr>
+            <th>Foreground</th>
+            <th>Background</th>
+            <th style="text-align:right">Ratio</th>
+            <th style="text-align:right">WCAG</th>
+          </tr>
+        </thead>
+        <tbody id="contrast-light-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       8. MOTION
+  ══════════════════════════════════════════ -->
+  <section class="section" id="motion">
+    <div class="section-header">
+      <span class="section-number">08</span>
+      <h2 class="section-title">Motion</h2>
+      <span class="section-desc">Duration in ms — easing curves for enter/exit/in-out transitions</span>
+    </div>
+    <div class="motion-grid">
+      <div class="motion-section-card">
+        <div class="group-title" style="margin-bottom:12px">Duration</div>
+        <div class="motion-list" id="motion-duration"></div>
+      </div>
+      <div class="motion-section-card">
+        <div class="group-title" style="margin-bottom:12px">Easing</div>
+        <div class="motion-list" id="motion-easing"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       9. LAYOUT
+  ══════════════════════════════════════════ -->
+  <section class="section" id="layout">
+    <div class="section-header">
+      <span class="section-number">09</span>
+      <h2 class="section-title">Layout Tokens</h2>
+      <span class="section-desc">Composition rules — systematic spacing between structural elements</span>
+    </div>
+    <div class="layout-grid" id="layout-grid"></div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       10. PLATFORM
+  ══════════════════════════════════════════ -->
+  <section class="section" id="platform">
+    <div class="section-header">
+      <span class="section-number">10</span>
+      <h2 class="section-title">Platform Targets</h2>
+      <span class="section-desc">TV (10-foot), Desktop, Mobile — platform-specific overrides</span>
+    </div>
+    <div class="platform-grid" id="platform-grid"></div>
+
+    <div style="margin-top:8px">
+      <div class="group-title" style="margin-bottom:12px">Iconography — Lucide (ISC License)</div>
+      <div class="icon-sizes" id="icon-sizes"></div>
+    </div>
+  </section>
+
+</div><!-- /page-content -->
+
+<script>
+// ══════════════════════════════════════════
+// TOKENS DATA (embedded from tokens.json)
+// ══════════════════════════════════════════
+const tokens = {
+  color: {
+    light: {
+      background:           { value: "hsl(0, 0%, 100%)",       desc: "Page canvas" },
+      foreground:           { value: "hsl(240, 10%, 4%)",      desc: "Primary text" },
+      card:                 { value: "hsl(0, 0%, 100%)",       desc: "Card / container background" },
+      cardForeground:       { value: "hsl(240, 10%, 4%)",      desc: "Card text" },
+      popover:              { value: "hsl(0, 0%, 100%)",       desc: "Dropdown / tooltip bg" },
+      popoverForeground:    { value: "hsl(240, 10%, 4%)",      desc: "Popover text" },
+      primary:              { value: "hsl(221, 83%, 53%)",     desc: "Brand accent" },
+      primaryForeground:    { value: "hsl(210, 40%, 98%)",     desc: "Text on primary" },
+      secondary:            { value: "hsl(240, 5%, 96%)",      desc: "Secondary button, badge, subtle bg" },
+      secondaryForeground:  { value: "hsl(240, 6%, 10%)",      desc: "Text on secondary" },
+      muted:                { value: "hsl(240, 5%, 96%)",      desc: "Disabled bg, skeleton" },
+      mutedForeground:      { value: "hsl(240, 5%, 43%)",      desc: "Muted text, placeholder" },
+      accent:               { value: "hsl(240, 5%, 93%)",      desc: "Hover bg, accent surfaces" },
+      accentForeground:     { value: "hsl(240, 6%, 10%)",      desc: "Text on accent" },
+      destructive:          { value: "hsl(0, 84%, 46%)",       desc: "Error, delete" },
+      destructiveForeground:{ value: "hsl(0, 0%, 98%)",        desc: "Text on destructive" },
+      success:              { value: "hsl(142, 64%, 31%)",     desc: "Success states" },
+      successForeground:    { value: "hsl(0, 0%, 98%)",        desc: "Text on success" },
+      warning:              { value: "hsl(38, 92%, 32%)",      desc: "Warning states" },
+      warningForeground:    { value: "hsl(0, 0%, 98%)",        desc: "Text on warning" },
+      info:                 { value: "hsl(210, 92%, 45%)",     desc: "Informational states" },
+      infoForeground:       { value: "hsl(0, 0%, 98%)",        desc: "Text on info" },
+      border:               { value: "hsl(240, 6%, 90%)",      desc: "Default border" },
+      input:                { value: "hsl(240, 6%, 90%)",      desc: "Input border" },
+      ring:                 { value: "hsl(221, 83%, 53%)",     desc: "Focus ring" },
+      favorite:             { value: "hsl(45, 93%, 37%)",      desc: "Star / favorite" },
+      live:                 { value: "hsl(0, 84%, 50%)",       desc: "Live indicator" },
+      primaryHover:         { value: "hsl(221, 83%, 58%)",     desc: "Brighter primary for hover" },
+      primaryLight:         { value: "hsl(221, 83%, 70%)",     desc: "Lighter primary for subtle highlights" },
+    },
+    dark: {
+      background:           { value: "hsl(240, 10%, 4%)",      desc: "Page canvas — near-black with blue warmth" },
+      foreground:           { value: "hsl(0, 0%, 95%)",        desc: "Primary text" },
+      card:                 { value: "hsl(240, 6%, 10%)",      desc: "Card bg — subtle lift from canvas" },
+      cardForeground:       { value: "hsl(0, 0%, 95%)",        desc: "Card text" },
+      popover:              { value: "hsl(240, 6%, 15%)",      desc: "Dropdown / tooltip bg" },
+      popoverForeground:    { value: "hsl(0, 0%, 95%)",        desc: "Popover text" },
+      primary:              { value: "hsl(217, 91%, 60%)",     desc: "Brand accent" },
+      primaryForeground:    { value: "hsl(0, 0%, 100%)",       desc: "Text on primary" },
+      secondary:            { value: "hsl(240, 4%, 16%)",      desc: "Secondary button, subtle bg" },
+      secondaryForeground:  { value: "hsl(0, 0%, 95%)",        desc: "Text on secondary" },
+      muted:                { value: "hsl(240, 4%, 16%)",      desc: "Disabled bg, skeleton" },
+      mutedForeground:      { value: "hsl(240, 5%, 65%)",      desc: "Muted text, placeholder" },
+      accent:               { value: "hsl(240, 4%, 20%)",      desc: "Hover bg, accent surfaces" },
+      accentForeground:     { value: "hsl(0, 0%, 95%)",        desc: "Text on accent" },
+      destructive:          { value: "hsl(0, 70%, 64%)",       desc: "Error text" },
+      destructiveForeground:{ value: "hsl(0, 0%, 95%)",        desc: "Text on destructive" },
+      success:              { value: "hsl(142, 71%, 45%)",     desc: "Success states" },
+      successForeground:    { value: "hsl(150, 50%, 10%)",     desc: "Text on success" },
+      warning:              { value: "hsl(38, 92%, 50%)",      desc: "Warning states" },
+      warningForeground:    { value: "hsl(38, 92%, 14%)",      desc: "Text on warning" },
+      info:                 { value: "hsl(210, 92%, 55%)",     desc: "Informational states" },
+      infoForeground:       { value: "hsl(0, 0%, 100%)",       desc: "Text on info" },
+      border:               { value: "hsl(240, 4%, 16%)",      desc: "Default border — subtle" },
+      input:                { value: "hsl(240, 4%, 16%)",      desc: "Input border" },
+      ring:                 { value: "hsl(217, 91%, 60%)",     desc: "Focus ring" },
+      favorite:             { value: "hsl(45, 93%, 47%)",      desc: "Star / favorite" },
+      live:                 { value: "hsl(0, 84%, 61%)",       desc: "Live indicator" },
+      primaryHover:         { value: "hsl(217, 91%, 65%)",     desc: "Brighter primary for hover" },
+      primaryLight:         { value: "hsl(217, 91%, 75%)",     desc: "Lighter primary for subtle highlights" },
+    },
+    soft: {
+      successSoft:     { value: "hsla(142, 71%, 45%, 0.18)" },
+      destructiveSoft: { value: "hsla(0, 84%, 60%, 0.18)" },
+      warningSoft:     { value: "hsla(38, 92%, 50%, 0.18)" },
+      infoSoft:        { value: "hsla(210, 92%, 55%, 0.18)" },
+    },
+    primaryAlpha: {
+      a13: { value: "hsla(217, 91%, 60%, 0.13)" },
+      a18: { value: "hsla(217, 91%, 60%, 0.18)" },
+      a20: { value: "hsla(217, 91%, 60%, 0.20)" },
+      a33: { value: "hsla(217, 91%, 60%, 0.33)" },
+    }
+  },
+  overlay: {
+    scrim:  { color: "hsl(240, 10%, 4%)", opacity: 0.72, desc: "Full-screen dimming behind modals/dialogs" },
+    panel:  { color: "hsl(240, 6%, 10%)",  opacity: 0.88, desc: "Floating side-panels, guide overlay on video" },
+    toast:  { color: "hsl(240, 10%, 4%)", opacity: 0.80, desc: "Transient notifications, error toasts" },
+    player: {
+      gradientTop:    { color: "hsl(240, 10%, 4%)", opacity: 0.8,  direction: "to bottom" },
+      gradientBottom: { color: "hsl(240, 10%, 4%)", opacity: 0.85, direction: "to top" },
+      panel:          { color: "hsl(240, 10%, 4%)", opacity: 0.82 },
+      panelAlt:       { color: "hsl(240, 10%, 4%)", opacity: 0.78 },
+      btn:            { color: "hsl(0, 0%, 100%)",   opacity: 0.15 },
+      track:          { color: "hsl(0, 0%, 100%)",   opacity: 0.2 },
+    }
+  },
+  typography: {
+    scale: {
+      display:   { size: 48, lineHeight: 1.1,  weight: 700, tracking: -0.02,  usage: "TV hero, splash" },
+      h1:        { size: 32, lineHeight: 1.2,  weight: 700, tracking: -0.02,  usage: "Page title" },
+      h2:        { size: 24, lineHeight: 1.25, weight: 600, tracking: -0.01,  usage: "Section title" },
+      h3:        { size: 20, lineHeight: 1.3,  weight: 600, tracking: -0.005, usage: "Card group heading, dialog title" },
+      h4:        { size: 16, lineHeight: 1.4,  weight: 600, tracking: 0,      usage: "Card title, list section header" },
+      body:      { size: 14, lineHeight: 1.5,  weight: 400, tracking: 0,      usage: "Default text, paragraph" },
+      bodyLarge: { size: 16, lineHeight: 1.5,  weight: 400, tracking: 0,      usage: "EPG description, prominent body" },
+      small:     { size: 13, lineHeight: 1.45, weight: 400, tracking: 0,      usage: "Secondary info, form hint" },
+      caption:   { size: 12, lineHeight: 1.35, weight: 400, tracking: 0.01,   usage: "Timestamp, metadata" },
+      overline:  { size: 11, lineHeight: 1.35, weight: 500, tracking: 0.06,   usage: "Section label, tab, chip" },
+      badge:     { size: 10, lineHeight: 1.2,  weight: 600, tracking: 0.02,   usage: "Live indicator, count" },
+    },
+    weight: { regular: 400, medium: 500, semibold: 600, bold: 700 },
+    lineHeight: { tight: 1.2, normal: 1.5, relaxed: 1.65 },
+  },
+  spacing: {
+    "0": 0, "px": 1, "0.5": 2, "1": 4, "1.5": 6, "2": 8, "3": 12,
+    "4": 16, "5": 20, "6": 24, "8": 32, "10": 40, "12": 48, "16": 64, "20": 80
+  },
+  radius: { none: 0, sm: 6, md: 8, lg: 12, xl: 16, "2xl": 24, full: 9999 },
+  shadow: {
+    sm:  "0 1px 2px hsla(0, 0%, 0%, 0.05)",
+    md:  "0 4px 6px hsla(0, 0%, 0%, 0.07), 0 1px 3px hsla(0, 0%, 0%, 0.06)",
+    lg:  "0 10px 15px hsla(0, 0%, 0%, 0.1), 0 4px 6px hsla(0, 0%, 0%, 0.05)",
+    xl:  "0 20px 25px hsla(0, 0%, 0%, 0.15), 0 8px 10px hsla(0, 0%, 0%, 0.06)"
+  },
+  motion: {
+    duration: { fast: 100, base: 150, slow: 250, slower: 400 },
+    easing: {
+      default: "cubic-bezier(0.16, 1, 0.3, 1)",
+      in:      "cubic-bezier(0.55, 0, 1, 0.45)",
+      out:     "cubic-bezier(0, 0.55, 0.45, 1)",
+      inOut:   "cubic-bezier(0.45, 0, 0.55, 1)"
+    }
+  },
+  layout: {
+    page:          { padding: 24, maxWidth: 1200, desc: "Page-level horizontal padding" },
+    section:       { gap: 32, desc: "Vertical gap between page-level sections" },
+    sectionHeader: { marginBottom: 16, desc: "Gap from h2/h3 to content block" },
+    card:          { padding: 16, gap: 12, gridGap: 16, desc: "Internal padding, gap between children, grid gap" },
+    list:          { itemGap: 0, itemPadding: 12, divider: true, desc: "List items separated by 1px border" },
+    inline:        { gap: 8, desc: "Gap between inline items: icon+text, tag+tag" },
+    stack:         { tight: 4, default: 8, loose: 16, desc: "Vertical gap in stacked content" },
+  },
+  platform: {
+    tv: {
+      icon: "📺",
+      desc: "10-foot lean-back. No 1px lines. Focus ring mandatory.",
+      props: { "safeArea.x": "48px", "safeArea.y": "27px", typographyScale: "×1.15", minFontSize: "14px",
+               focusScale: "1.05", focusBorderWidth: "3px", maxWhite: "hsl(0,0%,94%)",
+               gridGap: "24px", sectionGap: "48px", cardRadius: "12px" }
+    },
+    desktop: {
+      icon: "🖥",
+      desc: "Keyboard + mouse. Uses full token set as-is.",
+      props: { windowMinWidth: "960px", windowMinHeight: "640px", sidebarWidth: "220px",
+               sidebarCollapsed: "64px", titleBarHeight: "38px" }
+    },
+    mobile: {
+      icon: "📱",
+      desc: "Touch. iOS HIG minimum 44pt touch target.",
+      props: { minTouchTarget: "44pt", tabBarHeight: "49pt", navBarHeight: "44pt" }
+    }
+  },
+  iconography: {
+    sizes: { xs: 14, sm: 16, md: 20, lg: 24, xl: 32 }
+  }
+};
+
+// ══════════════════════════════════════════
+// COLOR UTILITIES
+// ══════════════════════════════════════════
+function parseHSL(hslStr) {
+  const match = hslStr.match(/hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%(?:\s*,\s*([\d.]+))?\s*\)/);
+  if (!match) return null;
+  return { h: +match[1], s: +match[2], l: +match[3], a: match[4] !== undefined ? +match[4] : 1 };
+}
+
+function hslToRgb(h, s, l) {
+  s /= 100; l /= 100;
+  const c = (1 - Math.abs(2*l - 1)) * s;
+  const x = c * (1 - Math.abs((h/60) % 2 - 1));
+  const m = l - c/2;
+  let r=0, g=0, b=0;
+  if      (h < 60)  { r=c; g=x; b=0; }
+  else if (h < 120) { r=x; g=c; b=0; }
+  else if (h < 180) { r=0; g=c; b=x; }
+  else if (h < 240) { r=0; g=x; b=c; }
+  else if (h < 300) { r=x; g=0; b=c; }
+  else              { r=c; g=0; b=x; }
+  return [Math.round((r+m)*255), Math.round((g+m)*255), Math.round((b+m)*255)];
+}
+
+function toHex(r,g,b) {
+  return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+}
+
+function hslToHex(hslStr) {
+  const p = parseHSL(hslStr);
+  if (!p) return '#000000';
+  const [r,g,b] = hslToRgb(p.h, p.s, p.l);
+  return toHex(r,g,b);
+}
+
+function sRGBLinear(c) {
+  c /= 255;
+  return c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+}
+
+function relativeLuminance(r,g,b) {
+  return 0.2126*sRGBLinear(r) + 0.7152*sRGBLinear(g) + 0.0722*sRGBLinear(b);
+}
+
+function contrastRatio(hsl1, hsl2) {
+  const p1 = parseHSL(hsl1), p2 = parseHSL(hsl2);
+  if (!p1 || !p2) return 0;
+  const [r1,g1,b1] = hslToRgb(p1.h, p1.s, p1.l);
+  const [r2,g2,b2] = hslToRgb(p2.h, p2.s, p2.l);
+  const L1 = relativeLuminance(r1,g1,b1);
+  const L2 = relativeLuminance(r2,g2,b2);
+  const light = Math.max(L1,L2), dark = Math.min(L1,L2);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+function wcagBadge(ratio) {
+  if (ratio >= 7)   return '<span class="contrast-badge pass-aaa">AAA ' + ratio.toFixed(2) + ':1</span>';
+  if (ratio >= 4.5) return '<span class="contrast-badge pass-aa">AA ' + ratio.toFixed(2) + ':1</span>';
+  if (ratio >= 3)   return '<span class="contrast-badge pass-large">Large ' + ratio.toFixed(2) + ':1</span>';
+  return '<span class="contrast-badge fail">FAIL ' + ratio.toFixed(2) + ':1</span>';
+}
+
+function contrastRatioValue(ratio) {
+  const cls = ratio >= 7 ? 'pass-aaa' : ratio >= 4.5 ? 'pass-aa' : ratio >= 3 ? 'pass-large' : 'fail';
+  const colors = { 'pass-aaa': 'hsl(142,71%,55%)', 'pass-aa': 'hsl(210,92%,65%)', 'pass-large': 'hsl(38,92%,60%)', 'fail': 'hsl(0,70%,65%)' };
+  return `<span class="contrast-ratio-value" style="color:${colors[cls]}">${ratio.toFixed(2)}:1</span>`;
+}
+
+function isDarkColor(hslStr) {
+  const p = parseHSL(hslStr);
+  if (!p) return true;
+  const [r,g,b] = hslToRgb(p.h, p.s, p.l);
+  return relativeLuminance(r,g,b) < 0.18;
+}
+
+// ══════════════════════════════════════════
+// SWATCH BUILDER
+// ══════════════════════════════════════════
+function buildSwatch(name, value, desc) {
+  const hex = hslToHex(value);
+  const badgeBg = isDarkColor(value) ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.5)';
+  const badgeColor = isDarkColor(value) ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.7)';
+  const div = document.createElement('div');
+  div.className = 'swatch';
+  div.innerHTML = `
+    <div class="swatch-color" style="background:${value}">
+      <span class="swatch-hex-badge" style="background:${badgeBg};color:${badgeColor}">${hex}</span>
+    </div>
+    <div class="swatch-info">
+      <div class="swatch-name">${name}</div>
+      <div class="swatch-hsl">${value}</div>
+      ${desc ? `<div class="swatch-desc">${desc}</div>` : ''}
+    </div>
+  `;
+  return div;
+}
+
+function buildPairSwatch(bgName, bgValue, fgName, fgValue) {
+  const ratio = contrastRatio(fgValue, bgValue);
+  const div = document.createElement('div');
+  div.className = 'pair-swatch';
+  div.innerHTML = `
+    <div class="pair-swatch-bg" style="background:${bgValue};color:${fgValue}">
+      <div class="pair-label" style="opacity:0.55">${bgName}</div>
+      <div class="pair-sample-text">The quick brown fox</div>
+      <div class="pair-sample-small">Sample text on ${bgName}</div>
+    </div>
+    <div class="pair-footer">
+      <div class="pair-footer-names">${fgName}<br>${bgName}</div>
+      ${wcagBadge(ratio)}
+    </div>
+  `;
+  return div;
+}
+
+function buildAlphaSwatch(name, value) {
+  const div = document.createElement('div');
+  div.className = 'alpha-swatch';
+  div.innerHTML = `
+    <div class="alpha-swatch-color">
+      <div class="alpha-swatch-overlay" style="background:${value}"></div>
+    </div>
+    <div class="alpha-swatch-info">
+      <div class="alpha-swatch-name">${name}</div>
+      <div class="alpha-swatch-value">${value}</div>
+    </div>
+  `;
+  return div;
+}
+
+// ══════════════════════════════════════════
+// RENDER COLORS
+// ══════════════════════════════════════════
+function renderColors(mode) {
+  const c = tokens.color[mode];
+  const prefix = mode;
+
+  const surfaces   = ['background','card','popover'];
+  const textKeys   = ['foreground','cardForeground','popoverForeground','mutedForeground','secondaryForeground','accentForeground'];
+  const brand      = ['primary','primaryForeground','primaryHover','primaryLight','ring'];
+  const status     = ['destructive','destructiveForeground','success','successForeground','warning','warningForeground','info','infoForeground'];
+  const semantic   = ['favorite','live'];
+  const borders    = ['border','input','muted','accent','secondary'];
+
+  const pairs = [
+    ['background','foreground'], ['card','cardForeground'], ['popover','popoverForeground'],
+    ['primary','primaryForeground'], ['secondary','secondaryForeground'], ['muted','mutedForeground'],
+    ['accent','accentForeground'], ['destructive','destructiveForeground'],
+    ['success','successForeground'], ['warning','warningForeground'], ['info','infoForeground'],
+  ];
+
+  function fillGrid(id, keys) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '';
+    keys.forEach(k => {
+      if (c[k]) el.appendChild(buildSwatch(k, c[k].value, c[k].desc));
+    });
+  }
+
+  fillGrid(`${prefix}-surfaces`, surfaces);
+  fillGrid(`${prefix}-text`, textKeys);
+  fillGrid(`${prefix}-brand`, brand);
+  fillGrid(`${prefix}-status`, status);
+  fillGrid(`${prefix}-semantic`, semantic);
+  fillGrid(`${prefix}-borders`, borders);
+
+  const pairsEl = document.getElementById(`${prefix}-pairs`);
+  if (pairsEl) {
+    pairsEl.innerHTML = '';
+    pairs.forEach(([bg, fg]) => {
+      if (c[bg] && c[fg]) pairsEl.appendChild(buildPairSwatch(bg, c[bg].value, fg, c[fg].value));
+    });
+  }
+}
+
+// ══════════════════════════════════════════
+// SOFT / ALPHA
+// ══════════════════════════════════════════
+function renderSoftAlpha() {
+  const el = document.getElementById('soft-alpha');
+  if (!el) return;
+  el.innerHTML = '';
+  Object.entries(tokens.color.soft).forEach(([k, v]) => el.appendChild(buildAlphaSwatch(k, v.value)));
+  Object.entries(tokens.color.primaryAlpha).forEach(([k, v]) => el.appendChild(buildAlphaSwatch('primary.' + k, v.value)));
+}
+
+// ══════════════════════════════════════════
+// TYPOGRAPHY
+// ══════════════════════════════════════════
+function renderTypography() {
+  const el = document.getElementById('type-scale');
+  if (!el) return;
+  Object.entries(tokens.typography.scale).forEach(([name, s]) => {
+    const isOverline = name === 'overline';
+    const sampleText = isOverline ? 'SECTION LABEL' : (name === 'display' ? 'OpenTivi' : 'The quick brown fox jumps over the lazy dog');
+    const trackingEm = s.tracking !== 0 ? `${s.tracking}em` : '0';
+    const row = document.createElement('div');
+    row.className = 'type-row';
+    row.innerHTML = `
+      <div>
+        <div class="type-label">${name}</div>
+        <div class="type-usage" style="font-size:10px;margin-top:4px;color:var(--muted)">${s.usage}</div>
+      </div>
+      <div class="type-sample" style="font-size:${s.size}px;line-height:${s.lineHeight};font-weight:${s.weight};letter-spacing:${trackingEm};${isOverline?'text-transform:uppercase':''}">
+        ${sampleText}
+      </div>
+      <div class="type-meta">
+        ${s.size}px / ${s.lineHeight} lh<br>
+        w${s.weight}<br>
+        track: ${s.tracking !== 0 ? (s.tracking > 0 ? '+' : '') + s.tracking + 'em' : '0'}
+      </div>
+    `;
+    el.appendChild(row);
+  });
+
+  const wl = document.getElementById('weight-list');
+  if (wl) {
+    Object.entries(tokens.typography.weight).forEach(([k,v]) => {
+      wl.innerHTML += `<div class="motion-item"><span class="motion-name" style="font-weight:${v}">${k} (${v})</span><span class="motion-value">${v}</span></div>`;
+    });
+  }
+  const lhl = document.getElementById('lh-list');
+  if (lhl) {
+    Object.entries(tokens.typography.lineHeight).forEach(([k,v]) => {
+      lhl.innerHTML += `<div class="motion-item"><span class="motion-name">${k}</span><span class="motion-value">${v}</span></div>`;
+    });
+  }
+}
+
+// ══════════════════════════════════════════
+// SPACING
+// ══════════════════════════════════════════
+function renderSpacing() {
+  const el = document.getElementById('spacing-list');
+  if (!el) return;
+  const maxPx = 80;
+  Object.entries(tokens.spacing).forEach(([k, px]) => {
+    const barW = px === 0 ? 0 : Math.max(4, (px / maxPx) * 100);
+    el.innerHTML += `
+      <div class="spacing-row">
+        <div class="spacing-token">space-${k}</div>
+        <div class="spacing-bar-wrap">
+          ${px > 0 ? `<div class="spacing-bar" style="width:${barW}%"></div>` : '<span style="color:var(--muted);font-size:11px;font-family:var(--mono)">0</span>'}
+        </div>
+        <div class="spacing-px">${px}px</div>
+      </div>
+    `;
+  });
+}
+
+// ══════════════════════════════════════════
+// RADIUS
+// ══════════════════════════════════════════
+function renderRadius() {
+  const el = document.getElementById('radius-grid');
+  if (!el) return;
+  Object.entries(tokens.radius).forEach(([name, px]) => {
+    const displayRadius = px === 9999 ? '50%' : px + 'px';
+    el.innerHTML += `
+      <div class="radius-card">
+        <div class="radius-demo" style="border-radius:${displayRadius}"></div>
+        <div>
+          <div class="radius-name">radius-${name}</div>
+          <div class="radius-value">${px === 9999 ? '∞ (pill)' : px + 'px'}</div>
+        </div>
+      </div>
+    `;
+  });
+}
+
+// ══════════════════════════════════════════
+// SHADOWS
+// ══════════════════════════════════════════
+function renderShadows() {
+  const el = document.getElementById('shadow-grid');
+  if (!el) return;
+  Object.entries(tokens.shadow).forEach(([name, value]) => {
+    el.innerHTML += `
+      <div class="shadow-card" style="box-shadow:${value}">
+        <div class="shadow-name">shadow-${name}</div>
+        <div class="shadow-sample" style="box-shadow:${value}"></div>
+        <div class="shadow-value">${value}</div>
+      </div>
+    `;
+  });
+}
+
+// ══════════════════════════════════════════
+// OVERLAYS
+// ══════════════════════════════════════════
+function renderOverlays() {
+  const el = document.getElementById('overlay-grid');
+  if (!el) return;
+
+  const overlays = [
+    { name: 'scrim', data: tokens.overlay.scrim },
+    { name: 'panel', data: tokens.overlay.panel },
+    { name: 'toast', data: tokens.overlay.toast },
+  ];
+
+  overlays.forEach(({ name, data }) => {
+    const hex = hslToHex(data.color);
+    const rgba = hexToRgba(hex, data.opacity);
+    el.innerHTML += `
+      <div class="overlay-card">
+        <div class="overlay-preview">
+          <div class="overlay-layer" style="background:${rgba}"></div>
+          <div class="overlay-content">Content behind ${name}</div>
+        </div>
+        <div class="overlay-meta">
+          <div class="overlay-name">overlay.${name}</div>
+          <div class="overlay-tokens">
+            color: ${data.color}<br>
+            opacity: ${data.opacity}<br>
+            result: ${rgba}<br>
+            ${data.desc ? data.desc : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  // Player gradients
+  const gt = tokens.overlay.player.gradientTop;
+  const gb = tokens.overlay.player.gradientBottom;
+  document.getElementById('player-grad-top').style.background =
+    `linear-gradient(${gt.direction}, ${hexToRgba(hslToHex(gt.color), gt.opacity)}, transparent)`;
+  document.getElementById('player-grad-bot').style.background =
+    `linear-gradient(${gb.direction}, ${hexToRgba(hslToHex(gb.color), gb.opacity)}, transparent)`;
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ══════════════════════════════════════════
+// CONTRAST TABLE
+// ══════════════════════════════════════════
+function renderContrast(mode) {
+  const c = tokens.color[mode];
+  const bodyId = `contrast-${mode}-body`;
+  const el = document.getElementById(bodyId);
+  if (!el) return;
+
+  const pairs = [
+    ['foreground', 'background'],
+    ['foreground', 'card'],
+    ['foreground', 'popover'],
+    ['cardForeground', 'card'],
+    ['popoverForeground', 'popover'],
+    ['mutedForeground', 'background'],
+    ['mutedForeground', 'muted'],
+    ['primaryForeground', 'primary'],
+    ['secondaryForeground', 'secondary'],
+    ['accentForeground', 'accent'],
+    ['destructiveForeground', 'destructive'],
+    ['successForeground', 'success'],
+    ['warningForeground', 'warning'],
+    ['infoForeground', 'info'],
+    ['foreground', 'secondary'],
+    ['foreground', 'muted'],
+    ['foreground', 'accent'],
+    ['primary', 'background'],
+    ['primary', 'card'],
+    ['destructive', 'background'],
+    ['success', 'background'],
+    ['warning', 'background'],
+    ['info', 'background'],
+    ['favorite', 'background'],
+    ['live', 'background'],
+  ];
+
+  el.innerHTML = '';
+  pairs.forEach(([fg, bg]) => {
+    if (!c[fg] || !c[bg]) return;
+    const ratio = contrastRatio(c[fg].value, c[bg].value);
+    const fgHex = hslToHex(c[fg].value);
+    const bgHex = hslToHex(c[bg].value);
+    el.innerHTML += `
+      <tr>
+        <td>
+          <div class="contrast-swatch-pair">
+            <div class="mini-swatch" style="background:${c[fg].value}"></div>
+            <span style="font-size:12px;color:var(--page-fg)">${fg}</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${fgHex}</span>
+          </div>
+        </td>
+        <td>
+          <div class="contrast-swatch-pair">
+            <div class="mini-swatch" style="background:${c[bg].value}"></div>
+            <span style="font-size:12px;color:var(--page-fg)">${bg}</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${bgHex}</span>
+          </div>
+        </td>
+        <td style="text-align:right">${contrastRatioValue(ratio)}</td>
+        <td style="text-align:right">${wcagBadge(ratio)}</td>
+      </tr>
+    `;
+  });
+}
+
+// ══════════════════════════════════════════
+// MOTION
+// ══════════════════════════════════════════
+function renderMotion() {
+  const dur = document.getElementById('motion-duration');
+  const eas = document.getElementById('motion-easing');
+  if (dur) {
+    Object.entries(tokens.motion.duration).forEach(([k,v]) => {
+      dur.innerHTML += `<div class="motion-item"><span class="motion-name">${k}</span><span class="motion-value">${v}ms</span></div>`;
+    });
+  }
+  if (eas) {
+    Object.entries(tokens.motion.easing).forEach(([k,v]) => {
+      eas.innerHTML += `<div class="motion-item"><span class="motion-name">${k}</span><span class="motion-value" style="font-size:9px">${v}</span></div>`;
+    });
+  }
+}
+
+// ══════════════════════════════════════════
+// LAYOUT
+// ══════════════════════════════════════════
+function renderLayout() {
+  const el = document.getElementById('layout-grid');
+  if (!el) return;
+  Object.entries(tokens.layout).forEach(([section, data]) => {
+    const { desc, ...props } = data;
+    const propsHtml = Object.entries(props)
+      .map(([k,v]) => `<div class="layout-prop"><span class="layout-prop-name">${k}</span><span class="layout-prop-value">${typeof v === 'boolean' ? String(v) : (typeof v === 'number' ? v + 'px' : v)}</span></div>`)
+      .join('');
+    el.innerHTML += `
+      <div class="layout-card">
+        <div class="layout-card-title">${section}</div>
+        ${desc ? `<div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.4">${desc}</div>` : ''}
+        ${propsHtml}
+      </div>
+    `;
+  });
+}
+
+// ══════════════════════════════════════════
+// PLATFORM
+// ══════════════════════════════════════════
+function renderPlatform() {
+  const el = document.getElementById('platform-grid');
+  if (!el) return;
+  Object.entries(tokens.platform).forEach(([name, data]) => {
+    const propsHtml = Object.entries(data.props)
+      .map(([k,v]) => `<div class="platform-prop"><span class="platform-prop-name">${k}</span><span class="platform-prop-value">${v}</span></div>`)
+      .join('');
+    el.innerHTML += `
+      <div class="platform-card">
+        <div class="platform-icon">${data.icon}</div>
+        <div class="platform-name">${name.charAt(0).toUpperCase() + name.slice(1)}</div>
+        <div class="platform-desc">${data.desc}</div>
+        <div class="platform-props">${propsHtml}</div>
+      </div>
+    `;
+  });
+
+  const iconEl = document.getElementById('icon-sizes');
+  if (iconEl) {
+    Object.entries(tokens.iconography.sizes).forEach(([name, px]) => {
+      iconEl.innerHTML += `
+        <div class="icon-size-item">
+          <div class="icon-circle" style="width:${px+16}px;height:${px+16}px">
+            <svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="hsl(217,91%,60%)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+          </div>
+          <div class="icon-size-label">${name}<br>${px}px</div>
+        </div>
+      `;
+    });
+  }
+}
+
+// ══════════════════════════════════════════
+// MODE SWITCHERS
+// ══════════════════════════════════════════
+function showColorMode(mode) {
+  document.querySelectorAll('.color-mode-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('color-' + mode).classList.add('active');
+  document.querySelectorAll('.mode-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', (mode === 'dark' && i === 0) || (mode === 'light' && i === 1));
+  });
+}
+
+function showContrastMode(mode) {
+  document.querySelectorAll('.contrast-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('contrast-' + mode).classList.add('active');
+  document.querySelectorAll('.contrast-tab').forEach((btn, i) => {
+    btn.classList.toggle('active', (mode === 'dark' && i === 0) || (mode === 'light' && i === 1));
+  });
+}
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+(function init() {
+  renderColors('dark');
+  renderColors('light');
+  renderSoftAlpha();
+  renderTypography();
+  renderSpacing();
+  renderRadius();
+  renderShadows();
+  renderOverlays();
+  renderContrast('dark');
+  renderContrast('light');
+  renderMotion();
+  renderLayout();
+  renderPlatform();
+})();
+</script>
+</body>
+</html>

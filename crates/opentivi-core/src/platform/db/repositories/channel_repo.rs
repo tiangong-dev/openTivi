@@ -115,6 +115,23 @@ pub fn list_channels(
         sql.push_str(&format!(" AND c.source_id = ?{}", idx));
         params.push(sid.into());
         idx += 1;
+    } else {
+        // Deduplicate across sources by normalized_name: keep the best candidate per name.
+        // Channels without a normalized_name are always shown individually.
+        sql.push_str(
+            " AND (c.normalized_name IS NULL OR c.normalized_name = '' OR c.id = (\
+                SELECT c2.id FROM channels c2 \
+                JOIN sources s2 ON s2.id = c2.source_id AND s2.enabled = 1 \
+                LEFT JOIN channel_health h2 ON c2.id = h2.channel_id \
+                LEFT JOIN favorites f2 ON c2.id = f2.channel_id \
+                WHERE c2.normalized_name = c.normalized_name \
+                ORDER BY \
+                  (f2.channel_id IS NOT NULL) DESC, \
+                  CASE WHEN h2.health_status = 'alive' THEN 0 WHEN h2.health_status IS NULL THEN 1 ELSE 2 END, \
+                  COALESCE(h2.response_time_ms, 9999), \
+                  c2.id \
+                LIMIT 1))",
+        );
     }
 
     if let Some(g) = group_name {
@@ -246,9 +263,15 @@ pub fn list_playback_candidates(conn: &Connection, channel_id: i64) -> AppResult
                 c.stream_url, c.container_extension, c.is_live
          FROM channels c
          JOIN sources s ON c.source_id = s.id AND s.enabled = 1
+         LEFT JOIN channel_health h ON c.id = h.channel_id
          WHERE c.normalized_name = (SELECT normalized_name FROM channels WHERE id = ?1)
            AND c.normalized_name IS NOT NULL AND c.normalized_name <> ''
-         ORDER BY CASE WHEN c.id = ?1 THEN 0 ELSE 1 END, c.source_id ASC",
+         ORDER BY
+           CASE WHEN h.health_status = 'alive' THEN 0
+                WHEN h.health_status IS NULL THEN 1
+                ELSE 2 END,
+           COALESCE(h.response_time_ms, 9999) ASC,
+           CASE WHEN c.id = ?1 THEN 0 ELSE 1 END",
     )?;
 
     let rows = stmt.query_map([channel_id], |row| {

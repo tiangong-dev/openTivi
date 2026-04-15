@@ -2,7 +2,17 @@
 
 Status: Draft  
 Owner: Client Team  
-Last Updated: 2026-03-08
+Last Updated: 2026-03-27
+
+## Document Role
+
+This document is the single source of truth for current interaction behavior across clients.
+
+- principle documents explain intent and rationale
+- implementation guides explain how a client realizes the model
+- roadmap documents describe proposed future changes
+
+If another document conflicts with this one on current behavior, this document wins.
 
 ## 1. Purpose
 
@@ -60,15 +70,18 @@ Normalize raw input events into intents:
 - `TvIntent.Back`
 - `TvIntent.SecondaryAction`
 - `TvIntent.PlayPause` (optional)
-- `PageUp` / `PageDown` (optional)
-- `LongPressConfirm` (optional)
-- `RepeatMove` (optional)
 
 Confirm gestures are normalized separately:
 
 - `ConfirmGesture.Single`
 - `ConfirmGesture.Double`
 - `ConfirmGesture.Long`
+
+Rules:
+
+- long press belongs to `ConfirmGesture.Long`, not a standalone intent
+- repeated directional input is event transport detail, not a standalone intent
+- platform adapters may expose extra raw keys, but business logic binds only to normalized intents and confirm gestures
 
 ### 4.2 Focus Engine Layer
 
@@ -134,7 +147,7 @@ Defines a navigable collection:
 
 - orientation (`vertical`, `horizontal`, `grid`)
 - item order
-- edge policy (`clamp`, `loop`, `jump-zone`)
+- edge policy (`stay`, `wrap`, `bubble`)
 
 Nested scopes are allowed:
 
@@ -169,7 +182,7 @@ For list-like views (Channels / Favorites / Recents / Settings / Sources):
 - `Confirm` on source row => open edit
 - `Confirm` on add-source button => open import modal
 
-> TV recommendation: prefer `SecondaryAction` or `LongPressConfirm` for favorite; do not require double-click as the only path.
+> TV recommendation: prefer `SecondaryAction` or `ConfirmGesture.Long` for favorite; do not require double-click as the only path.
 
 ### 6.4 Overlay Interception
 
@@ -239,7 +252,7 @@ Any client implementation is compliant only if:
 
 ## 10. Suggested Implementation Strategy
 
-1. Keep this spec as source of truth.
+1. Keep this spec as the single source of truth for current interaction behavior.
 2. Implement per-platform `InputAdapter` (raw key -> intent).
 3. Implement per-platform `FocusBinder` (focus node -> native UI focus).
 4. Keep business actions bound to normalized intents only.

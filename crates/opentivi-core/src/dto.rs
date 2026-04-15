@@ -202,7 +202,7 @@ pub struct SettingDto {
     pub updated_at: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSourceDto {
     pub channel_id: i64,

@@ -1,0 +1,20 @@
+[package]
+name = "opentivi-harmony"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+name = "opentivi"
+
+[dependencies]
+opentivi-core = { path = "../../../crates/opentivi-core" }
+napi = { version = "2", features = ["async", "napi8"] }
+napi-derive = "2"
+napi-ohos = "1"
+thiserror = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[build-dependencies]
+napi-build = "2"

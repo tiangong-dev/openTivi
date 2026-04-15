@@ -8,9 +8,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.opentivi.tv.ui.theme.Accent
+import com.opentivi.tv.ui.theme.TiviMuted
+import com.opentivi.tv.ui.theme.TiviPrimary
 
 @Composable
 fun EpgBar(
@@ -22,14 +22,14 @@ fun EpgBar(
             .fillMaxWidth()
             .height(4.dp)
             .clip(RoundedCornerShape(2.dp))
-            .background(Color.White.copy(alpha = 0.3f)),
+            .background(TiviMuted),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(fraction = progress.coerceIn(0f, 1f))
                 .height(4.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(Accent),
+                .background(TiviPrimary),
         )
     }
 }

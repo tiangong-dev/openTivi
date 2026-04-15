@@ -164,7 +164,11 @@ pub fn init_engine(data_dir: String) -> Result<u16, OpenTiviError> {
     })
     .map_err(|e| runtime_error(e.to_string()))?;
 
-    let proxy_port = runtime.block_on(opentivi_core::platform::proxy::start_proxy_server());
+    let proxy_port = runtime.block_on(async {
+        let port = opentivi_core::platform::proxy::start_proxy_server().await;
+        opentivi_core::core::services::health_worker::start_health_worker(ctx.clone());
+        port
+    });
 
     let engine = Engine {
         runtime,

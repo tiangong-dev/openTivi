@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenTivi</string>
+
+    <!-- Navigation tabs -->
+    <string name="tab_channels">Channels</string>
+    <string name="tab_favorites">Favorites</string>
+    <string name="tab_recents">Recents</string>
+    <string name="tab_sources">Sources</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">Search channels&#8230;</string>
+
+    <!-- Channels -->
+    <string name="channels_all">All</string>
+    <string name="channels_groups">Groups</string>
+    <string name="channels_no_channels">No Channels</string>
+    <string name="channels_import_hint">Import a source to get started.</string>
+    <string name="channels_favorite">Favorite</string>
+    <string name="channels_unfavorite">Unfavorite</string>
+
+    <!-- Favorites -->
+    <string name="favorites_no_favorites">No Favorites</string>
+    <string name="favorites_add_hint">Swipe right on a channel and tap the star to add it here.</string>
+
+    <!-- Recents -->
+    <string name="recents_no_recents">No Recents</string>
+    <string name="recents_watch_hint">Channels you watch will appear here.</string>
+    <string name="recents_just_now">just now</string>
+    <string name="recents_minutes_ago">%1$d min ago</string>
+    <string name="recents_hours_ago">%1$dh ago</string>
+    <string name="recents_yesterday">yesterday</string>
+    <string name="recents_days_ago">%1$dd ago</string>
+    <string name="recents_played_count">%1$d\u00D7 played</string>
+
+    <!-- Sources -->
+    <string name="sources_title">Sources</string>
+    <string name="sources_add">Add Source</string>
+    <string name="sources_empty">No sources yet. Tap the + button to import one.</string>
+    <string name="sources_channels_and_groups">%1$d channels \u00B7 %2$d groups</string>
+    <string name="sources_last_import">Last import: %1$s</string>
+    <string name="sources_tab_m3u">M3U</string>
+    <string name="sources_tab_xtream">Xtream Codes</string>
+    <string name="sources_tab_xmltv">XMLTV / EPG</string>
+    <string name="sources_form_name">Name</string>
+    <string name="sources_form_m3u_placeholder">My IPTV</string>
+    <string name="sources_form_location">M3U URL or file path</string>
+    <string name="sources_form_server_url">Server URL</string>
+    <string name="sources_form_username">Username</string>
+    <string name="sources_form_password">Password</string>
+    <string name="sources_form_xtream_placeholder">My Xtream</string>
+    <string name="sources_form_xmltv_placeholder">My EPG</string>
+    <string name="sources_form_xmltv_location">XMLTV URL or file path</string>
+    <string name="sources_import_m3u">Import M3U</string>
+    <string name="sources_import_xtream">Import Xtream</string>
+    <string name="sources_import_xmltv">Import XMLTV</string>
+    <string name="sources_importing">Importing&#8230;</string>
+    <string name="sources_refresh">Refresh</string>
+    <string name="sources_delete">Delete</string>
+    <string name="sources_edit">Edit</string>
+    <string name="sources_edit_title">Edit Source</string>
+    <string name="sources_enabled">Enabled</string>
+    <string name="sources_auto_refresh">Auto Refresh</string>
+    <string name="sources_auto_refresh_minutes">Refresh interval (minutes)</string>
+    <string name="sources_last_error">Last error</string>
+    <string name="sources_delete_confirm_title">Delete Source</string>
+    <string name="sources_delete_confirm_message">Are you sure you want to delete \"%1$s\"? This action cannot be undone.</string>
+    <string name="sources_message_imported">Imported %1$d channels</string>
+    <string name="sources_message_refreshed">Refreshed: +%1$d channels</string>
+    <string name="sources_message_import_failed">Import failed: %1$s</string>
+    <string name="sources_message_delete_failed">Delete failed: %1$s</string>
+    <string name="sources_message_refresh_failed">Refresh failed: %1$s</string>
+    <string name="sources_filter_all">All</string>
+    <string name="sources_filter_enabled">Enabled</string>
+    <string name="sources_filter_disabled">Disabled</string>
+    <string name="sources_filter_error">Error</string>
+    <string name="sources_badge_disabled">DISABLED</string>
+    <string name="sources_badge_error">ERROR</string>
+
+    <!-- Player -->
+    <string name="player_now">Now</string>
+    <string name="player_next">Next</string>
+    <string name="player_now_playing">Now Playing</string>
+    <string name="player_diagnostics">Diagnostics</string>
+    <string name="player_state">State</string>
+    <string name="player_resolution">Resolution</string>
+    <string name="player_video_codec">Video Codec</string>
+    <string name="player_audio_codec">Audio Codec</string>
+    <string name="player_url">Stream URL</string>
+    <string name="player_source_label">Source %1$d / %2$d</string>
+    <string name="player_retry_count">Retry %1$d / %2$d</string>
+    <string name="player_channel_list">Channels</string>
+    <string name="player_error">Playback Error</string>
+    <string name="player_retry">Retry</string>
+    <string name="player_swipe_hint">Swipe up/down to switch channels</string>
+
+    <!-- EPG Search -->
+    <string name="epg_search_title">EPG Search</string>
+    <string name="epg_search_hint">Search programs&#8230;</string>
+    <string name="epg_search_all">All</string>
+    <string name="epg_search_live">Live</string>
+    <string name="epg_search_upcoming">Upcoming</string>
+    <string name="epg_search_empty">No programs found</string>
+    <string name="epg_search_live_badge">LIVE</string>
+
+    <!-- Settings -->
+    <string name="settings_category_general">General</string>
+    <string name="settings_category_playback">Playback</string>
+    <string name="settings_category_about">About</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_zh">Chinese</string>
+    <string name="settings_start_view">Start View</string>
+    <string name="settings_instant_switch">Instant Switch</string>
+    <string name="settings_prefer_native_hls">Prefer Native HLS</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_build">Build</string>
+    <string name="settings_on">On</string>
+    <string name="settings_off">Off</string>
+
+    <!-- Common -->
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="save">Save</string>
+    <string name="no_guide">No guide</string>
+</resources>

@@ -1,0 +1,9 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "OpenTivi HarmonyOS TV entry module",
+  "main": "",
+  "author": "OpenTivi",
+  "license": "MIT",
+  "dependencies": {}
+}

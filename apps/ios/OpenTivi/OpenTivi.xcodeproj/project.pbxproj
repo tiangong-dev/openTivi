@@ -35,6 +35,7 @@
 		9D77C25D523782EF52111C86 /* FavoritesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D1D8DA264BC15E9A0503DDF /* FavoritesViewModel.swift */; };
 		9D9CC211D7032B00794115E4 /* ChannelDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19EF402F3AF61250AADCC353 /* ChannelDetailView.swift */; };
 		9E63F68B259D6FF09BDE0560 /* ChannelLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7772148A66405D3C0DBC8A1E /* ChannelLogo.swift */; };
+		A8F3E21D4C5B6A7980E1F234 /* EpgDesktopParity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E4F32E5D6C7B8091F2E345 /* EpgDesktopParity.swift */; };
 		B8BE9723FBDC2C709F19C6C4 /* MiniPlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 652693D49B33B2A4773BB7B1 /* MiniPlayerBar.swift */; };
 		C9D21462BD3DC4618DF1B5EA /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDAB8C5C8FB2936573198102 /* PlayerView.swift */; };
 		CD2D4BC640ED64F5FC921BD4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 482EC4685CDB1FC5F98BC9B9 /* Assets.xcassets */; };
@@ -45,6 +46,7 @@
 		E72CE7822B2D133D0A874E99 /* ChannelRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CB833E3DFC916E4AE8668EF /* ChannelRow.swift */; };
 		EAC9745A74964D89274C42C6 /* StreamPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60F405454E8D8CD3941CE307 /* StreamPlayer.swift */; };
 		FBCC71F19B5B86B3EAD07AA2 /* SourcesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BA8E59BFAC75C93D12588E /* SourcesViewModel.swift */; };
+		AA1B2C3D4E5F6A7B8C9D0E1F /* EpgSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2C3D4E5F6A7B8C9D0E1F2A /* EpgSearchView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -77,6 +79,7 @@
 		A7DEB3B82BF6946CA463D22C /* Color+Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Theme.swift"; sourceTree = "<group>"; };
 		B75187A82B708340B7740F0A /* SourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesView.swift; sourceTree = "<group>"; };
 		B7AFA30107D440F28FBDAA12 /* ChannelsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelsViewModel.swift; sourceTree = "<group>"; };
+		B9E4F32E5D6C7B8091F2E345 /* EpgDesktopParity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpgDesktopParity.swift; sourceTree = "<group>"; };
 		C6EFE72186E6E11D0DAD9EEB /* LocaleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocaleManager.swift; sourceTree = "<group>"; };
 		CCC92F9A8DE0A9A13A62D10D /* Date+Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+Formatting.swift"; sourceTree = "<group>"; };
 		D756FA28AD56240FC4C1C204 /* GroupFilterChips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupFilterChips.swift; sourceTree = "<group>"; };
@@ -87,6 +90,7 @@
 		EDAB8C5C8FB2936573198102 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		EE9E33B54B51BD9E688019D3 /* RustBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RustBridge.swift; sourceTree = "<group>"; };
 		F4E9174EBF40656396833710 /* RecentsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentsViewModel.swift; sourceTree = "<group>"; };
+		BB2C3D4E5F6A7B8C9D0E1F2A /* EpgSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpgSearchView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -164,6 +168,7 @@
 				19EF402F3AF61250AADCC353 /* ChannelDetailView.swift */,
 				7CB833E3DFC916E4AE8668EF /* ChannelRow.swift */,
 				9B6A5D49C4FD29D265F7521F /* ChannelsView.swift */,
+				BB2C3D4E5F6A7B8C9D0E1F2A /* EpgSearchView.swift */,
 			);
 			path = Channels;
 			sourceTree = "<group>";
@@ -203,6 +208,7 @@
 			children = (
 				A7DEB3B82BF6946CA463D22C /* Color+Theme.swift */,
 				CCC92F9A8DE0A9A13A62D10D /* Date+Formatting.swift */,
+				B9E4F32E5D6C7B8091F2E345 /* EpgDesktopParity.swift */,
 			);
 			path = Extensions;
 			sourceTree = "<group>";
@@ -313,7 +319,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1500;
+				LastUpgradeCheck = 1620;
 			};
 			buildConfigurationList = B4C97A3A82554C8DB7FD917B /* Build configuration list for PBXProject "OpenTivi" */;
 			developmentRegion = en;
@@ -387,7 +393,9 @@
 				2EDF48B6F2BF7894A990FCCD /* Color+Theme.swift in Sources */,
 				0EC69C56A2F8FB809EFB3894 /* ContentView.swift in Sources */,
 				502A724A71A1C3D0D4285CEC /* Date+Formatting.swift in Sources */,
+				A8F3E21D4C5B6A7980E1F234 /* EpgDesktopParity.swift in Sources */,
 				61ACF0E45B0084F0B2242C54 /* EditSourceView.swift in Sources */,
+				AA1B2C3D4E5F6A7B8C9D0E1F /* EpgSearchView.swift in Sources */,
 				E5C07E4545615F7CC73DB513 /* EpgNowNextView.swift in Sources */,
 				1F3E0A6A7222D9EF638C3651 /* FavoritesView.swift in Sources */,
 				9D77C25D523782EF52111C86 /* FavoritesViewModel.swift in Sources */,
@@ -455,6 +463,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -543,6 +552,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;

@@ -1,24 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">OpenTivi</string>
+    <string name="app_name">OpenTivi TV</string>
 
     <!-- Tabs -->
     <string name="tab_home">首页</string>
     <string name="tab_channels">频道</string>
     <string name="tab_favorites">收藏</string>
+    <string name="tab_recents">最近</string>
     <string name="tab_settings">设置</string>
+
+    <!-- Search -->
+    <string name="search_title">搜索</string>
+    <string name="search_empty">未找到结果，请尝试其他关键词。</string>
+    <string name="search_hint">输入关键词搜索频道…</string>
 
     <!-- Home -->
     <string name="home_continue_watching">最近观看</string>
     <string name="home_favorites">收藏</string>
+    <string name="home_hero_resume">继续观看</string>
 
     <!-- Channels -->
     <string name="channels_all">全部</string>
     <string name="channels_groups">分组</string>
     <string name="channels_search">搜索频道…</string>
+    <string name="channels_empty">未找到频道，请先导入源。</string>
 
     <!-- Favorites -->
-    <string name="favorites_empty">暂无收藏。请在频道中收藏频道。</string>
+    <string name="favorites_empty">暂无收藏。长按频道卡片即可添加收藏。</string>
+    <string name="channels_favorite">添加收藏</string>
+    <string name="channels_unfavorite">取消收藏</string>
+
+    <!-- Recents -->
+    <string name="recents_empty">还没有最近观看记录。</string>
+
+    <!-- Long press -->
+    <string name="long_press_hint">长按收藏</string>
+    <string name="recents_play_count">已播放 %1$d 次</string>
 
     <!-- Sources -->
     <string name="sources_title">源</string>
@@ -32,12 +49,54 @@
     <string name="sources_form_password">密码</string>
     <string name="sources_import_m3u">导入 M3U</string>
     <string name="sources_import_xtream">导入 Xtream</string>
+    <string name="sources_tab_xmltv">XMLTV / EPG</string>
+    <string name="sources_import_xmltv">导入 XMLTV</string>
     <string name="sources_refresh">刷新</string>
     <string name="sources_delete">删除</string>
+    <string name="sources_edit">编辑</string>
+    <string name="sources_filter_all">全部</string>
+    <string name="sources_filter_enabled">已启用</string>
+    <string name="sources_filter_disabled">已禁用</string>
+    <string name="sources_filter_backoff">重试中</string>
+    <string name="sources_filter_error">错误</string>
+    <string name="sources_enabled">启用</string>
+    <string name="sources_auto_refresh">自动刷新 (分钟)</string>
+    <string name="sources_edit_title">编辑源</string>
+    <string name="sources_auto_refresh_minutes">自动刷新间隔 (分钟)</string>
+    <string name="sources_status_disabled">已禁用</string>
+    <string name="sources_status_backoff">重试中</string>
+    <string name="sources_status_error">错误</string>
+    <string name="sources_failures">%1$d 次失败</string>
+
+    <!-- Channels -->
+    <string name="channels_sort">排序</string>
+    <string name="channels_sort_name">按名称</string>
+    <string name="channels_sort_number">按频道号</string>
+    <string name="channels_sort_source">按源</string>
+
+    <!-- EPG Search -->
+    <string name="epg_search_title">节目搜索</string>
+    <string name="epg_search_hint">搜索节目…</string>
+    <string name="epg_search_empty">未找到节目。</string>
+    <string name="epg_search_all">全部</string>
+    <string name="epg_search_live">正在播出</string>
+    <string name="epg_search_upcoming">即将播出</string>
+    <string name="epg_search_live_badge">直播</string>
 
     <!-- Player -->
     <string name="player_now">正在播放</string>
     <string name="player_next">下一档</string>
+    <string name="player_diagnostics">诊断信息</string>
+    <string name="player_channel_list">频道列表</string>
+    <string name="player_retry">重试</string>
+    <string name="player_retry_count">重试 %1$d/%2$d</string>
+    <string name="player_error">播放错误</string>
+    <string name="player_source_label">线路 %1$d/%2$d</string>
+    <string name="player_resolution">分辨率</string>
+    <string name="player_state">状态</string>
+    <string name="player_url">地址</string>
+    <string name="player_video_codec">视频编码</string>
+    <string name="player_audio_codec">音频编码</string>
 
     <!-- Settings -->
     <string name="settings_category_general">常规</string>
@@ -49,6 +108,10 @@
     <string name="settings_epg_auto_refresh">自动刷新 EPG</string>
     <string name="settings_on">开启</string>
     <string name="settings_off">关闭</string>
+    <string name="settings_instant_switch">即时切台</string>
+    <string name="settings_prefer_native_hls">优先原生 HLS</string>
+    <string name="settings_epg_guide_window">EPG 时间窗口</string>
+    <string name="settings_epg_guide_window_value">%1$d 分钟</string>
 
     <!-- Common -->
     <string name="cancel">取消</string>

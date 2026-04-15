@@ -576,8 +576,8 @@ function ViewFallback() {
 }
 
 const sidebarStyle: React.CSSProperties = {
-  width: 200,
-  backgroundColor: "var(--bg-secondary)",
+  width: "var(--sidebar-width)",
+  backgroundColor: "var(--card)",
   borderRight: "1px solid var(--border)",
   display: "flex",
   flexDirection: "column",
@@ -586,12 +586,12 @@ const sidebarStyle: React.CSSProperties = {
 };
 
 const navBtnActiveStyle: React.CSSProperties = {
-  backgroundColor: "var(--bg-tertiary)",
-  boxShadow: "inset 2px 0 0 0 var(--accent)",
+  backgroundColor: "var(--secondary)",
+  boxShadow: "inset 2px 0 0 0 var(--primary)",
 };
 
 const navBtnCursorStyle: React.CSSProperties = {
-  backgroundColor: "rgba(255, 255, 255, 0.08)",
+  backgroundColor: "var(--accent)",
 };
 
 const mainStyle: React.CSSProperties = {
@@ -600,11 +600,12 @@ const mainStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   position: "relative",
+  background: "radial-gradient(ellipse at 30% 20%, hsla(217, 91%, 60%, 0.04) 0%, var(--background) 70%)",
 };
 
 const viewFallbackStyle: React.CSSProperties = {
   flex: 1,
-  backgroundColor: "var(--bg-primary)",
+  backgroundColor: "var(--background)",
 };
 
 const navNowPlayingContentStyle: React.CSSProperties = {
@@ -634,8 +635,8 @@ const navNowPlayingButtonStyle: React.CSSProperties = {
 };
 
 const navNowPlayingLabelStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 700,
+  fontSize: "var(--font-size-small)",
+  fontWeight: "var(--font-weight-bold)",
   flexShrink: 0,
 };
 
@@ -644,8 +645,8 @@ const navMarqueeViewportStyle: React.CSSProperties = {
   overflow: "hidden",
   flex: 1,
   minWidth: 0,
-  fontSize: 12,
-  color: "var(--text-secondary)",
+  fontSize: "var(--font-size-caption)",
+  color: "var(--muted-foreground)",
   whiteSpace: "nowrap",
 };
 
@@ -665,8 +666,8 @@ const navNowPlayingCloseStyle: React.CSSProperties = {
   border: "1px solid transparent",
   borderRadius: "var(--radius-sm)",
   backgroundColor: "transparent",
-  color: "var(--text-secondary)",
-  fontSize: 20,
+  color: "var(--muted-foreground)",
+  fontSize: "var(--font-size-h3)",
   lineHeight: 1,
   cursor: "pointer",
   zIndex: 1,

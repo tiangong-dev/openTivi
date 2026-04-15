@@ -28,8 +28,14 @@ struct GroupFilterChips: View {
                 .fontWeight(isSelected ? .semibold : .regular)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(isSelected ? Color.accentColor : Color(.systemGray5))
-                .foregroundColor(isSelected ? .white : .primary)
+                .background {
+                    if isSelected {
+                        Capsule().strokeBorder(Color.tiviPrimary, lineWidth: 1.5)
+                    } else {
+                        Capsule().fill(.ultraThinMaterial)
+                    }
+                }
+                .foregroundColor(isSelected ? .tiviPrimary : .primary)
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)

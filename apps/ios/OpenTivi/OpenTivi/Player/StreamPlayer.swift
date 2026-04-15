@@ -13,6 +13,11 @@ final class StreamPlayer: NSObject, ObservableObject {
     @Published var observedBitrateBps: Double = 0
     @Published var indicatedBitrateBps: Double = 0
 
+    /// Called on the main thread when VLC enters buffering state.
+    var onBufferingStarted: (() -> Void)?
+    /// Called on the main thread when VLC returns to playing state.
+    var onPlaybackResumed: (() -> Void)?
+
     private let mediaPlayer: VLCMediaPlayer
     private weak var drawableView: UIView?
     private var lastLoggedSecond: Int = -1
@@ -45,7 +50,7 @@ final class StreamPlayer: NSObject, ObservableObject {
         }
         drawableView = view
         mediaPlayer.drawable = view
-        logger.debug("Drawable attached: \(ObjectIdentifier(view))")
+        logger.debug("Drawable attached: \(String(describing: ObjectIdentifier(view)))")
     }
 
     func detachDrawable(_ view: UIView) {
@@ -104,6 +109,25 @@ final class StreamPlayer: NSObject, ObservableObject {
         indicatedBitrateBps = 0
         lastLoggedSecond = -1
     }
+
+    var stateDescription: String {
+        switch mediaPlayer.state {
+        case .opening: return "opening"
+        case .buffering: return "buffering"
+        case .playing: return "playing"
+        case .paused: return "paused"
+        case .stopped: return "stopped"
+        case .ended: return "ended"
+        case .error: return "error"
+        default: return "unknown"
+        }
+    }
+
+    var videoSize: CGSize? {
+        let size = mediaPlayer.videoSize
+        guard size.width > 0, size.height > 0 else { return nil }
+        return size
+    }
 }
 
 extension StreamPlayer: VLCMediaPlayerDelegate {
@@ -116,9 +140,11 @@ extension StreamPlayer: VLCMediaPlayerDelegate {
                 logger.debug("VLC state: opening")
             case .buffering:
                 logger.debug("VLC state: buffering")
+                self.onBufferingStarted?()
             case .playing:
                 logger.info("VLC state: playing")
                 self.isPlaying = true
+                self.onPlaybackResumed?()
             case .paused:
                 logger.info("VLC state: paused")
                 self.isPlaying = false

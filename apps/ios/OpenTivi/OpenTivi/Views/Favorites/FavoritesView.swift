@@ -5,20 +5,20 @@ struct FavoritesView: View {
     @EnvironmentObject var playerVM: PlayerViewModel
     @ObservedObject private var locale = LocaleManager.shared
 
-    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 12)]
+    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 16)]
 
     var body: some View {
         ScrollView {
             if vm.favorites.isEmpty && !vm.isLoading {
                 VStack(spacing: 12) {
                     Image(systemName: "star")
-                        .font(.system(size: 36))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 32))
+                        .foregroundColor(.tiviMutedForeground)
                     Text(locale.t("favorites.noFavorites"))
-                        .font(.headline)
+                        .font(.tiviH3)
                     Text(locale.t("favorites.addHint"))
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .font(.tiviSmall)
+                        .foregroundColor(.tiviMutedForeground)
                         .multilineTextAlignment(.center)
                 }
                 .padding(.top, 100)
@@ -41,6 +41,7 @@ struct FavoritesView: View {
                 .padding()
             }
         }
+        .contentMargins(.bottom, 100, for: .scrollContent)
         .refreshable { await vm.load() }
         .navigationTitle(locale.t("favorites.title"))
         .overlay {

@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 export const containerStyle: CSSProperties = {
   position: "absolute",
   inset: 0,
-  backgroundColor: "#000",
+  backgroundColor: "var(--background)",
   overflow: "hidden",
   cursor: "default",
 };
@@ -14,7 +14,7 @@ export const videoStyle: CSSProperties = {
   width: "100%",
   height: "100%",
   objectFit: "contain",
-  backgroundColor: "#000",
+  backgroundColor: "var(--background)",
 };
 
 export const topBarStyle: CSSProperties = {
@@ -26,8 +26,8 @@ export const topBarStyle: CSSProperties = {
   justifyContent: "space-between",
   alignItems: "center",
   padding: "16px 20px",
-  background: "linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%)",
-  color: "#fff",
+  background: "var(--player-gradient-top)",
+  color: "var(--player-text)",
   transition: "opacity 0.3s ease",
   zIndex: 10,
 };
@@ -38,8 +38,8 @@ export const bottomBarStyle: CSSProperties = {
   left: 0,
   right: 0,
   padding: "16px 20px",
-  background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)",
-  color: "#fff",
+  background: "var(--player-gradient-bottom)",
+  color: "var(--player-text)",
   transition: "opacity 0.3s ease",
   zIndex: 10,
 };
@@ -53,9 +53,9 @@ export const guidePanelStyle: CSSProperties = {
   maxWidth: "40vw",
   borderRadius: 8,
   border: "1px solid var(--border)",
-  backgroundColor: "rgba(10,10,10,0.82)",
+  backgroundColor: "var(--player-panel)",
   backdropFilter: "blur(8px)",
-  color: "var(--text-primary)",
+  color: "var(--foreground)",
   display: "flex",
   flexDirection: "column",
   padding: 10,
@@ -72,9 +72,9 @@ export const channelListPanelStyle: CSSProperties = {
   maxWidth: "38vw",
   borderRadius: 8,
   border: "1px solid var(--border)",
-  backgroundColor: "rgba(20,20,20,0.78)",
+  backgroundColor: "var(--player-panel-alt)",
   backdropFilter: "blur(8px)",
-  color: "var(--text-primary)",
+  color: "var(--foreground)",
   display: "flex",
   flexDirection: "column",
   padding: 10,
@@ -86,13 +86,13 @@ export const guideHeaderStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  fontSize: 13,
-  fontWeight: 600,
+  fontSize: "var(--font-size-small)",
+  fontWeight: "var(--font-weight-semibold)",
 };
 
 export const guideHintStyle: CSSProperties = {
-  color: "var(--text-secondary)",
-  fontSize: 12,
+  color: "var(--muted-foreground)",
+  fontSize: "var(--font-size-caption)",
 };
 
 export const guideItemStyle: CSSProperties = {
@@ -108,38 +108,38 @@ export const channelListItemStyle: CSSProperties = {
   border: "1px solid var(--border)",
   borderRadius: 6,
   background: "transparent",
-  color: "var(--text-primary)",
+  color: "var(--foreground)",
   padding: "7px 8px",
-  fontSize: 13,
+  fontSize: "var(--font-size-small)",
   cursor: "pointer",
 };
 
 export const channelProgramNowStyle: CSSProperties = {
-  fontSize: 11,
-  color: "#cbd5e1",
+  fontSize: "var(--font-size-overline)",
+  color: "var(--muted-foreground)",
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
 };
 
 export const channelProgramNextStyle: CSSProperties = {
-  fontSize: 11,
-  color: "var(--text-secondary)",
+  fontSize: "var(--font-size-overline)",
+  color: "var(--muted-foreground)",
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
 };
 
 export const overlayBtnStyle: CSSProperties = {
-  background: "rgba(255,255,255,0.15)",
+  background: "var(--player-btn)",
   backdropFilter: "blur(8px)",
   border: "none",
-  color: "#fff",
+  color: "var(--player-text)",
   width: 36,
   height: 36,
   borderRadius: "50%",
   cursor: "pointer",
-  fontSize: 14,
+  fontSize: "var(--font-size-body)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -148,7 +148,7 @@ export const overlayBtnStyle: CSSProperties = {
 export const progressTrackStyle: CSSProperties = {
   width: "100%",
   height: 3,
-  backgroundColor: "rgba(255,255,255,0.2)",
+  backgroundColor: "var(--player-track)",
   borderRadius: 2,
   marginTop: 8,
   overflow: "hidden",
@@ -156,15 +156,15 @@ export const progressTrackStyle: CSSProperties = {
 
 export const progressBarStyle: CSSProperties = {
   height: "100%",
-  backgroundColor: "#3b82f6",
+  backgroundColor: "var(--primary)",
   borderRadius: 2,
   transition: "width 0.5s ease",
 };
 
 export const networkSpeedStyle: CSSProperties = {
   marginTop: 6,
-  fontSize: 12,
-  color: "rgba(255,255,255,0.75)",
+  fontSize: "var(--font-size-caption)",
+  color: "var(--player-text-dim)",
 };
 
 export const errorOverlayStyle: CSSProperties = {
@@ -173,7 +173,7 @@ export const errorOverlayStyle: CSSProperties = {
   left: "50%",
   transform: "translateX(-50%)",
   padding: "10px 20px",
-  backgroundColor: "rgba(0,0,0,0.8)",
+  backgroundColor: "var(--overlay-toast)",
   backdropFilter: "blur(8px)",
   borderRadius: 8,
   zIndex: 20,
@@ -185,7 +185,7 @@ export const pauseIndicatorStyle: CSSProperties = {
   left: "50%",
   transform: "translate(-50%, -50%)",
   fontSize: 64,
-  color: "rgba(255,255,255,0.7)",
+  color: "var(--player-text-dim)",
   pointerEvents: "none",
   zIndex: 15,
 };
@@ -196,8 +196,8 @@ export const osdStyle: CSSProperties = {
   left: "50%",
   transform: "translate(-50%, -50%)",
   textAlign: "center",
-  color: "#fff",
-  textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+  color: "var(--player-text)",
+  textShadow: "var(--player-text-shadow)",
   pointerEvents: "none",
   zIndex: 15,
   animation: "fadeIn 0.2s ease",

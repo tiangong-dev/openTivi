@@ -8,20 +8,33 @@ const CHECK_INTERVAL_SECS: u64 = 60;
 const STALE_MINUTES: i64 = 30;
 const BATCH_SIZE: u32 = 25;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
+/// Hard wall-clock limit per check — catches hung DNS, stuck sockets, etc.
+const CHECK_DEADLINE: Duration = Duration::from_secs(6);
 
 pub fn start_health_worker(ctx: CoreContext) {
     tokio::spawn(async move {
+        // Shared client — reuses connections across checks.
+        let client = reqwest::Client::builder()
+            .timeout(PROBE_TIMEOUT)
+            .connect_timeout(PROBE_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .build()
+            .unwrap_or_default();
+
         let mut interval = time::interval(Duration::from_secs(CHECK_INTERVAL_SECS));
         loop {
             interval.tick().await;
-            if let Err(e) = run_check_cycle(&ctx).await {
-                log::warn!("Health check cycle error: {}", e);
+            if let Err(e) = run_check_cycle(&ctx, &client).await {
+                eprintln!("[health] cycle error: {e}");
             }
         }
     });
 }
 
-async fn run_check_cycle(ctx: &CoreContext) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_check_cycle(
+    ctx: &CoreContext,
+    client: &reqwest::Client,
+) -> Result<(), Box<dyn std::error::Error>> {
     let due = ctx
         .db
         .run(|conn| {
@@ -33,23 +46,59 @@ async fn run_check_cycle(ctx: &CoreContext) -> Result<(), Box<dyn std::error::Er
         })
         .await?;
 
-    for (channel_id, stream_url) in due {
-        let result = check_stream(&stream_url).await;
-        let status = result.status.to_string();
-        let response_time_ms = result.response_time_ms;
-        let error = result.error;
-        ctx.db
-            .run(move |conn| {
-                crate::platform::db::repositories::channel_health_repo::upsert_health(
-                    conn,
-                    channel_id,
-                    &status,
-                    response_time_ms,
-                    error.as_deref(),
-                )
-            })
-            .await?;
+    if due.is_empty() {
+        return Ok(());
     }
+
+    // Check all channels concurrently (bounded by BATCH_SIZE).
+    let mut handles = Vec::with_capacity(due.len());
+    for (channel_id, stream_url) in due {
+        let client = client.clone();
+        handles.push(tokio::spawn(async move {
+            // Hard deadline wraps the entire check, including DNS.
+            let result = match tokio::time::timeout(CHECK_DEADLINE, check_stream(&client, &stream_url)).await
+            {
+                Ok(r) => r,
+                Err(_) => CheckResult {
+                    status: "dead",
+                    response_time_ms: Some(CHECK_DEADLINE.as_millis() as i64),
+                    error: Some("check deadline exceeded".into()),
+                },
+            };
+            (channel_id, result)
+        }));
+    }
+
+    // Collect results and write to DB.
+    for handle in handles {
+        match handle.await {
+            Ok((channel_id, result)) => {
+                let status = result.status.to_string();
+                let response_time_ms = result.response_time_ms;
+                let error = result.error;
+                if let Err(e) = ctx
+                    .db
+                    .run(move |conn| {
+                        crate::platform::db::repositories::channel_health_repo::upsert_health(
+                            conn,
+                            channel_id,
+                            &status,
+                            response_time_ms,
+                            error.as_deref(),
+                        )
+                    })
+                    .await
+                {
+                    eprintln!("[health] db write error for channel {channel_id}: {e}");
+                }
+            }
+            Err(e) => {
+                // JoinError — task panicked; log and continue.
+                eprintln!("[health] task panic: {e}");
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -59,11 +108,11 @@ struct CheckResult {
     error: Option<String>,
 }
 
-async fn check_stream(url: &str) -> CheckResult {
+async fn check_stream(client: &reqwest::Client, url: &str) -> CheckResult {
     let start = std::time::Instant::now();
 
     if url.starts_with("http://") || url.starts_with("https://") {
-        match check_http(url).await {
+        match check_http(client, url).await {
             Ok(()) => CheckResult {
                 status: "alive",
                 response_time_ms: Some(start.elapsed().as_millis() as i64),
@@ -99,28 +148,18 @@ async fn check_stream(url: &str) -> CheckResult {
         CheckResult {
             status: "unknown",
             response_time_ms: None,
-            error: Some("Unsupported scheme".to_string()),
+            error: Some("Unsupported scheme".into()),
         }
     }
 }
 
-async fn check_http(url: &str) -> Result<(), String> {
-    let client = reqwest::Client::builder()
-        .timeout(PROBE_TIMEOUT)
-        .connect_timeout(PROBE_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .build()
-        .map_err(|e| e.to_string())?;
-
+async fn check_http(client: &reqwest::Client, url: &str) -> Result<(), String> {
     let resp = client.head(url).send().await.map_err(|e| e.to_string())?;
-
     let status = resp.status().as_u16();
     if status < 400 {
         Ok(())
-    } else if status == 401 || status == 403 || status == 405 {
-        Err(format!("HTTP {}", status))
     } else {
-        Err(format!("HTTP {}", status))
+        Err(format!("HTTP {status}"))
     }
 }
 
@@ -136,8 +175,7 @@ async fn check_tcp(url: &str) -> Result<(), String> {
         "rtmp" => 1935,
         _ => 80,
     });
-
-    let addr = format!("{}:{}", host, port);
+    let addr = format!("{host}:{port}");
     tokio::time::timeout(PROBE_TIMEOUT, tokio::net::TcpStream::connect(&addr))
         .await
         .map_err(|_| "Connection timeout".to_string())?

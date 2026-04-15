@@ -9,10 +9,16 @@ const PLAYBACK_PROBE_TIMEOUT: Duration = Duration::from_millis(1200);
 
 pub async fn resolve_playback(ctx: &CoreContext, channel_id: i64) -> AppResult<PlaybackSourceDto> {
     let candidates = list_playback_candidates(ctx, channel_id).await?;
-    Ok(candidates
-        .into_iter()
-        .next()
-        .ok_or_else(|| AppError::NotFound(format!("Channel {} not found", channel_id)))?)
+    if candidates.len() <= 1 {
+        return candidates
+            .into_iter()
+            .next()
+            .ok_or_else(|| AppError::NotFound(format!("Channel {} not found", channel_id)));
+    }
+
+    // Multiple candidates available — just pick the first (already sorted by
+    // health: alive+fastest first from list_playback_candidates).
+    Ok(candidates.into_iter().next().unwrap())
 }
 
 pub async fn list_playback_candidates(

@@ -6,27 +6,33 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.tv.foundation.lazy.list.TvLazyRow
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+
+data class TvRowItem(
+    val id: Long,
+    val title: String,
+    val subtitle: String?,
+)
 
 @Composable
 fun TvRow(
     title: String,
-    itemCount: Int,
+    rowItems: List<TvRowItem>,
     onItemClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
         )
 
-        if (itemCount == 0) {
+        if (rowItems.isEmpty()) {
             Text(
                 text = "—",
                 style = MaterialTheme.typography.bodyMedium,
@@ -34,14 +40,15 @@ fun TvRow(
             )
         }
 
-        TvLazyRow(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            items(itemCount) { index ->
+            items(rowItems.size) { index ->
+                val item = rowItems[index]
                 TvCard(
-                    title = "Channel ${index + 1}", // TODO: Replace with actual channel data
-                    subtitle = null,
-                    onClick = { onItemClick(index.toLong()) },
+                    title = item.title,
+                    subtitle = item.subtitle,
+                    onClick = { onItemClick(item.id) },
                 )
             }
         }

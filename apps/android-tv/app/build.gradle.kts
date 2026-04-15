@@ -43,6 +43,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        jniLibs {
+            pickFirsts += "lib/*/libjnidispatch.so"
+        }
+    }
 }
 
 dependencies {
@@ -66,13 +72,19 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.11.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.animation:animation")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     // Media3 ExoPlayer
     implementation("androidx.media3:media3-exoplayer:1.5.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.5.0")
+    implementation("androidx.media3:media3-datasource:1.5.0")
     implementation("androidx.media3:media3-ui:1.5.0")
+
+    // FFmpeg decoder for MPEG-L2 audio (common in IPTV streams)
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.51.1")
@@ -81,4 +93,7 @@ dependencies {
 
     // Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // UniFFI Kotlin bindings use JNA to load the Rust cdylib
+    implementation("net.java.dev.jna:jna:5.15.0@aar")
 }

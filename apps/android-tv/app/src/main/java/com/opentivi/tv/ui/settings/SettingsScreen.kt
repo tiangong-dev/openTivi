@@ -14,11 +14,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.tv.foundation.lazy.list.TvLazyColumn
-import androidx.tv.material3.Card
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Button
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.opentivi.tv.R
+import com.opentivi.tv.ui.theme.TiviCard
 import com.opentivi.tv.viewmodel.SettingsViewModel
 
 @Composable
@@ -26,21 +30,24 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
+    val languageCode by viewModel.languageCode.collectAsState()
+    val startView by viewModel.startView.collectAsState()
+    val instantSwitch by viewModel.instantSwitch.collectAsState()
+    val preferNativeHls by viewModel.preferNativeHls.collectAsState()
+    val epgGuideWindow by viewModel.epgGuideWindowMinutes.collectAsState()
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 48.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(horizontal = 48.dp, vertical = 27.dp),
+        verticalArrangement = Arrangement.spacedBy(48.dp),
     ) {
         Text(
             text = stringResource(R.string.tab_settings),
             style = MaterialTheme.typography.headlineLarge,
         )
 
-        TvLazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            // General settings
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Text(
                     text = stringResource(R.string.settings_category_general),
@@ -49,21 +56,42 @@ fun SettingsScreen(
                 )
             }
             item {
-                SettingsItem(
+                SettingsLabeledCard(
                     label = stringResource(R.string.settings_language),
-                    value = "English",
-                    onClick = { /* TODO: Open language picker */ },
-                )
+                    value = languageCode,
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { viewModel.setLanguageCode("en-US") }) {
+                            Text("English")
+                        }
+                        Button(onClick = { viewModel.setLanguageCode("zh-CN") }) {
+                            Text("中文")
+                        }
+                    }
+                }
             }
             item {
-                SettingsItem(
+                SettingsLabeledCard(
                     label = stringResource(R.string.settings_start_view),
-                    value = stringResource(R.string.tab_channels),
-                    onClick = { /* TODO: Open start view picker */ },
-                )
+                    value = startView,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            "home" to "Home",
+                            "channels" to "Channels",
+                            "favorites" to "Favorites",
+                            "recents" to "Recents",
+                            "sources" to "Sources",
+                            "settings" to "Settings",
+                        ).forEach { (key, label) ->
+                            Button(onClick = { viewModel.setStartView(key) }) {
+                                Text(label)
+                            }
+                        }
+                    }
+                }
             }
 
-            // Playback settings
             item {
                 Text(
                     text = stringResource(R.string.settings_category_playback),
@@ -72,14 +100,20 @@ fun SettingsScreen(
                 )
             }
             item {
-                SettingsItem(
-                    label = stringResource(R.string.settings_autoplay),
-                    value = stringResource(R.string.settings_on),
-                    onClick = { /* TODO: Toggle autoplay */ },
+                SettingsToggleCard(
+                    label = stringResource(R.string.settings_instant_switch),
+                    enabled = instantSwitch,
+                    onToggle = { viewModel.setInstantSwitch(!instantSwitch) },
+                )
+            }
+            item {
+                SettingsToggleCard(
+                    label = stringResource(R.string.settings_prefer_native_hls),
+                    enabled = preferNativeHls,
+                    onToggle = { viewModel.setPreferNativeHls(!preferNativeHls) },
                 )
             }
 
-            // EPG settings
             item {
                 Text(
                     text = stringResource(R.string.settings_category_epg),
@@ -88,27 +122,58 @@ fun SettingsScreen(
                 )
             }
             item {
-                SettingsItem(
-                    label = stringResource(R.string.settings_epg_auto_refresh),
-                    value = stringResource(R.string.settings_on),
-                    onClick = { /* TODO: Toggle EPG auto refresh */ },
-                )
+                SettingsLabeledCard(
+                    label = stringResource(R.string.settings_epg_guide_window),
+                    value = stringResource(R.string.settings_epg_guide_window_value, epgGuideWindow),
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(60, 90, 120, 180, 240, 360).forEach { minutes ->
+                            Button(onClick = { viewModel.setEpgGuideWindowMinutes(minutes) }) {
+                                Text("${minutes}m")
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SettingsItem(
+private fun SettingsLabeledCard(
     label: String,
     value: String,
-    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    actions: @Composable () -> Unit,
+) {
+    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = TiviCard)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = label, style = MaterialTheme.typography.titleSmall)
+                Text(text = value, style = MaterialTheme.typography.bodySmall)
+            }
+            actions()
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggleCard(
+    label: String,
+    enabled: Boolean,
+    onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-    ) {
+    Card(modifier = modifier.fillMaxWidth().clickable(onClick = onToggle), colors = CardDefaults.cardColors(containerColor = TiviCard)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -116,14 +181,14 @@ private fun SettingsItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Text(text = label, style = MaterialTheme.typography.titleSmall)
             Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Text(
-                text = value,
+                text = if (enabled) {
+                    stringResource(R.string.settings_on)
+                } else {
+                    stringResource(R.string.settings_off)
+                },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
             )
         }
     }

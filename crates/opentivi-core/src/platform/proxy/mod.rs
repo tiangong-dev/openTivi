@@ -77,35 +77,31 @@ async fn handle_proxy(
         return Ok(cached);
     }
 
-    let response = match state.client.get(&url).send().await {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("[proxy] fetch error for {}: {}", url, e);
-            return Ok(warp::reply::with_status(
-                format!("Fetch error: {}", e),
-                warp::http::StatusCode::BAD_GATEWAY,
-            )
-            .into_response());
-        }
-    };
-
-    let status_u16 = response.status().as_u16();
-    let status =
-        warp::http::StatusCode::from_u16(status_u16).unwrap_or(warp::http::StatusCode::BAD_GATEWAY);
-    let content_type = response
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("application/octet-stream")
-        .to_string();
-    let is_playlist = is_playlist_content_type(&content_type) || is_playlist_url(&url);
-
-    eprintln!(
-        "[proxy] upstream status={} content_type={} is_playlist={}",
-        status_u16, content_type, is_playlist
-    );
+    // For playlists, use GET; for segments, probe with HEAD first
+    let is_playlist = is_playlist_url(&url);
 
     if is_playlist {
+        let response = match state.client.get(&url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[proxy] fetch error: {}", e);
+                return Ok(warp::reply::with_status(
+                    format!("Fetch error: {}", e),
+                    warp::http::StatusCode::BAD_GATEWAY,
+                )
+                .into_response());
+            }
+        };
+        let status_u16 = response.status().as_u16();
+        let status = warp::http::StatusCode::from_u16(status_u16)
+            .unwrap_or(warp::http::StatusCode::BAD_GATEWAY);
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+
         let body = match response.bytes().await {
             Ok(b) => b,
             Err(e) => {
@@ -119,16 +115,7 @@ async fn handle_proxy(
         };
 
         let text = String::from_utf8_lossy(&body);
-        eprintln!(
-            "[proxy] playlist body ({} bytes):\n{}",
-            body.len(),
-            &text[..text.len().min(500)]
-        );
         let rewritten = rewrite_m3u8(&text, &url, state.port);
-        eprintln!(
-            "[proxy] rewritten playlist:\n{}",
-            &rewritten[..rewritten.len().min(500)]
-        );
         let body_bytes = rewritten.into_bytes();
         cache_playlist(
             &state,
@@ -143,28 +130,143 @@ async fn handle_proxy(
         return Ok(reply);
     }
 
-    let body = match response.bytes().await {
-        Ok(b) => b,
+    // --- Segment handling: use HEAD to probe, then accelerated concurrent download ---
+    const CHUNK_THRESHOLD: u64 = 1_000_000;
+    const CONCURRENT_CHUNKS: u64 = 4;
+
+    let head_resp = match state.client.head(&url).send().await {
+        Ok(r) => r,
         Err(e) => {
-            eprintln!("[proxy] segment body read error: {}", e);
+            eprintln!("[proxy] HEAD error: {}", e);
             return Ok(warp::reply::with_status(
-                format!("Body read error: {}", e),
+                format!("Fetch error: {}", e),
                 warp::http::StatusCode::BAD_GATEWAY,
             )
             .into_response());
         }
     };
-    let resolved_ct = resolve_content_type(&content_type, &url);
-    let body = body.to_vec();
 
-    let len = body.len();
-    eprintln!(
-        "[proxy] serving segment {} bytes, content_type={} (was {})",
-        len, resolved_ct, content_type
-    );
-    let mut reply = warp::reply::Response::new(warp::hyper::Body::from(body));
+    let status_u16 = head_resp.status().as_u16();
+    let status = warp::http::StatusCode::from_u16(status_u16)
+        .unwrap_or(warp::http::StatusCode::BAD_GATEWAY);
+    let content_type = head_resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let resolved_ct = resolve_content_type(&content_type, &url);
+    let accept_ranges = head_resp
+        .headers()
+        .get("accept-ranges")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("bytes"))
+        .unwrap_or(false);
+    let content_length = head_resp
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok());
+    drop(head_resp);
+
+    if accept_ranges && content_length.map_or(false, |len| len >= CHUNK_THRESHOLD) {
+        let total_len = content_length.unwrap();
+        eprintln!(
+            "[proxy] accelerated: {} bytes / {} chunks",
+            total_len, CONCURRENT_CHUNKS
+        );
+
+        // Spawn all chunk downloads concurrently
+        let chunk_size = total_len / CONCURRENT_CHUNKS;
+        let mut handles = Vec::with_capacity(CONCURRENT_CHUNKS as usize);
+        for i in 0..CONCURRENT_CHUNKS {
+            let start = i * chunk_size;
+            let end = if i == CONCURRENT_CHUNKS - 1 {
+                total_len - 1
+            } else {
+                (i + 1) * chunk_size - 1
+            };
+            let client = state.client.clone();
+            let segment_url = url.clone();
+            handles.push(tokio::spawn(async move {
+                let range = format!("bytes={}-{}", start, end);
+                let resp = client
+                    .get(&segment_url)
+                    .header(reqwest::header::RANGE, &range)
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                resp.bytes().await.map_err(|e| e.to_string())
+            }));
+        }
+
+        // Await chunks IN ORDER and assemble. All downloads run concurrently,
+        // but we await handle[0] first so the total wall time = slowest chunk.
+        let mut full_body = Vec::with_capacity(total_len as usize);
+        for (i, handle) in handles.into_iter().enumerate() {
+            match handle.await {
+                Ok(Ok(bytes)) => {
+                    eprintln!("[proxy] chunk {} done: {} bytes", i, bytes.len());
+                    full_body.extend_from_slice(&bytes);
+                }
+                Ok(Err(e)) => {
+                    eprintln!("[proxy] chunk {} error: {}", i, e);
+                    return Ok(warp::reply::with_status(
+                        format!("Chunk error: {}", e),
+                        warp::http::StatusCode::BAD_GATEWAY,
+                    )
+                    .into_response());
+                }
+                Err(e) => {
+                    eprintln!("[proxy] chunk {} join error: {}", i, e);
+                    return Ok(warp::reply::with_status(
+                        "Internal error",
+                        warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    )
+                    .into_response());
+                }
+            }
+        }
+
+        let len = full_body.len();
+        eprintln!("[proxy] accelerated complete: {} bytes", len);
+        let mut reply = warp::reply::Response::new(warp::hyper::Body::from(full_body));
+        *reply.status_mut() = status;
+        insert_common_headers(reply.headers_mut(), &resolved_ct, len);
+        return Ok(reply);
+    }
+
+    // Fallback: single GET, stream through
+    eprintln!("[proxy] fallback stream for {}", &url[..url.len().min(80)]);
+    let response = match state.client.get(&url).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            return Ok(warp::reply::with_status(
+                format!("Fetch error: {}", e),
+                warp::http::StatusCode::BAD_GATEWAY,
+            )
+            .into_response());
+        }
+    };
+    let byte_stream = response.bytes_stream();
+    let body = warp::hyper::Body::wrap_stream(byte_stream);
+    let mut reply = warp::reply::Response::new(body);
     *reply.status_mut() = status;
-    insert_common_headers(reply.headers_mut(), &resolved_ct, len);
+    if let Ok(value) = warp::http::HeaderValue::from_str(&resolved_ct) {
+        reply
+            .headers_mut()
+            .insert(warp::http::header::CONTENT_TYPE, value);
+    }
+    if let Some(len) = content_length {
+        reply.headers_mut().insert(
+            warp::http::header::CONTENT_LENGTH,
+            warp::http::HeaderValue::from(len as usize),
+        );
+    }
+    reply.headers_mut().insert(
+        warp::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        warp::http::HeaderValue::from_static("*"),
+    );
     Ok(reply)
 }
 

@@ -6,13 +6,11 @@ use crate::state::AppState;
 use super::dto::*;
 
 #[tauri::command]
-pub fn list_favorites(state: State<AppState>) -> AppResult<Vec<ChannelListItemDto>> {
-    let conn = state.db.lock().unwrap();
-    crate::core::services::favorites_service::list_favorites(&conn)
+pub async fn list_favorites(state: State<'_, AppState>) -> AppResult<Vec<ChannelListItemDto>> {
+    crate::core::services::favorites_service::list_favorites(&state.ctx).await
 }
 
 #[tauri::command]
-pub fn set_favorite(state: State<AppState>, input: SetFavoriteInput) -> AppResult<()> {
-    let conn = state.db.lock().unwrap();
-    crate::core::services::favorites_service::set_favorite(&conn, input.channel_id, input.favorite)
+pub async fn set_favorite(state: State<'_, AppState>, input: SetFavoriteInput) -> AppResult<()> {
+    crate::core::services::favorites_service::set_favorite(&state.ctx, input.channel_id, input.favorite).await
 }

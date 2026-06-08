@@ -536,7 +536,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
               <span style={rowLabelStyle}>{displaySettingLabel(def)}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={rowValueStyle}>{displaySettingValue(def)}</span>
-                <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>{">"}</span>
+                <span style={{ color: "var(--muted-foreground)", fontSize: "var(--font-size-caption)" }}>{">"}</span>
               </div>
             </div>
           ))}
@@ -549,7 +549,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
             <h3 style={{ marginTop: 0, marginBottom: 12 }}>
               {t(locale, "settings.edit.title", { label: t(locale, editingSetting.labelKey) })}
             </h3>
-            <div style={{ color: "var(--text-secondary)", fontSize: 12, marginBottom: 10 }}>
+            <div style={{ color: "var(--muted-foreground)", fontSize: "var(--font-size-caption)", marginBottom: 10 }}>
               {t(locale, editingSetting.type === "range" ? "settings.edit.hintRange" : "settings.edit.hintSelect")}
             </div>
             {editingSetting.type === "range" ? (
@@ -564,7 +564,7 @@ export function SettingsView({ locale, onLocaleChange }: Props) {
                   >
                     {t(locale, "settings.edit.decrease")}
                   </Button>
-                  <span style={{ minWidth: 140, textAlign: "center", color: "var(--accent)", fontWeight: 600 }}>
+                  <span style={{ minWidth: 140, textAlign: "center", color: "var(--accent)", fontWeight: "var(--font-weight-semibold)" }}>
                     {displaySettingValue(editingSetting)}
                   </span>
                   <Button
@@ -641,24 +641,24 @@ const rowStyle: React.CSSProperties = {
 };
 
 const rowActiveStyle: React.CSSProperties = {
-  backgroundColor: "var(--bg-tertiary)",
+  backgroundColor: "var(--secondary)",
   boxShadow: "inset 0 0 0 1px var(--accent)",
 };
 
 const rowLabelStyle: React.CSSProperties = {
-  fontSize: 14,
+  fontSize: "var(--font-size-body)",
 };
 
 const rowValueStyle: React.CSSProperties = {
   color: "var(--accent)",
-  fontSize: 13,
+  fontSize: "var(--font-size-small)",
   minWidth: 110,
   textAlign: "right",
 };
 
 const hintStyle: React.CSSProperties = {
-  color: "var(--text-secondary)",
-  fontSize: 12,
+  color: "var(--muted-foreground)",
+  fontSize: "var(--font-size-caption)",
   marginBottom: 12,
 };
 
@@ -678,5 +678,5 @@ const modalOptionSelectedStyle: React.CSSProperties = {
 const modalRadioStyle: React.CSSProperties = {
   width: 16,
   color: "var(--accent)",
-  fontSize: 14,
+  fontSize: "var(--font-size-body)",
 };

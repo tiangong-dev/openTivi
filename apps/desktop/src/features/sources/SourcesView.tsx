@@ -630,7 +630,7 @@ export function SourcesView({ locale }: Props) {
           </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ textAlign: "left", color: "var(--text-secondary)", fontSize: 12 }}>
+              <tr style={{ textAlign: "left", color: "var(--muted-foreground)", fontSize: "var(--font-size-caption)" }}>
                 <th style={thStyle}>{t(locale, "sources.table.name")}</th>
                 <th style={thStyle}>{t(locale, "sources.table.type")}</th>
                 <th style={thStyle}>{t(locale, "sources.table.status")}</th>
@@ -675,12 +675,12 @@ export function SourcesView({ locale }: Props) {
                       <Badge tone={getSourceStatusTone(s)} style={statusBadgeStyle}>
                         {t(locale, `sources.status.${getSourceStatusKey(s)}`)}
                       </Badge>
-                      <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+                      <span style={{ color: "var(--muted-foreground)", fontSize: "var(--font-size-caption)" }}>
                         {describeSourceStatus(s, locale)}
                       </span>
                     </div>
                     {s.lastRefreshError ? (
-                      <div style={{ marginTop: 6, color: "var(--danger)", fontSize: 12 }}>
+                      <div style={{ marginTop: 6, color: "var(--live)", fontSize: "var(--font-size-caption)" }}>
                         {t(locale, "sources.status.lastError", { error: s.lastRefreshError })}
                       </div>
                     ) : null}
@@ -689,7 +689,7 @@ export function SourcesView({ locale }: Props) {
                     {s.location}
                   </td>
                   <td style={{ ...tdStyle, maxWidth: 320 }}>
-                    <div style={{ color: "var(--text-secondary)", fontSize: 12, lineHeight: 1.4 }}>
+                    <div style={{ color: "var(--muted-foreground)", fontSize: "var(--font-size-caption)", lineHeight: 1.4 }}>
                       {formatSourceOverview(s, locale)}
                     </div>
                   </td>
@@ -865,7 +865,7 @@ export function SourcesView({ locale }: Props) {
       {deleteConfirmSource && (
         <Modal onDismiss={closeDeleteConfirm}>
             <h3 style={{ marginTop: 0 }}>{t(locale, "sources.deleteConfirm.title")}</h3>
-            <p style={{ marginTop: 0, color: "var(--text-secondary)" }}>
+            <p style={{ marginTop: 0, color: "var(--muted-foreground)" }}>
               {t(locale, "sources.deleteConfirm.message", { name: deleteConfirmSource.name })}
             </p>
             <div style={actionMenuMetaStyle}>
@@ -1209,8 +1209,8 @@ const labelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 4,
-  fontSize: 13,
-  color: "var(--text-secondary)",
+  fontSize: "var(--font-size-small)",
+  color: "var(--muted-foreground)",
 };
 
 const thStyle: React.CSSProperties = {
@@ -1225,7 +1225,7 @@ const iconThStyle: React.CSSProperties = {
 
 const tdStyle: React.CSSProperties = {
   padding: "8px 12px",
-  fontSize: 13,
+  fontSize: "var(--font-size-small)",
 };
 
 const iconTdStyle: React.CSSProperties = {
@@ -1257,7 +1257,7 @@ const actionMenuHeaderStyle: React.CSSProperties = {
 
 const actionMenuDescriptionStyle: React.CSSProperties = {
   margin: "8px 0 0",
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
   lineHeight: 1.5,
 };
 
@@ -1269,19 +1269,19 @@ const actionMenuMetaStyle: React.CSSProperties = {
   padding: 12,
   borderRadius: 10,
   border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-primary)",
+  backgroundColor: "var(--background)",
 };
 
 const actionMenuMetaRowStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   gap: 12,
-  color: "var(--text-secondary)",
-  fontSize: 13,
+  color: "var(--muted-foreground)",
+  fontSize: "var(--font-size-small)",
 };
 
 const actionMenuMetaValueStyle: React.CSSProperties = {
-  color: "var(--text-primary)",
+  color: "var(--foreground)",
   maxWidth: 280,
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -1296,14 +1296,14 @@ const iconTriggerButtonStyle: React.CSSProperties = {
   height: 32,
   borderRadius: 999,
   border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-tertiary)",
-  color: "var(--text-secondary)",
+  backgroundColor: "var(--secondary)",
+  color: "var(--muted-foreground)",
   cursor: "pointer",
 };
 
 const statusBadgeStyle: React.CSSProperties = {};
 
 const sourceRowActiveStyle: React.CSSProperties = {
-  backgroundColor: "var(--bg-tertiary)",
+  backgroundColor: "var(--secondary)",
   boxShadow: "inset 0 0 0 1px var(--accent)",
 };

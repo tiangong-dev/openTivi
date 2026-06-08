@@ -445,8 +445,8 @@ export function ChannelRowsWithGuide<T extends Channel>({
               {onToggleFavorite ? (
                 <span
                   style={{
-                    fontSize: 16,
-                    color: ch.isFavorite ? "#f59e0b" : "var(--text-secondary)",
+                    fontSize: "var(--font-size-body-large)",
+                    color: ch.isFavorite ? "var(--favorite)" : "var(--muted-foreground)",
                     width: 20,
                     textAlign: "center",
                   }}
@@ -455,11 +455,11 @@ export function ChannelRowsWithGuide<T extends Channel>({
                 </span>
               ) : null}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {ch.channelNumber && <span style={{ color: "var(--text-secondary)", marginRight: 8 }}>{ch.channelNumber}</span>}
+                <div style={{ fontSize: "var(--font-size-body)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {ch.channelNumber && <span style={{ color: "var(--muted-foreground)", marginRight: 8 }}>{ch.channelNumber}</span>}
                   {ch.name}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div style={{ fontSize: "var(--font-size-overline)", color: "var(--muted-foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {ch.groupName ?? "—"}
                   {renderMeta ? <span style={{ marginLeft: 8 }}>{renderMeta(ch)}</span> : null}
                 </div>
@@ -479,7 +479,7 @@ export function ChannelRowsWithGuide<T extends Channel>({
                   windowEnd={timelineWindow.end}
                 />
               ) : (
-                <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                <div style={{ fontSize: "var(--font-size-overline)", color: "var(--muted-foreground)" }}>
                   {loading
                     ? t(locale, "guide.loading")
                     : t(locale, "guide.noData")}
@@ -563,8 +563,8 @@ function GuideTimeline({
               ...timelineSegmentStyle,
               left: `${(segment.block.left * 100).toFixed(2)}%`,
               width: `${(segment.block.width * 100).toFixed(2)}%`,
-              background: segment.isCurrent ? "linear-gradient(180deg, #1d4ed855 0%, #1d4ed822 100%)" : "#111827aa",
-              borderLeft: "1px solid #1f2937",
+              background: segment.isCurrent ? "linear-gradient(180deg, var(--primary-a33) 0%, var(--primary-a13) 100%)" : "hsla(240, 6%, 10%, 0.67)",
+              borderLeft: "1px solid var(--border)",
             }}
             title={segment.program.title ?? ""}
           >
@@ -643,7 +643,7 @@ const rowStyle: React.CSSProperties = {
 };
 
 const rowActiveStyle: React.CSSProperties = {
-  backgroundColor: "var(--bg-tertiary)",
+  backgroundColor: "var(--secondary)",
   boxShadow: "inset 0 0 0 1px var(--accent)",
 };
 
@@ -670,7 +670,7 @@ const timelineStyle: React.CSSProperties = {
   overflow: "hidden",
   border: "1px solid var(--border)",
   borderRadius: 6,
-  backgroundColor: "#0b1220",
+  backgroundColor: "var(--background)",
 };
 
 const timelineSegmentStyle: React.CSSProperties = {
@@ -688,7 +688,7 @@ const timelineSegmentStyle: React.CSSProperties = {
 const timelineTextStyle: React.CSSProperties = {
   position: "relative",
   zIndex: 1,
-  fontSize: 11,
+  fontSize: "var(--font-size-overline)",
   textAlign: "left",
   width: "100%",
   whiteSpace: "nowrap",
@@ -700,7 +700,7 @@ const timelineProgressStyle: React.CSSProperties = {
   position: "absolute",
   top: 0,
   bottom: 0,
-  backgroundColor: "#2563eb2f",
+  backgroundColor: "var(--primary-a18)",
   pointerEvents: "none",
   zIndex: 0,
 };
@@ -710,15 +710,15 @@ const timelineSplitStyle: React.CSSProperties = {
   top: 0,
   bottom: 0,
   width: 0,
-  borderLeft: "1px solid #cbd5e1aa",
+  borderLeft: "1px solid var(--muted-foreground-a67)",
   pointerEvents: "none",
 };
 
 const timelineSplitLabelStyle: React.CSSProperties = {
   position: "absolute",
   top: -9,
-  fontSize: 9,
-  color: "#cbd5e1",
+  fontSize: "var(--font-size-badge)",
+  color: "var(--muted-foreground)",
   whiteSpace: "nowrap",
   opacity: 0.8,
   transform: "translateX(4px)",

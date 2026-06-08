@@ -29,3 +29,27 @@ apps/desktop/src-tauri/gen/
 # Environment
 .env
 .env.local
+
+# Xcode user state
+*.xcuserstate
+
+# Android build artifacts
+apps/android-tv/.gradle/
+apps/android-tv/app/build/
+apps/android-tv/app/src/main/jniLibs/
+apps/android-tv/build/
+apps/android-tv/local.properties
+
+# iOS build artifacts / generated Rust libs
+apps/ios/OpenTivi/RustGenerated/
+apps/ios/build/
+apps/ios/DerivedData/
+
+# Compiled binaries
+*.a
+*.so
+*.dylib
+*.apk
+*.aab
+*.aar
+*.dex

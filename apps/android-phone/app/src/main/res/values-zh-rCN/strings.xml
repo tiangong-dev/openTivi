@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenTivi</string>
+
+    <!-- Navigation tabs -->
+    <string name="tab_channels">频道</string>
+    <string name="tab_favorites">收藏</string>
+    <string name="tab_recents">最近</string>
+    <string name="tab_sources">源</string>
+    <string name="tab_settings">设置</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">搜索频道&#8230;</string>
+
+    <!-- Channels -->
+    <string name="channels_all">全部</string>
+    <string name="channels_groups">分组</string>
+    <string name="channels_no_channels">暂无频道</string>
+    <string name="channels_import_hint">导入一个源以开始使用。</string>
+    <string name="channels_favorite">收藏</string>
+    <string name="channels_unfavorite">取消收藏</string>
+
+    <!-- Favorites -->
+    <string name="favorites_no_favorites">暂无收藏</string>
+    <string name="favorites_add_hint">在频道上向右滑动并点击星标添加收藏。</string>
+
+    <!-- Recents -->
+    <string name="recents_no_recents">暂无记录</string>
+    <string name="recents_watch_hint">观看过的频道将显示在这里。</string>
+    <string name="recents_just_now">刚刚</string>
+    <string name="recents_minutes_ago">%1$d 分钟前</string>
+    <string name="recents_hours_ago">%1$d 小时前</string>
+    <string name="recents_yesterday">昨天</string>
+    <string name="recents_days_ago">%1$d 天前</string>
+    <string name="recents_played_count">播放 %1$d 次</string>
+
+    <!-- Sources -->
+    <string name="sources_title">源</string>
+    <string name="sources_add">添加源</string>
+    <string name="sources_empty">暂无源。点击 + 按钮开始导入。</string>
+    <string name="sources_channels_and_groups">%1$d 个频道 \u00B7 %2$d 个分组</string>
+    <string name="sources_last_import">上次导入：%1$s</string>
+    <string name="sources_tab_m3u">M3U</string>
+    <string name="sources_tab_xtream">Xtream 账号</string>
+    <string name="sources_tab_xmltv">XMLTV / EPG</string>
+    <string name="sources_form_name">名称</string>
+    <string name="sources_form_m3u_placeholder">我的 IPTV</string>
+    <string name="sources_form_location">M3U 链接或文件路径</string>
+    <string name="sources_form_server_url">服务器地址</string>
+    <string name="sources_form_username">用户名</string>
+    <string name="sources_form_password">密码</string>
+    <string name="sources_form_xtream_placeholder">我的 Xtream</string>
+    <string name="sources_form_xmltv_placeholder">我的 EPG</string>
+    <string name="sources_form_xmltv_location">XMLTV 链接或文件路径</string>
+    <string name="sources_import_m3u">导入 M3U</string>
+    <string name="sources_import_xtream">导入 Xtream</string>
+    <string name="sources_import_xmltv">导入 XMLTV</string>
+    <string name="sources_importing">导入中&#8230;</string>
+    <string name="sources_refresh">刷新</string>
+    <string name="sources_delete">删除</string>
+    <string name="sources_edit">编辑</string>
+    <string name="sources_edit_title">编辑源</string>
+    <string name="sources_enabled">启用</string>
+    <string name="sources_auto_refresh">自动刷新</string>
+    <string name="sources_auto_refresh_minutes">刷新间隔（分钟）</string>
+    <string name="sources_last_error">上次错误</string>
+    <string name="sources_delete_confirm_title">删除源</string>
+    <string name="sources_delete_confirm_message">确认删除"%1$s"吗？该操作不可恢复。</string>
+    <string name="sources_message_imported">已导入 %1$d 个频道</string>
+    <string name="sources_message_refreshed">已刷新：新增 %1$d 个频道</string>
+    <string name="sources_message_import_failed">导入失败：%1$s</string>
+    <string name="sources_message_delete_failed">删除失败：%1$s</string>
+    <string name="sources_message_refresh_failed">刷新失败：%1$s</string>
+    <string name="sources_filter_all">全部</string>
+    <string name="sources_filter_enabled">已启用</string>
+    <string name="sources_filter_disabled">已禁用</string>
+    <string name="sources_filter_error">错误</string>
+    <string name="sources_badge_disabled">已禁用</string>
+    <string name="sources_badge_error">错误</string>
+
+    <!-- Player -->
+    <string name="player_now">正在播放</string>
+    <string name="player_next">下一档</string>
+    <string name="player_now_playing">正在播放</string>
+    <string name="player_diagnostics">诊断信息</string>
+    <string name="player_state">状态</string>
+    <string name="player_resolution">分辨率</string>
+    <string name="player_video_codec">视频编码</string>
+    <string name="player_audio_codec">音频编码</string>
+    <string name="player_url">流地址</string>
+    <string name="player_source_label">源 %1$d / %2$d</string>
+    <string name="player_retry_count">重试 %1$d / %2$d</string>
+    <string name="player_channel_list">频道列表</string>
+    <string name="player_error">播放错误</string>
+    <string name="player_retry">重试</string>
+    <string name="player_swipe_hint">上下滑动切换频道</string>
+
+    <!-- EPG Search -->
+    <string name="epg_search_title">节目搜索</string>
+    <string name="epg_search_hint">搜索节目&#8230;</string>
+    <string name="epg_search_all">全部</string>
+    <string name="epg_search_live">直播中</string>
+    <string name="epg_search_upcoming">即将播出</string>
+    <string name="epg_search_empty">未找到节目</string>
+    <string name="epg_search_live_badge">直播</string>
+
+    <!-- Settings -->
+    <string name="settings_category_general">常规</string>
+    <string name="settings_category_playback">播放</string>
+    <string name="settings_category_about">关于</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_zh">中文</string>
+    <string name="settings_start_view">启动页面</string>
+    <string name="settings_instant_switch">即时切台</string>
+    <string name="settings_prefer_native_hls">优先原生 HLS</string>
+    <string name="settings_version">版本</string>
+    <string name="settings_build">构建号</string>
+    <string name="settings_on">开启</string>
+    <string name="settings_off">关闭</string>
+
+    <!-- Common -->
+    <string name="cancel">取消</string>
+    <string name="ok">确定</string>
+    <string name="save">保存</string>
+    <string name="no_guide">暂无节目</string>
+</resources>

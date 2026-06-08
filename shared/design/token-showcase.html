@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenTivi Design Tokens</title>
+<style>
+  /* ── Reset & Base ─────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        hsl(240, 10%, 4%);
+    --fg:        hsl(0, 0%, 95%);
+    --card:      hsl(240, 6%, 10%);
+    --surface:   hsl(240, 6%, 15%);
+    --muted:     hsl(240, 5%, 65%);
+    --border:    hsl(240, 4%, 16%);
+    --primary:   hsl(217, 91%, 60%);
+    --primary-fg:hsl(0, 0%, 100%);
+    --brand-300: hsl(217, 91%, 75%);
+    --radius:    8px;
+    --sans:      Inter, "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+    --mono:      "JetBrains Mono", "SF Mono", Consolas, monospace;
+  }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Layout ───────────────────────────────────────────── */
+  .page { max-width: 1200px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  .hero {
+    padding: 32px;
+    border-radius: 12px;
+    border: 1px solid var(--surface);
+    background: linear-gradient(135deg, rgba(45,140,255,.18), rgba(18,185,129,.12) 52%, rgba(7,16,24,.16));
+    margin-bottom: 48px;
+  }
+  .hero-eyebrow {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin-bottom: 8px;
+  }
+  .hero h1 { font-size: 32px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+  .hero p { color: var(--muted); margin-top: 8px; max-width: 640px; line-height: 1.65; }
+
+  .theme-toggle {
+    display: inline-flex; gap: 4px; margin-top: 16px;
+    background: var(--border); border-radius: 9999px; padding: 3px;
+  }
+  .theme-toggle button {
+    font-family: var(--sans); font-size: 12px; font-weight: 500;
+    padding: 4px 14px; border-radius: 9999px; border: none; cursor: pointer;
+    background: transparent; color: var(--muted); transition: all .15s;
+  }
+  .theme-toggle button.active { background: var(--primary); color: var(--primary-fg); }
+
+  /* ── Section ──────────────────────────────────────────── */
+  .section { margin-bottom: 48px; }
+  .section-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+  .section h2 { font-size: 24px; font-weight: 600; letter-spacing: -.01em; }
+  .section .count { font-size: 12px; color: var(--muted); }
+
+  /* ── Token Grid ───────────────────────────────────────── */
+  .token-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+  }
+
+  .token-card {
+    padding: 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--card);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color .15s;
+  }
+  .token-card:hover { border-color: var(--surface); }
+
+  /* color swatch */
+  .swatch {
+    height: 56px;
+    border-radius: 6px;
+    border: 1px solid var(--surface);
+  }
+
+  /* radius preview */
+  .radius-preview {
+    width: 72px; height: 56px;
+    background: linear-gradient(135deg, rgba(45,140,255,.9), rgba(18,185,129,.9));
+  }
+
+  /* spacing preview */
+  .spacing-preview {
+    height: 10px;
+    border-radius: 9999px;
+    background: var(--primary);
+  }
+
+  /* shadow preview */
+  .shadow-preview {
+    height: 56px;
+    border-radius: 6px;
+    background: var(--surface);
+  }
+
+  /* motion preview */
+  .motion-preview {
+    position: relative; height: 40px; border-radius: 6px;
+    background: var(--border); overflow: hidden;
+  }
+  .motion-dot {
+    position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+    width: 24px; height: 24px; border-radius: 50%; background: var(--primary);
+  }
+  .motion-preview:hover .motion-dot { left: calc(100% - 32px); }
+
+  /* typography preview */
+  .typo-preview {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    color: var(--fg);
+  }
+
+  .token-name {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--brand-300);
+    word-break: break-all;
+  }
+  .token-value {
+    font-size: 13px; font-weight: 600; color: var(--fg);
+    word-break: break-all;
+  }
+  .token-usage {
+    font-size: 12px; color: var(--muted); line-height: 1.45;
+  }
+
+  /* ── Subsection ───────────────────────────────────────── */
+  .subsection { margin-bottom: 32px; }
+  .subsection:last-child { margin-bottom: 0; }
+  .subsection-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+  .subsection h3 { font-size: 16px; font-weight: 600; }
+  .subsection .count { font-size: 12px; color: var(--muted); }
+
+  /* ── Layout Token Table ───────────────────────────────── */
+  .layout-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .layout-table th {
+    text-align: left; font-weight: 500; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .layout-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .layout-table tr:last-child td { border-bottom: none; }
+  .layout-table .prop { font-family: var(--mono); font-size: 12px; color: var(--brand-300); }
+  .layout-table .val { font-weight: 600; }
+  .layout-table .desc { color: var(--muted); }
+
+  /* ── Platform Cards ───────────────────────────────────── */
+  .platform-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+  .platform-card {
+    padding: 20px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--card);
+  }
+  .platform-card h4 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .platform-card .desc { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .platform-card .kv { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .platform-card .kv:last-child { border-bottom: none; }
+  .platform-card .kv .k { font-family: var(--mono); font-size: 12px; color: var(--brand-300); }
+  .platform-card .kv .v { font-weight: 600; }
+
+  /* ── Icon meta ────────────────────────────────────────── */
+  .icon-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 12px;
+  }
+  .icon-size-card {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 16px; border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--card);
+  }
+  .icon-size-card .box {
+    display: flex; align-items: center; justify-content: center;
+    border: 1px dashed var(--muted); border-radius: 4px;
+  }
+  .icon-size-card .label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .icon-size-card .sz { font-size: 13px; font-weight: 600; }
+
+  /* ── Loading ──────────────────────────────────────────── */
+  .loading {
+    text-align: center; padding: 80px 0; color: var(--muted); font-size: 16px;
+  }
+
+  /* ── Light mode override ──────────────────────────────── */
+  body.light {
+    --bg:        hsl(0, 0%, 100%);
+    --fg:        hsl(240, 10%, 4%);
+    --card:      hsl(0, 0%, 100%);
+    --surface:   hsl(240, 5%, 90%);
+    --muted:     hsl(240, 4%, 46%);
+    --border:    hsl(240, 6%, 90%);
+    --primary:   hsl(221, 83%, 53%);
+    --brand-300: hsl(221, 83%, 40%);
+  }
+</style>
+</head>
+<body>
+<div class="page" id="app">
+  <div class="loading">Loading tokens.json…</div>
+</div>
+
+<script>
+(async function () {
+  const app = document.getElementById('app');
+
+  let tokens;
+  try {
+    const res = await fetch('./tokens.json');
+    tokens = await res.json();
+  } catch {
+    app.innerHTML = '<div class="loading">⚠️ 无法加载 tokens.json — 请在 shared/design/ 目录下用 HTTP 服务器打开此文件<br><code style="font-size:13px;color:var(--brand-300)">npx serve shared/design</code></div>';
+    return;
+  }
+
+  let currentMode = 'dark';
+
+  function render() {
+    const colors = tokens.color[currentMode];
+    const typo = tokens.typography;
+    const spacing = tokens.spacing;
+    const radius = tokens.radius;
+    const shadow = tokens.shadow;
+    const motion = tokens.motion;
+    const layout = tokens.layout;
+    const icon = tokens.iconography;
+    const platform = tokens.platform;
+
+    const colorKeys = Object.keys(colors);
+    const spacingKeys = Object.keys(spacing).filter(k => typeof spacing[k] === 'number');
+    const radiusKeys = Object.keys(radius);
+    const shadowKeys = Object.keys(shadow);
+    const scaleKeys = Object.keys(typo.scale);
+    const weightKeys = Object.keys(typo.weight);
+    const durationKeys = Object.keys(motion.duration);
+    const easingKeys = Object.keys(motion.easing);
+    const layoutKeys = Object.keys(layout);
+    const iconSizeKeys = Object.keys(icon.sizes);
+
+    const h = (tag, attrs, ...ch) => {
+      const el = document.createElement(tag);
+      if (attrs) for (const [k, v] of Object.entries(attrs)) {
+        if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+        else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
+        else el.setAttribute(k, v);
+      }
+      for (const c of ch) {
+        if (typeof c === 'string') el.appendChild(document.createTextNode(c));
+        else if (c) el.appendChild(c);
+      }
+      return el;
+    };
+
+    const sectionEl = (title, count, ...children) => {
+      const s = h('div', { class: 'section' },
+        h('div', { class: 'section-header' },
+          h('h2', null, title),
+          h('span', { class: 'count' }, count + ' tokens'),
+        ),
+        ...children
+      );
+      return s;
+    };
+
+    const subsection = (title, count, ...children) =>
+      h('div', { class: 'subsection' },
+        h('div', { class: 'subsection-header' },
+          h('h3', null, title),
+          h('span', { class: 'count' }, String(count)),
+        ),
+        ...children
+      );
+
+    const tokenCard = (name, value, usage, previewEl) =>
+      h('div', { class: 'token-card' },
+        previewEl || null,
+        h('div', { class: 'token-name' }, name),
+        h('div', { class: 'token-value' }, value),
+        h('div', { class: 'token-usage' }, usage),
+      );
+
+    // ── Hero ──
+    const hero = h('div', { class: 'hero' },
+      h('div', { class: 'hero-eyebrow' }, 'Design System v' + (tokens.$metadata?.version || '2.0')),
+      h('h1', null, 'OpenTivi Design Tokens'),
+      h('p', null, '所有 token 的唯一事实源。Color · Typography · Spacing · Radius · Shadow · Motion · Layout · Icon · Platform'),
+    );
+
+    const toggle = h('div', { class: 'theme-toggle' },
+      h('button', { class: currentMode === 'dark' ? 'active' : '', onClick: () => { currentMode = 'dark'; document.body.classList.remove('light'); render(); } }, 'Dark'),
+      h('button', { class: currentMode === 'light' ? 'active' : '', onClick: () => { currentMode = 'light'; document.body.classList.add('light'); render(); } }, 'Light'),
+    );
+    hero.appendChild(toggle);
+
+    // ── Colors ──
+    const colorGrid = h('div', { class: 'token-grid' });
+    for (const key of colorKeys) {
+      const entry = colors[key];
+      const swatch = h('div', { class: 'swatch', style: { background: entry.$value } });
+      const cssName = '--' + key.replace(/([A-Z])/g, '-$1').toLowerCase();
+      colorGrid.appendChild(tokenCard(cssName, entry.$value, entry.$description || '', swatch));
+    }
+    const colorSection = sectionEl('Colors — ' + (currentMode === 'dark' ? 'Dark' : 'Light') + ' Mode', colorKeys.length, colorGrid);
+
+    // ── Typography ──
+    const fontSection = h('div');
+
+    // Font family
+    const familyGrid = h('div', { class: 'token-grid' });
+    for (const [key, val] of Object.entries(typo.fontFamily)) {
+      familyGrid.appendChild(tokenCard('--font-family-' + key, val, key === 'sans' ? '默认 UI 字体' : '代码、数据标签'));
+    }
+    fontSection.appendChild(subsection('Font Family', Object.keys(typo.fontFamily).length, familyGrid));
+
+    // Type scale
+    const scaleGrid = h('div', { class: 'token-grid' });
+    for (const key of scaleKeys) {
+      const s = typo.scale[key];
+      const cssName = '--font-size-' + key.replace(/([A-Z])/g, '-$1').toLowerCase();
+      const preview = h('div', { class: 'typo-preview', style: { fontSize: s.size + 'px', fontWeight: s.weight, lineHeight: s.lineHeight, letterSpacing: (s.tracking || 0) + 'em' } }, 'Ag 永 123');
+      scaleGrid.appendChild(tokenCard(cssName, s.size + 'px / ' + s.weight + ' / ' + s.lineHeight, s.usage, preview));
+    }
+    fontSection.appendChild(subsection('Type Scale', scaleKeys.length, scaleGrid));
+
+    // Weights
+    const weightGrid = h('div', { class: 'token-grid' });
+    for (const [key, val] of Object.entries(typo.weight)) {
+      const preview = h('div', { class: 'typo-preview', style: { fontSize: '16px', fontWeight: val } }, 'The quick brown fox 永');
+      weightGrid.appendChild(tokenCard('--font-weight-' + key, String(val), key, preview));
+    }
+    fontSection.appendChild(subsection('Font Weight', weightKeys.length, weightGrid));
+
+    const typoSection = sectionEl('Typography', scaleKeys.length + Object.keys(typo.fontFamily).length + weightKeys.length, fontSection);
+
+    // ── Spacing ──
+    const spacingGrid = h('div', { class: 'token-grid' });
+    for (const key of spacingKeys) {
+      const val = spacing[key];
+      const bar = h('div', { class: 'spacing-preview', style: { width: Math.max(val, 2) + 'px' } });
+      spacingGrid.appendChild(tokenCard('--space-' + key, val + 'px', key === '0' ? '无间距' : (val / 4) + '× 基础单位 (4px)', bar));
+    }
+    const spacingSection = sectionEl('Spacing', spacingKeys.length, spacingGrid);
+
+    // ── Radius ──
+    const radiusGrid = h('div', { class: 'token-grid' });
+    for (const key of radiusKeys) {
+      const val = radius[key];
+      const pxVal = val === 9999 ? '9999px' : val + 'px';
+      const preview = h('div', { class: 'radius-preview', style: { borderRadius: pxVal } });
+      radiusGrid.appendChild(tokenCard('--radius-' + key, pxVal, key, preview));
+    }
+    const radiusSection = sectionEl('Border Radius', radiusKeys.length, radiusGrid);
+
+    // ── Shadow ──
+    const shadowGrid = h('div', { class: 'token-grid' });
+    for (const key of shadowKeys) {
+      const val = shadow[key];
+      const preview = h('div', { class: 'shadow-preview', style: { boxShadow: val } });
+      shadowGrid.appendChild(tokenCard('--shadow-' + key, val, key, preview));
+    }
+    const shadowSection = sectionEl('Shadows', shadowKeys.length, shadowGrid);
+
+    // ── Motion ──
+    const motionEl = h('div');
+
+    const durationGrid = h('div', { class: 'token-grid' });
+    for (const key of durationKeys) {
+      const val = motion.duration[key];
+      const dot = h('div', { class: 'motion-dot', style: { transition: 'left ' + val + 'ms ' + motion.easing.default } });
+      const preview = h('div', { class: 'motion-preview' }, dot);
+      durationGrid.appendChild(tokenCard('--duration-' + key, val + 'ms', 'hover 查看效果', preview));
+    }
+    motionEl.appendChild(subsection('Duration', durationKeys.length, durationGrid));
+
+    const easingGrid = h('div', { class: 'token-grid' });
+    for (const key of easingKeys) {
+      const val = motion.easing[key];
+      const dot = h('div', { class: 'motion-dot', style: { transition: 'left 400ms ' + val } });
+      const preview = h('div', { class: 'motion-preview' }, dot);
+      easingGrid.appendChild(tokenCard('--easing-' + key, val, 'hover 查看效果', preview));
+    }
+    motionEl.appendChild(subsection('Easing', easingKeys.length, easingGrid));
+
+    const motionSection = sectionEl('Motion', durationKeys.length + easingKeys.length, motionEl);
+
+    // ── Layout ──
+    const layoutEl = h('div');
+    for (const groupKey of layoutKeys) {
+      const group = layout[groupKey];
+      if (typeof group !== 'object') continue;
+      const desc = group.$description || '';
+      const entries = Object.entries(group).filter(([k]) => !k.startsWith('$'));
+      if (entries.length === 0) continue;
+
+      const table = h('table', { class: 'layout-table' },
+        h('thead', null,
+          h('tr', null, h('th', null, 'Property'), h('th', null, 'Value'), h('th', null, 'Description')),
+        ),
+      );
+      const tbody = h('tbody');
+      for (const [k, v] of entries) {
+        tbody.appendChild(h('tr', null,
+          h('td', { class: 'prop' }, groupKey + '.' + k),
+          h('td', { class: 'val' }, typeof v === 'boolean' ? String(v) : v + (typeof v === 'number' ? 'px' : '')),
+          h('td', { class: 'desc' }, ''),
+        ));
+      }
+      table.appendChild(tbody);
+
+      const card = h('div', { style: { padding: '16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--card)', marginBottom: '12px' } },
+        h('h4', { style: { fontSize: '14px', fontWeight: 600, marginBottom: '4px', textTransform: 'capitalize' } }, groupKey),
+        desc ? h('p', { style: { fontSize: '12px', color: 'var(--muted)', marginBottom: '12px' } }, desc) : null,
+        table,
+      );
+      layoutEl.appendChild(card);
+    }
+    const layoutSection = sectionEl('Layout Composition', Object.values(layout).reduce((n, g) => n + (typeof g === 'object' ? Object.keys(g).filter(k => !k.startsWith('$')).length : 0), 0), layoutEl);
+
+    // ── Iconography ──
+    const iconEl = h('div');
+    const iconSizeGrid = h('div', { class: 'icon-meta' });
+    for (const key of iconSizeKeys) {
+      const sz = icon.sizes[key];
+      const box = h('div', { class: 'box', style: { width: sz + 'px', height: sz + 'px' } },
+        h('svg', null), // placeholder
+      );
+      // Use innerHTML for the SVG since h() can't do SVG namespaces easily
+      box.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 14 2.5-6L13 14"/><path d="M9 12h4"/></svg>`;
+      iconSizeGrid.appendChild(h('div', { class: 'icon-size-card' },
+        box,
+        h('div', { class: 'label' }, key),
+        h('div', { class: 'sz' }, sz + 'px'),
+      ));
+    }
+
+    const iconInfo = h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '16px' } });
+    const metaItems = [
+      ['Library', icon.library],
+      ['License', icon.license],
+      ['Stroke Width', String(icon.strokeWidth)],
+    ];
+    for (const [label, val] of metaItems) {
+      iconInfo.appendChild(h('div', { style: { padding: '12px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--card)', fontSize: '13px' } },
+        h('span', { style: { color: 'var(--muted)', marginRight: '8px' } }, label + ':'),
+        h('strong', null, val),
+      ));
+    }
+
+    iconEl.appendChild(iconSizeGrid);
+    iconEl.appendChild(iconInfo);
+    const iconSection = sectionEl('Iconography', iconSizeKeys.length, iconEl);
+
+    // ── Platform ──
+    const platformGrid = h('div', { class: 'platform-grid' });
+    for (const [key, plat] of Object.entries(platform)) {
+      const card = h('div', { class: 'platform-card' });
+      card.appendChild(h('h4', null, key.charAt(0).toUpperCase() + key.slice(1)));
+      if (plat.$description) card.appendChild(h('div', { class: 'desc' }, plat.$description));
+      for (const [pk, pv] of Object.entries(plat)) {
+        if (pk.startsWith('$')) continue;
+        const displayVal = typeof pv === 'object' ? JSON.stringify(pv) : String(pv);
+        card.appendChild(h('div', { class: 'kv' },
+          h('span', { class: 'k' }, pk),
+          h('span', { class: 'v' }, displayVal),
+        ));
+      }
+      platformGrid.appendChild(card);
+    }
+    const platformSection = sectionEl('Platform Overrides', Object.keys(platform).length + ' platforms', platformGrid);
+
+    // ── Assemble ──
+    app.innerHTML = '';
+    app.appendChild(hero);
+    app.appendChild(colorSection);
+    app.appendChild(typoSection);
+    app.appendChild(spacingSection);
+    app.appendChild(radiusSection);
+    app.appendChild(shadowSection);
+    app.appendChild(motionSection);
+    app.appendChild(layoutSection);
+    app.appendChild(iconSection);
+    app.appendChild(platformSection);
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

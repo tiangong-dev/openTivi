@@ -533,17 +533,17 @@ const pageStyle: CSSProperties = {
 const heroStyle: CSSProperties = {
   padding: "var(--space-5)",
   borderRadius: "var(--radius-lg)",
-  border: "1px solid var(--color-border-strong)",
+  border: "1px solid var(--popover)",
   background:
-    "linear-gradient(135deg, rgba(45, 140, 255, 0.18), rgba(18, 185, 129, 0.12) 52%, rgba(7, 16, 24, 0.16))",
-  boxShadow: "var(--shadow-elevation-1)",
+    "linear-gradient(135deg, hsla(217, 91%, 60%, 0.18), hsla(142, 71%, 45%, 0.12) 52%, hsla(240, 10%, 4%, 0.16))",
+  boxShadow: "var(--shadow-md)",
 };
 
 const eyebrowStyle: CSSProperties = {
   fontSize: "var(--font-size-sm)",
   textTransform: "uppercase",
   letterSpacing: "var(--letter-spacing-wide)",
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
   marginBottom: "var(--space-2)",
 };
 
@@ -556,7 +556,7 @@ const titleStyle: CSSProperties = {
 
 const subtitleStyle: CSSProperties = {
   margin: "var(--space-2) 0 0",
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
   lineHeight: "var(--line-height-relaxed)",
   maxWidth: 720,
 };
@@ -585,12 +585,12 @@ const stackStyle: CSSProperties = {
 const primaryButtonStyle: CSSProperties = {};
 
 const secondaryButtonStyle: CSSProperties = {
-  backgroundColor: "var(--bg-tertiary)",
-  color: "var(--text-primary)",
+  backgroundColor: "var(--secondary)",
+  color: "var(--foreground)",
 };
 
 const dangerButtonStyle: CSSProperties = {
-  backgroundColor: "var(--color-fill-danger)",
+  backgroundColor: "var(--destructive)",
   display: "inline-flex",
   alignItems: "center",
   gap: "var(--space-2)",
@@ -603,14 +603,14 @@ const iconButtonStyle: CSSProperties = {
   width: 36,
   height: 36,
   borderRadius: "var(--radius-pill)",
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
 };
 
 const chipStyle: CSSProperties = {};
 
 const chipActiveStyle: CSSProperties = {
-  backgroundColor: "var(--color-fill-brand)",
-  color: "var(--color-white)",
+  backgroundColor: "var(--primary)",
+  color: "var(--primary-foreground)",
 };
 
 const bannerSuccessStyle: CSSProperties = {
@@ -631,18 +631,18 @@ const statusBadgeStyle: CSSProperties = {
 };
 
 const healthyBadgeStyle: CSSProperties = {
-  backgroundColor: "rgba(18, 185, 129, 0.22)",
-  color: "#baf7df",
+  backgroundColor: "var(--success-soft)",
+  color: "var(--success)",
 };
 
 const backoffBadgeStyle: CSSProperties = {
-  backgroundColor: "rgba(245, 158, 11, 0.22)",
-  color: "#ffe19d",
+  backgroundColor: "var(--warning-soft)",
+  color: "var(--warning)",
 };
 
 const errorBadgeStyle: CSSProperties = {
-  backgroundColor: "rgba(239, 68, 68, 0.22)",
-  color: "#ffc5c5",
+  backgroundColor: "var(--destructive-soft)",
+  color: "var(--destructive-foreground)",
 };
 
 const tableCardStyle: CSSProperties = {
@@ -657,7 +657,7 @@ const tableHeaderStyle: CSSProperties = {
   gap: "var(--space-3)",
   padding: "10px 12px",
   fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
   borderBottom: "1px solid var(--border)",
 };
 
@@ -667,23 +667,23 @@ const tableRowStyle: CSSProperties = {
   gap: "var(--space-3)",
   alignItems: "center",
   padding: "12px",
-  backgroundColor: "var(--bg-primary)",
+  backgroundColor: "var(--background)",
 };
 
 const rowTitleStyle: CSSProperties = {
-  fontWeight: 700,
+  fontWeight: "var(--font-weight-bold)",
   marginBottom: 4,
 };
 
 const rowMetaStyle: CSSProperties = {
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
   fontSize: "var(--font-size-sm)",
 };
 
 const overlayStyle: CSSProperties = {
   position: "fixed",
   inset: 0,
-  backgroundColor: "var(--color-bg-overlay)",
+  backgroundColor: "var(--overlay-scrim)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -709,7 +709,7 @@ const modalTitleStyle: CSSProperties = {
 };
 
 const modalTextStyle: CSSProperties = {
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
   lineHeight: "var(--line-height-normal)",
 };
 
@@ -717,14 +717,14 @@ const metaPanelStyle: CSSProperties = {
   border: "1px solid var(--border)",
   borderRadius: "var(--radius-sm)",
   padding: 12,
-  backgroundColor: "var(--bg-primary)",
+  backgroundColor: "var(--background)",
 };
 
 const metaRowStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   gap: "var(--space-3)",
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
 };
 
 const actionListStyle: CSSProperties = {
@@ -767,7 +767,7 @@ const tokenGroupTitleStyle: CSSProperties = {
 
 const tokenGroupCountStyle: CSSProperties = {
   fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
 };
 
 const tokenGridStyle: CSSProperties = {
@@ -780,7 +780,7 @@ const tokenCardStyle: CSSProperties = {
   padding: "var(--space-4)",
   borderRadius: "var(--radius-md)",
   border: "1px solid var(--border)",
-  backgroundColor: "var(--color-bg-canvas)",
+  backgroundColor: "var(--background)",
   display: "flex",
   flexDirection: "column",
   gap: "var(--space-2)",
@@ -789,41 +789,41 @@ const tokenCardStyle: CSSProperties = {
 const tokenSwatchStyle: CSSProperties = {
   height: 56,
   borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--color-border-strong)",
+  border: "1px solid var(--popover)",
 };
 
 const radiusPreviewStyle: CSSProperties = {
   width: 72,
   height: 56,
-  background: "linear-gradient(135deg, rgba(45, 140, 255, 0.9), rgba(18, 185, 129, 0.9))",
+  background: "linear-gradient(135deg, hsla(217, 91%, 60%, 0.9), hsla(142, 71%, 45%, 0.9))",
 };
 
 const spacingPreviewStyle: CSSProperties = {
   height: 10,
   borderRadius: "var(--radius-pill)",
-  backgroundColor: "var(--color-fill-brand)",
+  backgroundColor: "var(--primary)",
 };
 
 const shadowPreviewStyle: CSSProperties = {
   height: 56,
   borderRadius: "var(--radius-sm)",
-  backgroundColor: "var(--color-bg-elevated)",
+  backgroundColor: "var(--popover)",
 };
 
 const tokenNameStyle: CSSProperties = {
   fontFamily: "var(--font-family-mono)",
   fontSize: "var(--font-size-sm)",
-  color: "var(--color-brand-300)",
+  color: "var(--primary-light)",
 };
 
 const tokenValueStyle: CSSProperties = {
   fontSize: "var(--font-size-md)",
   fontWeight: "var(--font-weight-semibold)",
-  color: "var(--text-primary)",
+  color: "var(--foreground)",
 };
 
 const tokenUsageStyle: CSSProperties = {
   fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
   lineHeight: "var(--line-height-normal)",
 };

@@ -1,0 +1,294 @@
+namespace opentivi {
+
+    // ── Initialization ──────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    u16 init_engine(string data_dir);
+
+    // ── Sources ─────────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    sequence<SourceInfo> list_sources();
+
+    [Throws=OpenTiviError]
+    ImportResult import_m3u(string name, string location, u32? auto_refresh_minutes);
+
+    [Throws=OpenTiviError]
+    ImportResult import_xtream(string name, string server_url, string username, string password);
+
+    [Throws=OpenTiviError]
+    ImportResult import_xmltv(string name, string location);
+
+    [Throws=OpenTiviError]
+    ImportResult refresh_source(i64 source_id);
+
+    [Throws=OpenTiviError]
+    void update_source(
+        i64 source_id,
+        string name,
+        string location,
+        string? username,
+        string? password,
+        u32? auto_refresh_minutes,
+        boolean enabled
+    );
+
+    [Throws=OpenTiviError]
+    void delete_source(i64 source_id);
+
+    // ── Channels ────────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    sequence<ChannelInfo> list_channels(
+        i64? source_id,
+        string? group_name,
+        string? search,
+        boolean? favorites_only,
+        u32 limit,
+        u32 offset
+    );
+
+    [Throws=OpenTiviError]
+    sequence<string> list_groups(i64? source_id);
+
+    [Throws=OpenTiviError]
+    ChannelInfo? get_channel(i64 channel_id);
+
+    // ── EPG ─────────────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    sequence<EpgProgramInfo> get_channel_epg(i64 channel_id, string? from_ts, string? to_ts);
+
+    [Throws=OpenTiviError]
+    sequence<ChannelEpgSnapshot> get_channels_epg_snapshots(
+        sequence<i64> channel_ids,
+        i64? window_start_ts,
+        i64? window_end_ts
+    );
+
+    [Throws=OpenTiviError]
+    sequence<EpgSearchResult> search_epg(string? search, string? state, u32? limit);
+
+    // ── Favorites ───────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    sequence<ChannelInfo> list_favorites();
+
+    [Throws=OpenTiviError]
+    void set_favorite(i64 channel_id, boolean favorite);
+
+    // ── Recents ─────────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    sequence<RecentChannelInfo> list_recents();
+
+    [Throws=OpenTiviError]
+    void mark_recent_watched(i64 channel_id);
+
+    // ── Playback ────────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    PlaybackInfo resolve_playback(i64 channel_id);
+
+    [Throws=OpenTiviError]
+    sequence<PlaybackInfo> list_playback_candidates(i64 channel_id);
+
+    // ── Settings ────────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    sequence<SettingInfo> get_all_settings();
+
+    [Throws=OpenTiviError]
+    void set_setting(string key, string value);
+
+    // ── Backup ──────────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    BackupManifestInfo export_backup(string out_path);
+
+    [Throws=OpenTiviError]
+    BackupManifestInfo import_backup(string in_path);
+
+    // ── Reminders ───────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    i64 add_reminder(
+        i64 channel_id,
+        i64 program_start_epoch,
+        i64? program_stop_epoch,
+        string program_title,
+        string? program_desc
+    );
+
+    [Throws=OpenTiviError]
+    void remove_reminder(i64 id);
+
+    [Throws=OpenTiviError]
+    sequence<ReminderInfo> list_reminders();
+
+    [Throws=OpenTiviError]
+    sequence<ReminderInfo> due_reminders(i64 now_epoch, i64 window_secs);
+
+    [Throws=OpenTiviError]
+    void mark_reminder_fired(i64 id);
+
+    // ── Proxy ───────────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    u16 get_proxy_port();
+};
+
+[Error]
+enum OpenTiviError {
+    "Runtime"
+};
+
+// ── Records ─────────────────────────────────────────────────────────────
+
+dictionary SourceInfo {
+    i64 id;
+    string kind;
+    string name;
+    string location;
+    string? username;
+    string? password;
+    boolean enabled;
+    string? disabled_reason;
+    u32? auto_refresh_minutes;
+    u32 channel_count;
+    u32 group_count;
+    u32 channels_with_tvg_id;
+    u32 epg_program_count;
+    string? last_imported_at;
+    string? last_refresh_error;
+    string? last_refresh_attempt_at;
+    u32 consecutive_refresh_failures;
+    string? next_retry_at;
+    string created_at;
+    string updated_at;
+};
+
+dictionary ChannelInfo {
+    i64 id;
+    i64 source_id;
+    string name;
+    string? channel_number;
+    string? group_name;
+    string? tvg_id;
+    string? logo_url;
+    string stream_url;
+    boolean is_favorite;
+};
+
+dictionary EpgProgramInfo {
+    i64 id;
+    string channel_tvg_id;
+    string start_at;
+    string end_at;
+    string title;
+    string? description;
+    string? category;
+};
+
+dictionary EpgProgramMini {
+    string title;
+    string start_at;
+    string end_at;
+};
+
+dictionary ChannelEpgSnapshot {
+    i64 channel_id;
+    EpgProgramMini? now;
+    EpgProgramMini? next;
+    sequence<EpgProgramMini> timeline_programs;
+};
+
+dictionary ImportResult {
+    i64 source_id;
+    u32 channels_imported;
+    u32 channels_updated;
+    u32 channels_removed;
+};
+
+dictionary RecentChannelInfo {
+    i64 id;
+    i64 source_id;
+    string name;
+    string? channel_number;
+    string? group_name;
+    string? tvg_id;
+    string? logo_url;
+    string stream_url;
+    boolean is_favorite;
+    string last_watched_at;
+    i64 play_count;
+};
+
+dictionary SettingInfo {
+    string key;
+    string value;
+    string updated_at;
+};
+
+dictionary PlaybackInfo {
+    i64 channel_id;
+    i64 resolved_channel_id;
+    i64 source_id;
+    string channel_name;
+    string stream_url;
+    string? logo_url;
+    string? user_agent;
+    string? referer;
+    boolean proxy_recommended;
+    string? kind;
+    i32 priority;
+    string? catchup_type;
+    string? catchup_source;
+    string? catchup_days;
+    i64? catchup_hours;
+    string? health;
+    i64? expires_at;
+    boolean needs_reresolve;
+    string? failure_reason;
+};
+
+dictionary EpgSearchResult {
+    i64 id;
+    i64 channel_id;
+    i64 source_id;
+    string channel_name;
+    string? channel_number;
+    string channel_tvg_id;
+    string start_at;
+    string end_at;
+    string title;
+    string? description;
+    string? category;
+};
+
+dictionary ReminderInfo {
+    i64 id;
+    i64 channel_id;
+    string channel_name;
+    string? channel_number;
+    i64 program_start_epoch;
+    i64? program_stop_epoch;
+    string program_title;
+    string? program_desc;
+    string? fired_at;
+    string created_at;
+};
+
+dictionary BackupFileInfo {
+    string name;
+    u64 size;
+    string sha256;
+};
+
+dictionary BackupManifestInfo {
+    u32 format_version;
+    u32 schema_version;
+    string? app_version;
+    string created_at;
+    sequence<BackupFileInfo> files;
+};

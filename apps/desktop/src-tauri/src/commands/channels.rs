@@ -6,72 +6,72 @@ use crate::state::AppState;
 use super::dto::*;
 
 #[tauri::command]
-pub fn list_channels(
-    state: State<AppState>,
+pub async fn list_channels(
+    state: State<'_, AppState>,
     query: ListChannelsQuery,
 ) -> AppResult<Vec<ChannelListItemDto>> {
-    let conn = state.db.lock().unwrap();
     crate::core::services::channel_service::list_channels(
-        &conn,
+        &state.ctx,
         query.source_id,
-        query.group_name.as_deref(),
-        query.search.as_deref(),
+        query.group_name,
+        query.search,
         query.favorites_only.unwrap_or(false),
         query.limit.unwrap_or(200),
         query.offset.unwrap_or(0),
     )
+    .await
 }
 
 #[tauri::command]
-pub fn list_groups(state: State<AppState>, source_id: Option<i64>) -> AppResult<Vec<String>> {
-    let conn = state.db.lock().unwrap();
-    crate::core::services::channel_service::list_groups(&conn, source_id)
+pub async fn list_groups(state: State<'_, AppState>, source_id: Option<i64>) -> AppResult<Vec<String>> {
+    crate::core::services::channel_service::list_groups(&state.ctx, source_id).await
 }
 
 #[tauri::command]
-pub fn get_channel_epg(
-    state: State<AppState>,
+pub async fn get_channel_epg(
+    state: State<'_, AppState>,
     query: GetChannelEpgQuery,
 ) -> AppResult<Vec<EpgProgramDto>> {
-    let conn = state.db.lock().unwrap();
     crate::core::services::epg_service::get_channel_epg(
-        &conn,
+        &state.ctx,
         query.channel_id,
-        query.from.as_deref(),
-        query.to.as_deref(),
+        query.from,
+        query.to,
     )
+    .await
 }
 
 #[tauri::command]
-pub fn get_channels_epg_snapshots(
-    state: State<AppState>,
+pub async fn get_channels_epg_snapshots(
+    state: State<'_, AppState>,
     query: GetChannelsEpgSnapshotsQuery,
 ) -> AppResult<Vec<ChannelEpgSnapshotDto>> {
-    let conn = state.db.lock().unwrap();
     crate::core::services::epg_service::get_channels_epg_snapshots(
-        &conn,
-        &query.channel_ids,
+        &state.ctx,
+        query.channel_ids,
         query.window_start_ts,
         query.window_end_ts,
     )
+    .await
 }
 
 #[tauri::command]
-pub fn search_epg(
-    state: State<AppState>,
+pub async fn search_epg(
+    state: State<'_, AppState>,
     query: SearchEpgQuery,
 ) -> AppResult<Vec<EpgProgramSearchResultDto>> {
-    let conn = state.db.lock().unwrap();
     crate::core::services::epg_service::search_programs(
-        &conn,
-        query.search.as_deref(),
-        query.state.as_deref(),
+        &state.ctx,
+        query.search,
+        query.state,
         query.limit.unwrap_or(100),
     )
+    .await
 }
 
 #[tauri::command]
-pub fn get_channel(state: State<AppState>, channel_id: i64) -> AppResult<Option<ChannelListItemDto>> {
-    let conn = state.db.lock().unwrap();
-    crate::platform::db::repositories::channel_repo::get_enabled_channel_dto_by_id(&conn, channel_id)
+pub async fn get_channel(state: State<'_, AppState>, channel_id: i64) -> AppResult<Option<ChannelListItemDto>> {
+    state.ctx.db.run(move |conn| {
+        crate::platform::db::repositories::channel_repo::get_enabled_channel_dto_by_id(conn, channel_id)
+    }).await
 }

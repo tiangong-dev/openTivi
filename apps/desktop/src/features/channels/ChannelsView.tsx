@@ -815,8 +815,8 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
       style={{ ...entryButtonStyle, ...(active ? entryButtonActiveStyle : null) }}
       onClick={onClick}
     >
-      <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{subtitle}</div>
+      <div style={{ fontSize: "var(--font-size-body-large)", fontWeight: "var(--font-weight-bold)" }}>{title}</div>
+      <div style={{ fontSize: "var(--font-size-caption)", color: "var(--muted-foreground)" }}>{subtitle}</div>
       {value ? <div style={entryValueStyle}>{value}</div> : null}
     </button>
   );
@@ -825,7 +825,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
     <div style={pageStyle}>
       <div style={searchBarWrapStyle}>
         <div style={searchBarHeaderStyle}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>{t(locale, "channels.searchEntry")}</div>
+          <div style={{ fontSize: "var(--font-size-body-large)", fontWeight: "var(--font-weight-bold)" }}>{t(locale, "channels.searchEntry")}</div>
         </div>
         {mode === ChannelsMode.ChannelSearchEditing ? (
           <input
@@ -882,7 +882,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
         )}
       </div>
 
-      {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
+      {error && <div style={{ color: "var(--live)" }}>{error}</div>}
 
       {channels.length === 0 && !error ? (
         <div style={emptyStateStyle}>
@@ -912,7 +912,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
         <div style={overlayStyle}>
           <div style={{ ...panelStyle, maxWidth: 980 }}>
             <div style={panelHeaderStyle}>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{t(locale, "channels.filterEntry")}</div>
+              <div style={{ fontSize: "var(--font-size-body-large)", fontWeight: "var(--font-weight-bold)" }}>{t(locale, "channels.filterEntry")}</div>
             </div>
             <div style={filterColumnsStyle}>
               <FilterColumnSection
@@ -978,7 +978,7 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
         <div style={overlayStyle}>
           <div style={{ ...panelStyle, maxWidth: 1120 }}>
             <div style={panelHeaderStyle}>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{t(locale, "epg.explorer.title")}</div>
+              <div style={{ fontSize: "var(--font-size-body-large)", fontWeight: "var(--font-weight-bold)" }}>{t(locale, "epg.explorer.title")}</div>
               <div style={panelHintStyle}>
                 {t(locale, "epg.explorer.reminders")}: {epgReminders.length}
               </div>
@@ -1038,9 +1038,9 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
                         }}
                         style={{
                           ...filterChipStyle,
-                          backgroundColor: epgStateFilter === option.value ? "var(--accent)" : "var(--bg-tertiary)",
-                          color: epgStateFilter === option.value ? "#fff" : "var(--text-primary)",
-                          ...(active ? { boxShadow: "inset 0 0 0 1px #fff" } : null),
+                          backgroundColor: epgStateFilter === option.value ? "var(--accent)" : "var(--secondary)",
+                          color: "var(--foreground)",
+                          ...(active ? { boxShadow: "inset 0 0 0 1px var(--foreground)" } : null),
                         }}
                       >
                         {option.label}
@@ -1075,18 +1075,18 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 700 }}>{program.title}</div>
-                          <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                          <div style={{ fontSize: "var(--font-size-body)", fontWeight: "var(--font-weight-bold)" }}>{program.title}</div>
+                          <div style={{ fontSize: "var(--font-size-caption)", color: "var(--muted-foreground)" }}>
                             {program.channelNumber ? `${program.channelNumber} · ` : ""}
                             {program.channelName}
                           </div>
                         </div>
                         <span style={statusTagStyle}>{t(locale, isProgramLive(program) ? "epg.filter.live" : "epg.filter.upcoming")}</span>
                       </div>
-                      <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                      <div style={{ fontSize: "var(--font-size-caption)", color: "var(--muted-foreground)" }}>
                         {formatTime(program.startAt)} - {formatTime(program.endAt)}
                       </div>
-                      <div style={{ fontSize: 12, color: reminded ? "var(--accent)" : "var(--text-secondary)" }}>
+                      <div style={{ fontSize: "var(--font-size-caption)", color: reminded ? "var(--accent)" : "var(--muted-foreground)" }}>
                         {reminded ? t(locale, "epg.reminder.cancel") : t(locale, "epg.reminder.set")}
                       </div>
                     </button>
@@ -1096,16 +1096,16 @@ export function ChannelsView({ locale, favoritesOnly = false, onPlay }: Props) {
               {mode === ChannelsMode.EpgDetail && epgDrawerItem ? (
                 <div style={epgDetailStyle}>
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 700 }}>{epgDrawerItem.title}</div>
+                    <div style={{ fontSize: "var(--font-size-body-large)", fontWeight: "var(--font-weight-bold)" }}>{epgDrawerItem.title}</div>
                     <div style={panelHintStyle}>{epgDrawerItem.channelName}</div>
                   </div>
                   <div style={panelHintStyle}>
                     {formatTime(epgDrawerItem.startAt)} - {formatTime(epgDrawerItem.endAt)}
                   </div>
                   {epgDrawerItem.category ? (
-                    <div style={{ fontSize: 12, color: "var(--accent)" }}>{epgDrawerItem.category}</div>
+                    <div style={{ fontSize: "var(--font-size-caption)", color: "var(--accent)" }}>{epgDrawerItem.category}</div>
                   ) : null}
-                  <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+                  <div style={{ fontSize: "var(--font-size-small)", lineHeight: 1.6 }}>
                     {epgDrawerItem.description || t(locale, "epg.noDescription")}
                   </div>
                   <button
@@ -1207,8 +1207,8 @@ const searchBarFieldStyle: CSSProperties = {
   borderRadius: 8,
   border: "1px solid var(--border)",
   backgroundColor: "transparent",
-  color: "var(--text-secondary)",
-  fontSize: 14,
+  color: "var(--muted-foreground)",
+  fontSize: "var(--font-size-body)",
 };
 
 const searchBarFieldButtonStyle: CSSProperties = {
@@ -1221,7 +1221,7 @@ const searchBarFieldButtonStyle: CSSProperties = {
 
 const searchBarActiveStyle: CSSProperties = {
   boxShadow: "inset 0 0 0 2px var(--accent)",
-  color: "var(--text-primary)",
+  color: "var(--foreground)",
 };
 
 const entryButtonStyle: CSSProperties = {
@@ -1232,32 +1232,32 @@ const entryButtonStyle: CSSProperties = {
   padding: "14px 16px",
   borderRadius: 10,
   border: "1px solid var(--border)",
-  backgroundColor: "rgba(15, 23, 42, 0.48)",
-  color: "var(--text-primary)",
+  backgroundColor: "var(--secondary-a48)",
+  color: "var(--foreground)",
   textAlign: "left",
   outline: "none",
 };
 
 const entryButtonActiveStyle: CSSProperties = {
   boxShadow: "inset 0 0 0 2px var(--accent)",
-  backgroundColor: "rgba(30, 41, 59, 0.8)",
+  backgroundColor: "var(--secondary-a80)",
 };
 
 const entryValueStyle: CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--font-size-caption)",
   color: "var(--accent)",
   minHeight: 16,
 };
 
 const emptyStateStyle: CSSProperties = {
-  color: "var(--text-secondary)",
+  color: "var(--muted-foreground)",
   textAlign: "center",
 };
 
 const overlayStyle: CSSProperties = {
   position: "absolute",
   inset: 0,
-  backgroundColor: "rgba(2, 6, 23, 0.65)",
+  backgroundColor: "var(--overlay-scrim)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -1269,8 +1269,8 @@ const panelStyle: CSSProperties = {
   maxWidth: 720,
   borderRadius: 16,
   border: "1px solid var(--border)",
-  backgroundColor: "#020817",
-  boxShadow: "0 18px 50px rgba(0, 0, 0, 0.38)",
+  backgroundColor: "var(--background)",
+  boxShadow: "var(--shadow-xl)",
   padding: 20,
   display: "flex",
   flexDirection: "column",
@@ -1285,17 +1285,17 @@ const panelHeaderStyle: CSSProperties = {
 };
 
 const panelHintStyle: CSSProperties = {
-  fontSize: 12,
-  color: "var(--text-secondary)",
+  fontSize: "var(--font-size-caption)",
+  color: "var(--muted-foreground)",
 };
 
 const searchInputStyle: CSSProperties = {
   padding: "12px 14px",
-  backgroundColor: "var(--bg-tertiary)",
+  backgroundColor: "var(--secondary)",
   border: "1px solid var(--border)",
   borderRadius: 8,
-  color: "var(--text-primary)",
-  fontSize: 15,
+  color: "var(--foreground)",
+  fontSize: "var(--font-size-body)",
 };
 
 const filterColumnsStyle: CSSProperties = {
@@ -1311,8 +1311,8 @@ const filterColumnStyle: CSSProperties = {
 };
 
 const filterColumnTitleStyle: CSSProperties = {
-  fontSize: 13,
-  color: "var(--text-secondary)",
+  fontSize: "var(--font-size-small)",
+  color: "var(--muted-foreground)",
   textTransform: "uppercase",
 };
 
@@ -1328,14 +1328,14 @@ const filterOptionStyle: CSSProperties = {
   padding: "10px 12px",
   borderRadius: 8,
   border: "1px solid var(--border)",
-  backgroundColor: "var(--bg-tertiary)",
-  color: "var(--text-primary)",
+  backgroundColor: "var(--secondary)",
+  color: "var(--foreground)",
   textAlign: "left",
   outline: "none",
 };
 
 const filterOptionSelectedStyle: CSSProperties = {
-  backgroundColor: "rgba(37, 99, 235, 0.2)",
+  backgroundColor: "var(--primary-a20)",
 };
 
 const epgLayoutStyle: CSSProperties = {
@@ -1361,7 +1361,7 @@ const filterChipStyle: CSSProperties = {
   padding: "8px 10px",
   borderRadius: 999,
   border: "1px solid var(--border)",
-  fontSize: 12,
+  fontSize: "var(--font-size-caption)",
   outline: "none",
 };
 
@@ -1380,8 +1380,8 @@ const epgResultCardStyle: CSSProperties = {
   padding: 12,
   borderRadius: 10,
   border: "1px solid var(--border)",
-  backgroundColor: "rgba(15, 23, 42, 0.55)",
-  color: "var(--text-primary)",
+  backgroundColor: "var(--card-a55)",
+  color: "var(--foreground)",
   textAlign: "left",
   outline: "none",
 };
@@ -1393,16 +1393,16 @@ const epgDetailStyle: CSSProperties = {
   padding: 12,
   borderRadius: 10,
   border: "1px solid var(--border)",
-  backgroundColor: "rgba(15, 23, 42, 0.55)",
+  backgroundColor: "var(--card-a55)",
 };
 
 const statusTagStyle: CSSProperties = {
   borderRadius: 999,
   padding: "2px 8px",
-  fontSize: 11,
-  color: "#fff",
+  fontSize: "var(--font-size-overline)",
+  color: "var(--primary-foreground)",
   height: "fit-content",
-  backgroundColor: "#1e3a8a",
+  backgroundColor: "var(--primary)",
 };
 
 function sortChannels(items: Channel[], sortBy: ChannelSort): Channel[] {

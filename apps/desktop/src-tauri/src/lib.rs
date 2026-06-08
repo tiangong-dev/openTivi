@@ -1,17 +1,27 @@
 mod commands;
-mod core;
-mod error;
-mod platform;
 mod state;
+
+// Re-export from shared crate for use in commands
+pub use opentivi_core::core;
+pub use opentivi_core::dto;
+pub use opentivi_core::error;
+pub use opentivi_core::platform;
+
+use tauri::Manager;
 
 use state::AppState;
 
 pub fn run() {
-    let app_state = AppState::new().expect("Failed to initialize app state");
-
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(app_state)
+        .setup(|app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::block_on(async {
+                let app_state = AppState::new().await.expect("Failed to initialize app state");
+                handle.manage(app_state);
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::health::health,
             commands::health::get_proxy_port,
@@ -45,6 +55,13 @@ pub fn run() {
             commands::runtime_log::clear_runtime_logs,
             commands::update::check_app_update,
             commands::remote::get_remote_config_info,
+            commands::backup::export_backup,
+            commands::backup::import_backup,
+            commands::reminders::add_reminder,
+            commands::reminders::remove_reminder,
+            commands::reminders::list_reminders,
+            commands::reminders::due_reminders,
+            commands::reminders::mark_reminder_fired,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

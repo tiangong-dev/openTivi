@@ -1,6 +1,8 @@
+pub mod backup;
 pub mod channels;
 pub mod dto;
 pub mod favorites;
+pub mod reminders;
 pub mod health;
 pub mod playback;
 pub mod prewarm;

@@ -475,6 +475,23 @@ export function VideoPlayer({
       return Number.isFinite(total) && total > 0 ? total : null;
     };
 
+    let perfBytesAccum = 0;
+    let perfLastFlush = Date.now();
+    let observer: PerformanceObserver | null = null;
+    try {
+      observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          const res = entry as PerformanceResourceTiming;
+          if (res.transferSize > 0) {
+            perfBytesAccum += res.transferSize;
+          }
+        }
+      });
+      observer.observe({ type: "resource", buffered: false });
+    } catch {
+      observer = null;
+    }
+
     let lastBytes = readDecodedBytes();
     let lastTs = Date.now();
     speedFallbackTimerRef.current = setInterval(() => {
@@ -484,6 +501,18 @@ export function VideoPlayer({
       );
       if (Number.isFinite(hlsEstimate) && hlsEstimate > 0) {
         setNetworkSpeedBps((prev) => (prev === null ? hlsEstimate : prev * 0.4 + hlsEstimate * 0.6));
+        return;
+      }
+
+      if (perfBytesAccum > 0) {
+        const nowTs = Date.now();
+        const deltaMs = nowTs - perfLastFlush;
+        if (deltaMs > 0) {
+          const bitsPerSecond = (perfBytesAccum * 8 * 1000) / deltaMs;
+          setNetworkSpeedBps((prev) => (prev === null ? bitsPerSecond : prev * 0.4 + bitsPerSecond * 0.6));
+        }
+        perfBytesAccum = 0;
+        perfLastFlush = nowTs;
         return;
       }
 
@@ -510,6 +539,7 @@ export function VideoPlayer({
         clearInterval(speedFallbackTimerRef.current);
         speedFallbackTimerRef.current = null;
       }
+      observer?.disconnect();
     };
   }, [channel.id, getVideoBySlot]);
 
@@ -1082,14 +1112,14 @@ export function VideoPlayer({
             />
           )}
           <div>
-            <div style={{ fontWeight: 600, fontSize: 16 }}>
+            <div style={{ fontWeight: "var(--font-weight-semibold)", fontSize: "var(--font-size-body-large)" }}>
               {channel.channelNumber && (
                 <span style={{ opacity: 0.7, marginRight: 8 }}>{channel.channelNumber}</span>
               )}
               {channel.name}
             </div>
-            {channel.groupName && <div style={{ fontSize: 12, opacity: 0.6 }}>{channel.groupName}</div>}
-            <div style={{ fontSize: 11, opacity: 0.55 }}>
+            {channel.groupName && <div style={{ fontSize: "var(--font-size-caption)", opacity: 0.6 }}>{channel.groupName}</div>}
+            <div style={{ fontSize: "var(--font-size-overline)", opacity: 0.55 }}>
               {t(locale, "player.volume")}: {Math.round(volume * 100)}%
             </div>
           </div>
@@ -1139,10 +1169,10 @@ export function VideoPlayer({
       >
         {epgNow && (
           <>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14 }}>
-              <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.now")}</span>
-              <span style={{ fontWeight: 600 }}>{epgNow.title}</span>
-              <span style={{ opacity: 0.5, fontSize: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: "var(--font-size-body)" }}>
+              <span style={{ opacity: 0.6, fontSize: "var(--font-size-caption)" }}>{t(locale, "player.now")}</span>
+              <span style={{ fontWeight: "var(--font-weight-semibold)" }}>{epgNow.title}</span>
+              <span style={{ opacity: 0.5, fontSize: "var(--font-size-caption)" }}>
                 {formatTime(epgNow.startAt)} - {formatTime(epgNow.endAt)}
               </span>
             </div>
@@ -1152,7 +1182,7 @@ export function VideoPlayer({
           </>
         )}
         {!epgNow && (
-          <div style={{ fontSize: 12, opacity: 0.75 }}>
+          <div style={{ fontSize: "var(--font-size-caption)", opacity: 0.75 }}>
             {epgLoading ? t(locale, "player.loadingEpg") : t(locale, "player.noGuideForChannel")}
           </div>
         )}
@@ -1173,14 +1203,14 @@ export function VideoPlayer({
               display: "flex",
               alignItems: "center",
               gap: 12,
-              fontSize: 13,
+              fontSize: "var(--font-size-small)",
               opacity: 0.7,
               marginTop: 4,
             }}
           >
-            <span style={{ opacity: 0.6, fontSize: 12 }}>{t(locale, "player.next")}</span>
+            <span style={{ opacity: 0.6, fontSize: "var(--font-size-caption)" }}>{t(locale, "player.next")}</span>
             <span>{epgNext.title}</span>
-            <span style={{ opacity: 0.5, fontSize: 12 }}>
+            <span style={{ opacity: 0.5, fontSize: "var(--font-size-caption)" }}>
               {formatTime(epgNext.startAt)} - {formatTime(epgNext.endAt)}
             </span>
           </div>
@@ -1191,7 +1221,7 @@ export function VideoPlayer({
         <div style={guidePanelStyle}>
           <div style={guideHeaderStyle}>
             <span>{t(locale, "player.programGuide")}</span>
-            <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
+            <span style={{ color: "var(--muted-foreground)", fontSize: "var(--font-size-overline)" }}>
               {t(locale, "player.rightKeyToHide")}
             </span>
           </div>
@@ -1214,13 +1244,13 @@ export function VideoPlayer({
                     style={{
                       ...guideItemStyle,
                       borderColor: isCurrent ? "var(--accent)" : "var(--border)",
-                      backgroundColor: isCurrent ? "#2563eb22" : "transparent",
+                      backgroundColor: isCurrent ? "var(--primary-a13)" : "transparent",
                     }}
                   >
-                    <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                    <div style={{ fontSize: "var(--font-size-overline)", color: "var(--muted-foreground)" }}>
                       {formatTime(program.startAt)} - {formatTime(program.endAt)}
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: isCurrent ? 600 : 400 }}>{program.title}</div>
+                    <div style={{ fontSize: "var(--font-size-small)", fontWeight: isCurrent ? "var(--font-weight-semibold)" : "var(--font-weight-regular)" }}>{program.title}</div>
                   </div>
                 );
               })}
@@ -1233,7 +1263,7 @@ export function VideoPlayer({
         <div style={channelListPanelStyle}>
           <div style={guideHeaderStyle}>
             <span>{t(locale, "player.channelsPanelTitle")}</span>
-            <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
+            <span style={{ color: "var(--muted-foreground)", fontSize: "var(--font-size-overline)" }}>
               {t(locale, "player.enterToPlay")}
             </span>
           </div>
@@ -1266,7 +1296,7 @@ export function VideoPlayer({
                   style={{
                     ...channelListItemStyle,
                     borderColor: isFocused ? "var(--accent)" : "var(--border)",
-                    backgroundColor: isCurrent ? "#2563eb33" : "rgba(255,255,255,0.02)",
+                    backgroundColor: isCurrent ? "var(--primary-a20)" : "hsla(0, 0%, 100%, 0.02)",
                   }}
                 >
                   <span style={{ opacity: 0.8, marginRight: 8, minWidth: 36, textAlign: "right", flexShrink: 0 }}>
@@ -1302,9 +1332,9 @@ export function VideoPlayer({
 
       {error && (
         <div style={errorOverlayStyle}>
-          <div style={{ fontSize: 14, color: "#ef4444" }}>{error}</div>
+          <div style={{ fontSize: "var(--font-size-body)", color: "var(--live)" }}>{error}</div>
           {candidateIndex + 1 < Math.max(playbackCandidates.length, 1) && (
-            <div style={{ marginTop: 8, fontSize: 12 }}>
+            <div style={{ marginTop: 8, fontSize: "var(--font-size-caption)" }}>
               {t(locale, "player.switchingBackup")}
             </div>
           )}
@@ -1312,8 +1342,8 @@ export function VideoPlayer({
       )}
 
       {showDiagnostics && (
-        <div style={{ position: "absolute", right: 24, bottom: 120, width: 360, maxHeight: 320, overflowY: "auto", backgroundColor: "rgba(3, 7, 18, 0.92)", border: "1px solid rgba(148,163,184,0.35)", borderRadius: 10, padding: 14, zIndex: 5 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{t(locale, "player.diagnostics")}</div>
+        <div style={{ position: "absolute", right: 24, bottom: 120, width: 360, maxHeight: 320, overflowY: "auto", backgroundColor: "var(--background-a92)", border: "1px solid var(--muted-foreground-a35)", borderRadius: 10, padding: 14, zIndex: 5 }}>
+          <div style={{ fontSize: "var(--font-size-small)", fontWeight: "var(--font-weight-bold)", marginBottom: 10 }}>{t(locale, "player.diagnostics")}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.volume")}: {Math.round(volume * 100)}%</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.activeLine")}: {candidateIndex + 1}/{Math.max(playbackCandidates.length, 1)}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.retryCount")}: {retryCount}</div>
@@ -1324,14 +1354,14 @@ export function VideoPlayer({
           <div style={diagnosticLineStyle}>{t(locale, "player.videoResolution")}: {decoderDiagnostics.resolutionLabel}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.videoFrames")}: {decoderDiagnostics.framesLabel}</div>
           <div style={diagnosticLineStyle}>{t(locale, "player.resolvedSource")}: #{currentPlaybackSource.sourceId}</div>
-          <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-secondary)" }}>{t(locale, "player.runtimeLogs")}</div>
+          <div style={{ marginTop: 10, fontSize: "var(--font-size-caption)", color: "var(--muted-foreground)" }}>{t(locale, "player.runtimeLogs")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
             {formattedRuntimeLogs.map((entry, index) => (
-              <div key={`${entry}-${index}`} style={{ fontSize: 11, lineHeight: 1.4, color: "#cbd5e1", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              <div key={`${entry}-${index}`} style={{ fontSize: "var(--font-size-overline)", lineHeight: 1.4, color: "var(--muted-foreground)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                 {entry}
               </div>
             ))}
-            {formattedRuntimeLogs.length === 0 && <div style={{ fontSize: 11, color: "#94a3b8" }}>—</div>}
+            {formattedRuntimeLogs.length === 0 && <div style={{ fontSize: "var(--font-size-overline)", color: "var(--muted-foreground)" }}>—</div>}
           </div>
         </div>
       )}
@@ -1341,7 +1371,7 @@ export function VideoPlayer({
       {osdChannel && (
         <div style={osdStyle}>
           {osdChannel.channelNumber && (
-            <div style={{ fontSize: 48, fontWeight: 700, opacity: 0.9 }}>{osdChannel.channelNumber}</div>
+            <div style={{ fontSize: "var(--font-size-display)", fontWeight: "var(--font-weight-bold)", opacity: 0.9 }}>{osdChannel.channelNumber}</div>
           )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
             {osdChannel.logoUrl && (
@@ -1354,7 +1384,7 @@ export function VideoPlayer({
                 }}
               />
             )}
-            <div style={{ fontSize: 24, fontWeight: 600 }}>{osdChannel.name}</div>
+            <div style={{ fontSize: "var(--font-size-h2)", fontWeight: "var(--font-weight-semibold)" }}>{osdChannel.name}</div>
           </div>
         </div>
       )}
@@ -1363,9 +1393,9 @@ export function VideoPlayer({
 }
 
 const diagnosticLineStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: "var(--font-size-caption)",
   lineHeight: 1.6,
-  color: "#e2e8f0",
+  color: "var(--foreground)",
 };
 
 const bottomStatsStyle: React.CSSProperties = {
@@ -1379,7 +1409,7 @@ const bottomStatItemStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 12,
-  fontSize: 12,
+  fontSize: "var(--font-size-caption)",
   opacity: 0.7,
 };
 

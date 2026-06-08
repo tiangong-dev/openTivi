@@ -1,5 +1,9 @@
 import {
   forwardRef,
+  useEffect,
+  useId,
+  useRef,
+  useState,
   type ButtonHTMLAttributes,
   type CSSProperties,
   type HTMLAttributes,
@@ -13,6 +17,7 @@ type ButtonSize = "sm" | "md" | "icon";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   active?: boolean;
+  disabled?: boolean;
   variant?: ButtonVariant;
   size?: ButtonSize;
 }
@@ -46,6 +51,7 @@ interface EmptyStateProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> 
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   invalid?: boolean;
+  disabled?: boolean;
 }
 
 export function PageView({
@@ -81,7 +87,7 @@ export function SectionLabel({
     <div
       style={{
         fontSize: "var(--font-size-sm)",
-        color: "var(--text-secondary)",
+        color: "var(--muted-foreground)",
         textTransform: "uppercase",
         letterSpacing: "var(--letter-spacing-wide)",
         ...style,
@@ -94,18 +100,68 @@ export function SectionLabel({
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { active = false, variant = "primary", size = "md", style, ...props },
+  {
+    active = false,
+    disabled = false,
+    variant = "primary",
+    size = "md",
+    style,
+    onFocus,
+    onBlur,
+    onMouseEnter,
+    onMouseLeave,
+    onMouseDown,
+    ...props
+  },
   ref,
 ) {
+  const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const mouseDownRef = useRef(false);
+
+  const isHighlight = variant === "primary" || variant === "danger";
+
+  const hoverStyle: CSSProperties | null = hovered && !disabled
+    ? isHighlight
+      ? { filter: "brightness(1.15)" }
+      : { backgroundColor: "var(--accent)" }
+    : null;
+
   return (
     <button
       ref={ref}
+      disabled={disabled}
       style={{
         ...buttonBaseStyle,
         ...buttonSizeStyles[size],
         ...buttonVariantStyles[variant],
         ...(active ? buttonActiveStyle : null),
+        ...(focused ? buttonFocusStyle : null),
+        ...hoverStyle,
+        ...(disabled ? buttonDisabledStyle : null),
         ...style,
+      }}
+      onMouseDown={(e) => {
+        mouseDownRef.current = true;
+        onMouseDown?.(e);
+      }}
+      onFocus={(e) => {
+        if (!mouseDownRef.current) setFocused(true);
+        mouseDownRef.current = false;
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        mouseDownRef.current = false;
+        onBlur?.(e);
+      }}
+      onMouseEnter={(e) => {
+        setHovered(true);
+        onMouseEnter?.(e);
+      }}
+      onMouseLeave={(e) => {
+        setHovered(false);
+        onMouseLeave?.(e);
       }}
       {...props}
     />
@@ -145,8 +201,7 @@ export function Panel({
       style={{
         borderRadius: "var(--radius-md)",
         border: "1px solid var(--border)",
-        backgroundColor: "var(--bg-secondary)",
-        boxShadow: "var(--shadow-elevation-1)",
+        backgroundColor: "var(--card)",
         padding,
         ...style,
       }}
@@ -160,9 +215,10 @@ export function Panel({
 export function Notice({ tone = "default", children, style, ...props }: NoticeProps) {
   return (
     <div
+      role={tone === "danger" ? "alert" : "status"}
       style={{
         ...noticeToneStyles[tone],
-        padding: "10px 12px",
+        padding: "var(--space-3) var(--space-3)",
         borderRadius: "var(--radius-sm)",
         fontSize: "var(--font-size-md)",
         ...style,
@@ -202,12 +258,60 @@ export function Modal({
   style,
   ...props
 }: ModalProps) {
+  const titleId = useId();
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+
+    const focusableSelector =
+      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
+    const getFocusable = () =>
+      Array.from(card.querySelectorAll<HTMLElement>(focusableSelector));
+
+    const first = getFocusable()[0];
+    first?.focus();
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onDismiss?.();
+        return;
+      }
+      if (e.key === "Tab") {
+        const items = getFocusable();
+        if (items.length === 0) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    }
+
+    card.addEventListener("keydown", handleKeyDown);
+    return () => card.removeEventListener("keydown", handleKeyDown);
+  }, [onDismiss]);
+
   return (
     <div
       style={modalOverlayStyle}
       onClick={onDismiss}
     >
       <div
+        ref={cardRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         style={{
           ...modalCardStyle,
           width,
@@ -233,13 +337,13 @@ export function EmptyState({
     <div
       style={{
         padding: "var(--space-8) var(--space-4)",
-        color: "var(--text-secondary)",
+        color: "var(--muted-foreground)",
         textAlign: "center",
         ...style,
       }}
       {...props}
     >
-      {heading ? <div style={{ fontSize: "var(--font-size-lg)", color: "var(--text-primary)", marginBottom: "var(--space-2)" }}>{heading}</div> : null}
+      {heading ? <div style={{ fontSize: "var(--font-size-lg)", color: "var(--foreground)", marginBottom: "var(--space-2)" }}>{heading}</div> : null}
       {description ? <div style={{ lineHeight: "var(--line-height-normal)" }}>{description}</div> : null}
       {children}
     </div>
@@ -262,7 +366,7 @@ export function Field({
         flexDirection: "column",
         gap: "var(--space-1)",
         fontSize: "var(--font-size-sm)",
-        color: "var(--text-secondary)",
+        color: "var(--muted-foreground)",
         ...style,
       }}
     >
@@ -273,21 +377,35 @@ export function Field({
 }
 
 export const TextInput = forwardRef<HTMLInputElement, InputProps>(function TextInput(
-  { invalid = false, style, ...props },
+  { invalid = false, disabled = false, style, onFocus, onBlur, ...props },
   ref,
 ) {
+  const [focused, setFocused] = useState(false);
+
   return (
     <input
       ref={ref}
+      disabled={disabled}
+      aria-invalid={invalid ? "true" : undefined}
       style={{
-        padding: "8px 10px",
-        backgroundColor: "var(--bg-tertiary)",
-        border: `1px solid ${invalid ? "var(--danger)" : "var(--border)"}`,
+        padding: "var(--space-2) var(--space-3)",
+        backgroundColor: "var(--secondary)",
+        border: `1px solid ${invalid ? "var(--live)" : "var(--border)"}`,
         borderRadius: "var(--radius-sm)",
-        color: "var(--text-primary)",
-        fontSize: "var(--font-size-md)",
+        color: "var(--foreground)",
+        fontSize: "var(--font-size-body)",
         outline: "none",
+        ...(focused ? inputFocusStyle : null),
+        ...(disabled ? inputDisabledStyle : null),
         ...style,
+      }}
+      onFocus={(e) => {
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        onBlur?.(e);
       }}
       {...props}
     />
@@ -330,29 +448,28 @@ const buttonSizeStyles: Record<ButtonSize, CSSProperties> = {
 
 const buttonVariantStyles: Record<ButtonVariant, CSSProperties> = {
   primary: {
-    backgroundColor: "var(--accent)",
-    color: "var(--color-white)",
+    backgroundColor: "var(--primary)",
+    color: "var(--primary-foreground)",
   },
   secondary: {
-    backgroundColor: "var(--bg-tertiary)",
-    color: "var(--text-primary)",
+    backgroundColor: "var(--secondary)",
+    color: "var(--secondary-foreground)",
     borderColor: "var(--border)",
   },
   danger: {
-    backgroundColor: "var(--color-fill-danger)",
-    color: "var(--color-white)",
+    backgroundColor: "var(--destructive)",
+    color: "var(--destructive-foreground)",
   },
   ghost: {
     backgroundColor: "transparent",
-    color: "var(--text-primary)",
-    borderColor: "var(--border)",
+    color: "var(--foreground)",
   },
   nav: {
     width: "100%",
     justifyContent: "flex-start",
     padding: "10px 16px",
     backgroundColor: "transparent",
-    color: "var(--text-primary)",
+    color: "var(--foreground)",
     borderColor: "transparent",
     fontWeight: "var(--font-weight-medium)",
   },
@@ -362,48 +479,67 @@ const buttonActiveStyle: CSSProperties = {
   boxShadow: "var(--shadow-focus-ring)",
 };
 
+const buttonFocusStyle: CSSProperties = {
+  boxShadow: "0 0 0 2px var(--ring)",
+};
+
+const buttonDisabledStyle: CSSProperties = {
+  opacity: 0.5,
+  cursor: "not-allowed",
+  pointerEvents: "none",
+};
+
+const inputFocusStyle: CSSProperties = {
+  boxShadow: "0 0 0 2px var(--ring)",
+};
+
+const inputDisabledStyle: CSSProperties = {
+  opacity: 0.5,
+  cursor: "not-allowed",
+};
+
 const noticeToneStyles: Record<Tone, CSSProperties> = {
   default: {
-    backgroundColor: "var(--color-bg-elevated)",
-    color: "var(--text-primary)",
+    backgroundColor: "var(--popover)",
+    color: "var(--foreground)",
   },
   success: {
-    backgroundColor: "var(--color-fill-success-soft)",
-    color: "#7af0c2",
+    backgroundColor: "var(--success-soft)",
+    color: "var(--success)",
   },
   danger: {
-    backgroundColor: "var(--color-fill-danger-soft)",
-    color: "#ff8b8b",
+    backgroundColor: "var(--destructive-soft)",
+    color: "var(--live)",
   },
   warning: {
-    backgroundColor: "var(--color-fill-warning-soft)",
-    color: "#ffe19d",
+    backgroundColor: "var(--warning-soft)",
+    color: "var(--warning)",
   },
 };
 
 const badgeToneStyles: Record<Tone, CSSProperties> = {
   default: {
-    backgroundColor: "rgba(107, 124, 147, 0.22)",
-    color: "var(--color-neutral-100)",
+    backgroundColor: "var(--muted)",
+    color: "var(--foreground)",
   },
   success: {
-    backgroundColor: "rgba(18, 185, 129, 0.22)",
-    color: "#baf7df",
+    backgroundColor: "var(--success-soft)",
+    color: "var(--success)",
   },
   danger: {
-    backgroundColor: "rgba(239, 68, 68, 0.22)",
-    color: "#ffc5c5",
+    backgroundColor: "var(--destructive-soft)",
+    color: "var(--live)",
   },
   warning: {
-    backgroundColor: "rgba(245, 158, 11, 0.22)",
-    color: "#ffe19d",
+    backgroundColor: "var(--warning-soft)",
+    color: "var(--warning)",
   },
 };
 
 const modalOverlayStyle: CSSProperties = {
   position: "fixed",
   inset: 0,
-  backgroundColor: "var(--color-bg-overlay)",
+  backgroundColor: "var(--overlay-scrim)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -415,10 +551,9 @@ const modalCardStyle: CSSProperties = {
   maxHeight: "90vh",
   overflowY: "auto",
   borderRadius: "var(--radius-lg)",
-  border: "1px solid var(--color-border-strong)",
-  backgroundColor: "var(--color-bg-surface)",
+  border: "1px solid var(--popover)",
+  backgroundColor: "var(--card)",
   padding: "var(--space-5)",
-  boxShadow: "var(--shadow-elevation-2)",
   display: "flex",
   flexDirection: "column",
   gap: "var(--space-3)",

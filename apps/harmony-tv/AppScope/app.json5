@@ -1,0 +1,17 @@
+{
+  "app": {
+    "bundleName": "com.opentivi.harmonytv",
+    "vendor": "OpenTivi",
+    "versionCode": 1000000,
+    "versionName": "1.0.0",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name",
+    "distributedNotificationEnabled": true,
+    "keepAlive": false,
+    "minAPIVersion": 12,
+    "targetAPIVersion": 12,
+    "car": {
+      "minAPIVersion": 12
+    }
+  }
+}

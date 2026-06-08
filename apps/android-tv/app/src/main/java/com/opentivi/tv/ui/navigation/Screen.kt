@@ -1,0 +1,15 @@
+package com.opentivi.tv.ui.navigation
+
+sealed class Screen(val route: String) {
+    data object Home : Screen("home")
+    data object Search : Screen("search")
+    data object Channels : Screen("channels")
+    data object Favorites : Screen("favorites")
+    data object Recents : Screen("recents")
+    data object Sources : Screen("sources")
+    data object Settings : Screen("settings")
+    data object EpgSearch : Screen("epg_search")
+    data object Player : Screen("player/{channelId}") {
+        fun createRoute(channelId: Long) = "player/$channelId"
+    }
+}

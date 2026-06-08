@@ -63,6 +63,11 @@ const MIGRATIONS: &[(u32, &str, &str)] = &[
         "0012_channel_groups",
         include_str!("../../../migrations/0012_channel_groups.sql"),
     ),
+    (
+        13,
+        "0013_catchup",
+        include_str!("../../../migrations/0013_catchup.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
@@ -486,10 +491,10 @@ mod tests {
 
     /// P0c #1: migration 0012 creates the many-to-many group tables
     /// (`channel_groups`, `channel_group_links`) with the documented columns,
-    /// bumps MAX(version) to 12, and stays idempotent on a re-run.
+    /// registers migration version 12, and stays idempotent on a re-run.
     ///
     /// Catches: forgetting to create either table, missing columns, not
-    /// registering the migration (MAX(version) stays 11), or a non-idempotent
+    /// registering the migration (version 12 absent), or a non-idempotent
     /// CREATE that blows up on the second run_migrations.
     #[test]
     fn p0c_migration_creates_group_tables_and_bumps_version_to_12() {
@@ -521,10 +526,17 @@ mod tests {
             );
         }
 
-        let max_version: u32 = conn
-            .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
+        let p0c_applied: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _migrations WHERE version = 12",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
-        assert_eq!(max_version, 12, "highest migration version must be 12");
+        assert_eq!(
+            p0c_applied, 1,
+            "migration 12 (group tables) must be registered"
+        );
 
         // Second run must be idempotent (CREATE must not blow up).
         run_migrations(&conn).expect("second migration run should be idempotent");
@@ -642,5 +654,111 @@ mod tests {
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
         assert_eq!(max_version, MIGRATIONS.last().unwrap().0);
+    }
+
+    // ── P0d tests (TDD red): catchup 回看字段（迁移 0013） ────────────────────
+    //
+    // Expected to FAIL until P0d (migration 0013) is implemented. They assert only
+    // the externally observable schema contract: `channels` AND `sources` each gain
+    // four nullable catchup columns, and migration version 13 is registered. We
+    // deliberately assert `version = 13` is registered (NOT a global MAX(version)
+    // == 13) so adding later migrations does not regress this test.
+
+    const CATCHUP_COLUMNS: [&str; 4] = [
+        "catchup_type",
+        "catchup_source",
+        "catchup_days",
+        "catchup_hours",
+    ];
+
+    /// P0d A1: migration 0013 adds the four catchup columns to BOTH `channels` and
+    /// `sources`.
+    ///
+    /// Catches: forgetting to add the columns at all, only adding them to one of the
+    /// two tables, or misnaming a column.
+    #[test]
+    fn p0d_migration_adds_catchup_columns_to_channels_and_sources() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("migrations should run");
+
+        let channel_cols = table_columns(&conn, "channels");
+        for col in CATCHUP_COLUMNS {
+            assert!(
+                channel_cols.iter().any(|c| c == col),
+                "channels must have catchup column `{col}`, got: {channel_cols:?}"
+            );
+        }
+
+        let source_cols = table_columns(&conn, "sources");
+        for col in CATCHUP_COLUMNS {
+            assert!(
+                source_cols.iter().any(|c| c == col),
+                "sources must have catchup column `{col}`, got: {source_cols:?}"
+            );
+        }
+    }
+
+    /// P0d A2: all eight catchup columns must be nullable (notnull flag == 0) so
+    /// existing rows survive the ALTER and channels/sources without catchup info are
+    /// representable.
+    ///
+    /// Catches: declaring a catchup column NOT NULL, which would break the ALTER on
+    /// existing tables or force a non-null default.
+    #[test]
+    fn p0d_catchup_columns_are_nullable() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("migrations should run");
+
+        for table in ["channels", "sources"] {
+            let not_null: Vec<(String, i64)> = conn
+                .prepare(&format!("PRAGMA table_info({table})"))
+                .unwrap()
+                .query_map([], |row| Ok((row.get::<_, String>(1)?, row.get::<_, i64>(3)?)))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect();
+
+            for col in CATCHUP_COLUMNS {
+                let found = not_null
+                    .iter()
+                    .find(|(name, _)| name == col)
+                    .unwrap_or_else(|| panic!("{table}.{col} column must exist"));
+                assert_eq!(
+                    found.1, 0,
+                    "{table}.{col} must be nullable (notnull flag must be 0)"
+                );
+            }
+        }
+    }
+
+    /// P0d A3: migration version 13 (catchup) is registered + applied.
+    ///
+    /// Catches: forgetting to register the 0013 migration in MIGRATIONS (so the
+    /// columns are never created on a real upgrade).
+    #[test]
+    fn p0d_migration_13_is_registered() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("migrations should run");
+
+        let applied: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _migrations WHERE version = 13",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(applied, 1, "migration 13 (catchup columns) must be applied");
+    }
+
+    /// P0d A4: re-running migrations is idempotent (the catchup ALTER must not fail
+    /// on a second run).
+    ///
+    /// Catches: a non-idempotent ALTER (e.g. unconditional ADD COLUMN) that blows up
+    /// the second time run_migrations is invoked.
+    #[test]
+    fn p0d_catchup_migration_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("first migration run should succeed");
+        run_migrations(&conn).expect("second migration run should be idempotent");
     }
 }

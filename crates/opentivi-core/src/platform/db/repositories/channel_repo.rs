@@ -30,7 +30,7 @@ pub fn upsert_channels(
         let channel_id = if let Some(id) = existing {
             // Revive: clear deleted_time back to NULL (id unchanged).
             tx.execute(
-                "UPDATE channels SET name = ?1, normalized_name = ?2, channel_number = ?3, group_name = ?4, tvg_id = ?5, tvg_name = ?6, logo_url = ?7, stream_url = ?8, container_extension = ?9, is_live = ?10, deleted_time = NULL, updated_at = datetime('now') WHERE source_id = ?11 AND channel_key = ?12",
+                "UPDATE channels SET name = ?1, normalized_name = ?2, channel_number = ?3, group_name = ?4, tvg_id = ?5, tvg_name = ?6, logo_url = ?7, stream_url = ?8, container_extension = ?9, is_live = ?10, catchup_type = ?11, catchup_source = ?12, catchup_days = ?13, catchup_hours = ?14, deleted_time = NULL, updated_at = datetime('now') WHERE source_id = ?15 AND channel_key = ?16",
                 rusqlite::params![
                     ch.name,
                     norm,
@@ -42,6 +42,10 @@ pub fn upsert_channels(
                     ch.stream_url,
                     ch.container_extension,
                     ch.is_live as i64,
+                    ch.catchup_type,
+                    ch.catchup_source,
+                    ch.catchup_days,
+                    ch.catchup_hours,
                     source_id,
                     ch.channel_key,
                 ],
@@ -50,7 +54,7 @@ pub fn upsert_channels(
             id
         } else {
             tx.execute(
-                "INSERT INTO channels (channel_key, source_id, external_id, name, normalized_name, channel_number, group_name, tvg_id, tvg_name, logo_url, stream_url, container_extension, is_live, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, datetime('now'), datetime('now'))",
+                "INSERT INTO channels (channel_key, source_id, external_id, name, normalized_name, channel_number, group_name, tvg_id, tvg_name, logo_url, stream_url, container_extension, is_live, catchup_type, catchup_source, catchup_days, catchup_hours, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, datetime('now'), datetime('now'))",
                 rusqlite::params![
                     ch.channel_key,
                     source_id,
@@ -65,6 +69,10 @@ pub fn upsert_channels(
                     ch.stream_url,
                     ch.container_extension,
                     ch.is_live as i64,
+                    ch.catchup_type,
+                    ch.catchup_source,
+                    ch.catchup_days,
+                    ch.catchup_hours,
                 ],
             )?;
             imported += 1;
@@ -276,6 +284,10 @@ pub fn get_enabled_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel
             stream_url: row.get("stream_url")?,
             container_extension: row.get("container_extension")?,
             is_live: row.get::<_, i64>("is_live")? != 0,
+            catchup_type: None,
+            catchup_source: None,
+            catchup_days: None,
+            catchup_hours: None,
         })
     }))
 }
@@ -346,6 +358,10 @@ pub fn list_playback_candidates(conn: &Connection, channel_id: i64) -> AppResult
             stream_url: row.get("stream_url")?,
             container_extension: row.get("container_extension")?,
             is_live: row.get::<_, i64>("is_live")? != 0,
+            catchup_type: None,
+            catchup_source: None,
+            catchup_days: None,
+            catchup_hours: None,
         })
     })?;
 
@@ -400,6 +416,10 @@ mod tests {
             stream_url: stream_url.to_string(),
             container_extension: None,
             is_live: true,
+            catchup_type: None,
+            catchup_source: None,
+            catchup_days: None,
+            catchup_hours: None,
         }
     }
 
@@ -1137,5 +1157,131 @@ mod tests {
             !groups.iter().any(|g| g == "Sports;Live"),
             "list_groups must not surface the raw \"Sports;Live\" string, got {groups:?}"
         );
+    }
+
+    // ── P0d tests (TDD red): catchup 写路径（upsert_channels 落库） ────────────
+    //
+    // Expected to FAIL until P0d (migration 0013 + parse_m3u extracts catchup +
+    // upsert_channels persists catchup on BOTH the INSERT and the revive-UPDATE
+    // branch) is implemented.
+    //
+    // These reference the four catchup columns as raw SQL string literals so the
+    // test crate compiles before the columns / ParsedChannel fields exist; the
+    // "no such column" error then surfaces at RUNTIME (red), not as a compile error.
+    // We drive the catchup payload via parse_m3u so we never touch a not-yet-existing
+    // ParsedChannel.catchup_* field directly. (parse_m3u is already imported by the
+    // P0c group tests above in this module.)
+
+    /// Fetch the four catchup columns for a channel by source + channel_key, via a
+    /// raw string-literal SELECT (compiles before the columns exist).
+    fn channel_catchup(
+        conn: &Connection,
+        source_id: i64,
+        channel_key: &str,
+    ) -> (
+        Option<String>, // catchup_type
+        Option<String>, // catchup_source
+        Option<String>, // catchup_days
+        Option<i64>,    // catchup_hours
+    ) {
+        conn.query_row(
+            "SELECT catchup_type, catchup_source, catchup_days, catchup_hours \
+             FROM channels WHERE source_id = ?1 AND channel_key = ?2",
+            rusqlite::params![source_id, channel_key],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .expect("channel row must exist")
+    }
+
+    const CATCHUP_M3U: &str = "#EXTM3U\n\
+#EXTINF:-1 tvg-id=\"ch1\" catchup=\"append\" catchup-source=\"http://x?utc={utc}\" catchup-days=\"7\",Catchup Ch\n\
+http://a/1\n";
+
+    /// P0d D1: catchup parsed from M3U is persisted on the INSERT branch of
+    /// upsert_channels.
+    ///
+    /// Catches: an upsert that imports the channel but drops the catchup columns
+    /// (NULL) on first insert.
+    #[test]
+    fn p0d_upsert_persists_catchup_on_insert() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let channels = parse_m3u(CATCHUP_M3U).expect("m3u should parse");
+        upsert_channels(&conn, src, &channels).expect("upsert");
+
+        let (ctype, csource, cdays, chours) = channel_catchup(&conn, src, "ch1");
+        assert_eq!(ctype.as_deref(), Some("append"));
+        assert_eq!(csource.as_deref(), Some("http://x?utc={utc}"));
+        assert_eq!(cdays.as_deref(), Some("7"));
+        assert_eq!(chours, Some(168), "catchup_hours must be 7 * 24");
+    }
+
+    /// P0d D2: revive must NOT lose catchup. A tombstoned channel re-imported under
+    /// the same channel_key must have its catchup columns correctly populated by the
+    /// revive-UPDATE branch (id stays stable).
+    ///
+    /// Catches: an UPDATE/revive branch that updates name/url but forgets to write
+    /// the catchup columns, leaving them stale/NULL after a tombstone→reimport.
+    #[test]
+    fn p0d_revive_preserves_catchup() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        // Initial import of ch1 (with catchup) + a sibling ch2 so the next import
+        // (dropping ch1) tombstones ch1 rather than emptying the source.
+        let with_ch1 = parse_m3u(&format!(
+            "{CATCHUP_M3U}#EXTINF:-1 tvg-id=\"ch2\",Other\nhttp://a/2\n"
+        ))
+        .expect("parse");
+        upsert_channels(&conn, src, &with_ch1).expect("initial import");
+        let (id1, _) = channel_row(&conn, src, "ch1").expect("ch1 must exist");
+
+        // Re-import WITHOUT ch1 → ch1 tombstoned.
+        let only_ch2 =
+            parse_m3u("#EXTM3U\n#EXTINF:-1 tvg-id=\"ch2\",Other\nhttp://a/2\n").expect("parse");
+        upsert_channels(&conn, src, &only_ch2).expect("second import tombstones ch1");
+        let (_, deleted) = channel_row(&conn, src, "ch1").expect("ch1 row survives");
+        assert!(deleted.is_some(), "ch1 must be tombstoned");
+
+        // Re-import ch1 (revive via UPDATE branch).
+        let revive = parse_m3u(CATCHUP_M3U).expect("parse");
+        upsert_channels(&conn, src, &revive).expect("revive import");
+        let (id2, deleted2) = channel_row(&conn, src, "ch1").expect("ch1 revived");
+        assert_eq!(id1, id2, "revive must keep the same channels.id");
+        assert!(deleted2.is_none(), "revived channel must not stay tombstoned");
+
+        // Catchup must be correct after the revive-UPDATE branch.
+        let (ctype, csource, cdays, chours) = channel_catchup(&conn, src, "ch1");
+        assert_eq!(ctype.as_deref(), Some("append"), "revive must write catchup_type");
+        assert_eq!(
+            csource.as_deref(),
+            Some("http://x?utc={utc}"),
+            "revive must write catchup_source"
+        );
+        assert_eq!(cdays.as_deref(), Some("7"), "revive must write catchup_days");
+        assert_eq!(chours, Some(168), "revive must write catchup_hours");
+    }
+
+    /// P0d D3: a channel without catchup attributes lands all four columns as NULL.
+    ///
+    /// Catches: writing non-NULL garbage for catchup-less channels on insert.
+    #[test]
+    fn p0d_upsert_no_catchup_is_null() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let channels =
+            parse_m3u("#EXTM3U\n#EXTINF:-1 tvg-id=\"ch1\",Plain\nhttp://a/1\n").expect("parse");
+        upsert_channels(&conn, src, &channels).expect("upsert");
+
+        let (ctype, csource, cdays, chours) = channel_catchup(&conn, src, "ch1");
+        assert_eq!(ctype, None);
+        assert_eq!(csource, None);
+        assert_eq!(cdays, None);
+        assert_eq!(chours, None);
     }
 }

@@ -15,6 +15,10 @@ pub struct Channel {
     pub stream_url: String,
     pub container_extension: Option<String>,
     pub is_live: bool,
+    pub catchup_type: Option<String>,
+    pub catchup_source: Option<String>,
+    pub catchup_days: Option<String>,
+    pub catchup_hours: Option<i64>,
 }
 
 /// Intermediate representation from parsers before DB insertion.
@@ -31,4 +35,8 @@ pub struct ParsedChannel {
     pub stream_url: String,
     pub container_extension: Option<String>,
     pub is_live: bool,
+    pub catchup_type: Option<String>,
+    pub catchup_source: Option<String>,
+    pub catchup_days: Option<String>,
+    pub catchup_hours: Option<i64>,
 }

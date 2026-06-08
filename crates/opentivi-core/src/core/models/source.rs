@@ -56,4 +56,8 @@ pub struct Source {
     pub next_retry_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub catchup_type: Option<String>,
+    pub catchup_source: Option<String>,
+    pub catchup_days: Option<String>,
+    pub catchup_hours: Option<i64>,
 }

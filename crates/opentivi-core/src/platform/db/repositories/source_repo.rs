@@ -99,6 +99,10 @@ pub fn get_by_id(conn: &Connection, id: i64) -> AppResult<Option<Source>> {
             next_retry_at: row.get("next_retry_at")?,
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
+            catchup_type: None,
+            catchup_source: None,
+            catchup_days: None,
+            catchup_hours: None,
         })
     }))
 }

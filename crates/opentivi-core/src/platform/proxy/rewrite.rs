@@ -98,12 +98,33 @@ fn is_private_ip(ip: std::net::IpAddr) -> bool {
 }
 
 /// Rewrite URLs inside m3u8 playlists to go through the proxy.
-pub(super) fn rewrite_m3u8(content: &str, base_url: &str, proxy_port: u16) -> String {
+pub(super) fn rewrite_m3u8(
+    content: &str,
+    base_url: &str,
+    proxy_port: u16,
+    ua: Option<&str>,
+    referer: Option<&str>,
+) -> String {
     let base = base_url
         .rfind('/')
         .map(|i| &base_url[..=i])
         .unwrap_or(base_url);
     let proxy_base = format!("http://127.0.0.1:{}", proxy_port);
+
+    let header_suffix = {
+        let mut suffix = String::new();
+        if let Some(v) = ua {
+            if !v.is_empty() {
+                suffix.push_str(&format!("&ua={}", urlencoding::encode(v)));
+            }
+        }
+        if let Some(v) = referer {
+            if !v.is_empty() {
+                suffix.push_str(&format!("&referer={}", urlencoding::encode(v)));
+            }
+        }
+        suffix
+    };
 
     content
         .lines()
@@ -112,10 +133,20 @@ pub(super) fn rewrite_m3u8(content: &str, base_url: &str, proxy_port: u16) -> St
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 line.to_string()
             } else if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-                format!("{}/stream?url={}", proxy_base, urlencoding::encode(trimmed))
+                format!(
+                    "{}/stream?url={}{}",
+                    proxy_base,
+                    urlencoding::encode(trimmed),
+                    header_suffix
+                )
             } else {
                 let absolute = format!("{}{}", base, trimmed);
-                format!("{}/stream?url={}", proxy_base, urlencoding::encode(&absolute))
+                format!(
+                    "{}/stream?url={}{}",
+                    proxy_base,
+                    urlencoding::encode(&absolute),
+                    header_suffix
+                )
             }
         })
         .collect::<Vec<_>>()
@@ -170,7 +201,7 @@ segment2.ts";
 
     #[test]
     fn test_rewrite_absolute_urls() {
-        let result = rewrite_m3u8(M3U8_CONTENT, BASE_URL, TEST_PORT);
+        let result = rewrite_m3u8(M3U8_CONTENT, BASE_URL, TEST_PORT, None, None);
         let lines: Vec<&str> = result.lines().collect();
         assert_eq!(
             lines[4],
@@ -184,7 +215,7 @@ segment2.ts";
 
     #[test]
     fn test_rewrite_relative_urls() {
-        let result = rewrite_m3u8(M3U8_CONTENT, BASE_URL, TEST_PORT);
+        let result = rewrite_m3u8(M3U8_CONTENT, BASE_URL, TEST_PORT, None, None);
         let lines: Vec<&str> = result.lines().collect();
         let expected_absolute = "http://example.com/live/segment2.ts";
         assert_eq!(
@@ -199,7 +230,7 @@ segment2.ts";
 
     #[test]
     fn test_rewrite_preserves_comments() {
-        let result = rewrite_m3u8(M3U8_CONTENT, BASE_URL, TEST_PORT);
+        let result = rewrite_m3u8(M3U8_CONTENT, BASE_URL, TEST_PORT, None, None);
         let lines: Vec<&str> = result.lines().collect();
         assert_eq!(lines[0], "#EXTM3U");
         assert_eq!(lines[1], "#EXT-X-VERSION:3");
@@ -211,7 +242,7 @@ segment2.ts";
     #[test]
     fn test_rewrite_preserves_empty_lines() {
         let content = "#EXTM3U\n\n#EXTINF:10,\nhttp://example.com/seg.ts";
-        let result = rewrite_m3u8(content, BASE_URL, TEST_PORT);
+        let result = rewrite_m3u8(content, BASE_URL, TEST_PORT, None, None);
         let lines: Vec<&str> = result.lines().collect();
         assert_eq!(lines[1], "");
     }
@@ -248,5 +279,40 @@ segment2.ts";
         assert!(validate_stream_url("http://10.1.2.3/stream.m3u8").is_err());
         assert!(validate_stream_url("http://192.168.0.10/stream.m3u8").is_err());
         assert!(validate_stream_url("http://172.16.5.1/stream.m3u8").is_err());
+    }
+
+    // T4 rewrite 透传：ua/referer 非空时，重写后的子分片 …/stream?url=… 必须追加 &ua=/&referer=；
+    //     为空(None,None)时必须不含 ua=/referer=（向后兼容）。
+    //     抓的 bug：子分片请求丢失 UA/Referer 导致上游 403，或空值仍误注入污染 URL。
+    #[test]
+    fn test_rewrite_passes_through_ua_and_referer() {
+        // X/Y 选无需 urlencode 的值以简化断言
+        let result = rewrite_m3u8(M3U8_CONTENT, BASE_URL, TEST_PORT, Some("X"), Some("Y"));
+        let lines: Vec<&str> = result.lines().collect();
+        assert!(
+            lines[4].contains("ua=X"),
+            "child segment line must carry ua=X, got: {}",
+            lines[4]
+        );
+        assert!(
+            lines[4].contains("referer=Y"),
+            "child segment line must carry referer=Y, got: {}",
+            lines[4]
+        );
+    }
+
+    #[test]
+    fn test_rewrite_omits_ua_and_referer_when_absent() {
+        let result = rewrite_m3u8(M3U8_CONTENT, BASE_URL, TEST_PORT, None, None);
+        assert!(
+            !result.contains("ua="),
+            "no ua= when absent (backward compat), got: {}",
+            result
+        );
+        assert!(
+            !result.contains("referer="),
+            "no referer= when absent (backward compat), got: {}",
+            result
+        );
     }
 }

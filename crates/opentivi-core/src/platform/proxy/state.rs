@@ -53,6 +53,37 @@ impl CachedPlaylist {
     }
 }
 
+pub(super) fn stream_headers(
+    ua: &Option<String>,
+    referer: &Option<String>,
+) -> Vec<(reqwest::header::HeaderName, reqwest::header::HeaderValue)> {
+    let mut headers = Vec::new();
+    if let Some(v) = ua {
+        if !v.is_empty() {
+            if let Ok(value) = reqwest::header::HeaderValue::from_str(v) {
+                headers.push((reqwest::header::USER_AGENT, value));
+            }
+        }
+    }
+    if let Some(v) = referer {
+        if !v.is_empty() {
+            if let Ok(value) = reqwest::header::HeaderValue::from_str(v) {
+                headers.push((reqwest::header::REFERER, value));
+            }
+        }
+    }
+    headers
+}
+
+pub(super) fn playlist_cache_key(url: &str, ua: Option<&str>, referer: Option<&str>) -> String {
+    format!(
+        "{}\x00{}\x00{}",
+        url,
+        ua.unwrap_or(""),
+        referer.unwrap_or("")
+    )
+}
+
 pub(super) fn build_proxy_http_client() -> reqwest::Client {
     let mut default_headers = reqwest::header::HeaderMap::new();
     default_headers.insert(
@@ -69,21 +100,21 @@ pub(super) fn build_proxy_http_client() -> reqwest::Client {
 
 pub(super) async fn get_cached_playlist_response(
     state: &ProxyState,
-    url: &str,
+    key: &str,
 ) -> Option<warp::reply::Response> {
     let now = Instant::now();
     {
         let cache = state.playlist_cache.read().await;
-        if let Some(item) = cache.get(url) {
+        if let Some(item) = cache.get(key) {
             if item.expires_at > now {
                 return Some(build_cached_playlist_response(item));
             }
         }
     }
     let mut cache = state.playlist_cache.write().await;
-    if let Some(item) = cache.get(url) {
+    if let Some(item) = cache.get(key) {
         if item.expires_at <= now {
-            cache.remove(url);
+            cache.remove(key);
         } else {
             return Some(build_cached_playlist_response(item));
         }
@@ -101,9 +132,9 @@ fn build_cached_playlist_response(item: &CachedPlaylist) -> warp::reply::Respons
     reply
 }
 
-pub(super) async fn cache_playlist(state: &ProxyState, url: &str, item: CachedPlaylist) {
+pub(super) async fn cache_playlist(state: &ProxyState, key: &str, item: CachedPlaylist) {
     let mut cache = state.playlist_cache.write().await;
-    cache.insert(url.to_string(), item);
+    cache.insert(key.to_string(), item);
     if cache.len() <= PLAYLIST_CACHE_MAX_ENTRIES {
         return;
     }
@@ -119,7 +150,11 @@ pub(super) async fn cache_playlist(state: &ProxyState, url: &str, item: CachedPl
 }
 
 pub(super) async fn warm_playlist_cache(state: ProxyState, url: String) -> Result<(), ()> {
-    if get_cached_playlist_response(&state, &url).await.is_some() {
+    let cache_key = playlist_cache_key(&url, None, None);
+    if get_cached_playlist_response(&state, &cache_key)
+        .await
+        .is_some()
+    {
         return Ok(());
     }
     let response = state.client.get(&url).send().await.map_err(|_| ())?;
@@ -135,10 +170,10 @@ pub(super) async fn warm_playlist_cache(state: ProxyState, url: String) -> Resul
     }
     let body = response.bytes().await.map_err(|_| ())?;
     let text = String::from_utf8_lossy(&body);
-    let rewritten = rewrite_m3u8(&text, &url, state.port).into_bytes();
+    let rewritten = rewrite_m3u8(&text, &url, state.port, None, None).into_bytes();
     cache_playlist(
         &state,
-        &url,
+        &cache_key,
         CachedPlaylist::new(status, content_type, rewritten),
     )
     .await;
@@ -223,4 +258,68 @@ pub(super) async fn maybe_schedule_host_warm(state: ProxyState, raw_url: &str) {
     tokio::spawn(async move {
         let _ = client.head(origin).send().await;
     });
+}
+
+#[cfg(test)]
+mod proxy_header_tests {
+    use super::*;
+    use reqwest::header::{REFERER, USER_AGENT};
+
+    // T1 注入：非空 ua/referer 必须产出白名单 header（防 SSRF 放大，固定用 reqwest 常量做 key）
+    #[test]
+    fn test_stream_headers_injects_ua_and_referer() {
+        let headers = stream_headers(
+            &Some("AgentX".to_string()),
+            &Some("http://ref/".to_string()),
+        );
+        assert!(
+            headers
+                .iter()
+                .any(|(name, value)| *name == USER_AGENT && value.to_str().unwrap() == "AgentX"),
+            "expected (USER_AGENT, \"AgentX\") in {:?}",
+            headers
+        );
+        assert!(
+            headers
+                .iter()
+                .any(|(name, value)| *name == REFERER && value.to_str().unwrap() == "http://ref/"),
+            "expected (REFERER, \"http://ref/\") in {:?}",
+            headers
+        );
+    }
+
+    // T2 不注入：None 与空串都视为"无"，不能产出任何 header
+    #[test]
+    fn test_stream_headers_none_and_empty_produce_nothing() {
+        assert!(
+            stream_headers(&None, &None).is_empty(),
+            "None/None must yield empty vec"
+        );
+        assert!(
+            stream_headers(&Some(String::new()), &Some(String::new())).is_empty(),
+            "empty strings must be treated as absent (empty vec)"
+        );
+    }
+
+    // T3 cache-key 分离：核心串台不变量——不同 ua 必须得到不同 key，相同输入稳定，
+    //     有 ua 与无 ua 必须区分。抓的 bug：playlist 缓存忽略 header 导致不同 UA 互相串台。
+    #[test]
+    fn test_playlist_cache_key_separates_by_header() {
+        let u = "http://example.com/live/playlist.m3u8";
+        assert_ne!(
+            playlist_cache_key(u, Some("AAA"), None),
+            playlist_cache_key(u, Some("BBB"), None),
+            "different ua must produce different cache keys"
+        );
+        assert_eq!(
+            playlist_cache_key(u, None, None),
+            playlist_cache_key(u, None, None),
+            "same inputs must produce a stable cache key"
+        );
+        assert_ne!(
+            playlist_cache_key(u, Some("AAA"), None),
+            playlist_cache_key(u, None, None),
+            "presence of ua must change the cache key"
+        );
+    }
 }

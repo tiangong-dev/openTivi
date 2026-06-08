@@ -12,8 +12,8 @@ use rewrite::{
     rewrite_m3u8, validate_stream_url,
 };
 use state::{
-    cache_playlist, get_cached_playlist_response, maybe_schedule_host_warm,
-    prefetch_playlist_segments, warm_playlist_cache, CachedPlaylist, ProxyState,
+    cache_playlist, get_cached_playlist_response, maybe_schedule_host_warm, playlist_cache_key,
+    prefetch_playlist_segments, stream_headers, warm_playlist_cache, CachedPlaylist, ProxyState,
 };
 
 /// Start a local HTTP proxy server for streaming.
@@ -60,6 +60,15 @@ async fn handle_proxy(
         }
     };
 
+    let ua = params
+        .get("ua")
+        .filter(|v| !v.is_empty())
+        .cloned();
+    let referer = params
+        .get("referer")
+        .filter(|v| !v.is_empty())
+        .cloned();
+
     eprintln!("[proxy] /stream request url={}", url);
 
     if let Err(reason) = validate_stream_url(&url) {
@@ -72,7 +81,9 @@ async fn handle_proxy(
 
     maybe_schedule_host_warm(state.clone(), &url).await;
 
-    if let Some(cached) = get_cached_playlist_response(&state, &url).await {
+    let cache_key = playlist_cache_key(&url, ua.as_deref(), referer.as_deref());
+
+    if let Some(cached) = get_cached_playlist_response(&state, &cache_key).await {
         eprintln!("[proxy] serving cached playlist for {}", url);
         return Ok(cached);
     }
@@ -81,7 +92,11 @@ async fn handle_proxy(
     let is_playlist = is_playlist_url(&url);
 
     if is_playlist {
-        let response = match state.client.get(&url).send().await {
+        let mut rb = state.client.get(&url);
+        for (k, v) in stream_headers(&ua, &referer) {
+            rb = rb.header(k, v);
+        }
+        let response = match rb.send().await {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("[proxy] fetch error: {}", e);
@@ -115,11 +130,11 @@ async fn handle_proxy(
         };
 
         let text = String::from_utf8_lossy(&body);
-        let rewritten = rewrite_m3u8(&text, &url, state.port);
+        let rewritten = rewrite_m3u8(&text, &url, state.port, ua.as_deref(), referer.as_deref());
         let body_bytes = rewritten.into_bytes();
         cache_playlist(
             &state,
-            &url,
+            &cache_key,
             CachedPlaylist::new(status_u16, content_type.clone(), body_bytes.clone()),
         )
         .await;
@@ -134,7 +149,14 @@ async fn handle_proxy(
     const CHUNK_THRESHOLD: u64 = 1_000_000;
     const CONCURRENT_CHUNKS: u64 = 4;
 
-    let head_resp = match state.client.head(&url).send().await {
+    let head_resp = {
+        let mut rb = state.client.head(&url);
+        for (k, v) in stream_headers(&ua, &referer) {
+            rb = rb.header(k, v);
+        }
+        rb.send().await
+    };
+    let head_resp = match head_resp {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[proxy] HEAD error: {}", e);
@@ -188,14 +210,17 @@ async fn handle_proxy(
             };
             let client = state.client.clone();
             let segment_url = url.clone();
+            let ua = ua.clone();
+            let referer = referer.clone();
             handles.push(tokio::spawn(async move {
                 let range = format!("bytes={}-{}", start, end);
-                let resp = client
+                let mut rb = client
                     .get(&segment_url)
-                    .header(reqwest::header::RANGE, &range)
-                    .send()
-                    .await
-                    .map_err(|e| e.to_string())?;
+                    .header(reqwest::header::RANGE, &range);
+                for (k, v) in stream_headers(&ua, &referer) {
+                    rb = rb.header(k, v);
+                }
+                let resp = rb.send().await.map_err(|e| e.to_string())?;
                 resp.bytes().await.map_err(|e| e.to_string())
             }));
         }
@@ -238,7 +263,14 @@ async fn handle_proxy(
 
     // Fallback: single GET, stream through
     eprintln!("[proxy] fallback stream for {}", &url[..url.len().min(80)]);
-    let response = match state.client.get(&url).send().await {
+    let response = {
+        let mut rb = state.client.get(&url);
+        for (k, v) in stream_headers(&ua, &referer) {
+            rb = rb.header(k, v);
+        }
+        rb.send().await
+    };
+    let response = match response {
         Ok(r) => r,
         Err(e) => {
             return Ok(warp::reply::with_status(

@@ -55,6 +55,13 @@ pub fn run() {
             commands::runtime_log::clear_runtime_logs,
             commands::update::check_app_update,
             commands::remote::get_remote_config_info,
+            commands::backup::export_backup,
+            commands::backup::import_backup,
+            commands::reminders::add_reminder,
+            commands::reminders::remove_reminder,
+            commands::reminders::list_reminders,
+            commands::reminders::due_reminders,
+            commands::reminders::mark_reminder_fired,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

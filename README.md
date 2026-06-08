@@ -1,6 +1,6 @@
 # OpenTivi
 
-Local IPTV client for desktop, Android TV, and iOS. No cloud, no server, everything runs on your machine.
+Local IPTV client for desktop, Android (TV & phone), iOS, and HarmonyOS (TV & phone). No cloud, no server, everything runs on your machine.
 
 ## Features (v0.1)
 
@@ -15,17 +15,20 @@ Local IPTV client for desktop, Android TV, and iOS. No cloud, no server, everyth
 
 ## Tech Stack
 
-| Layer | Desktop | Android TV | iOS |
-|-------|---------|------------|-----|
-| App framework | Tauri 2 | Jetpack Compose for TV | SwiftUI |
-| Frontend | React 18 + TypeScript + Vite | Kotlin + Compose (`androidx.tv`) | Swift + SwiftUI |
-| Backend | Rust (`opentivi-core` crate) | Rust (`opentivi-core` via UniFFI) | Rust (`opentivi-core` via UniFFI) |
-| Database | SQLite via rusqlite | SQLite via rusqlite | SQLite via rusqlite |
-| XML parsing | quick-xml | quick-xml (shared) | quick-xml (shared) |
-| HTTP | reqwest | reqwest (shared) | reqwest (shared) |
-| Stream proxy | warp (localhost) | warp (localhost) | warp (localhost) |
-| Video playback | hls.js + mpegts.js | Media3 ExoPlayer | AVPlayer |
-| DI | — | Hilt | — |
+All six clients share the same Rust core (`opentivi-core`): SQLite via `rusqlite`,
+XMLTV parsing via `quick-xml`, remote fetching via `reqwest`, and a `warp` localhost
+stream proxy. They differ in UI framework and how they bind to the core:
+
+| Platform | App framework / UI | Language | Core binding (FFI) | Video playback | DI |
+|----------|--------------------|----------|--------------------|----------------|----|
+| Desktop | Tauri 2 | React 18 + TypeScript + Vite | Rust direct (Tauri commands) | hls.js + mpegts.js | — |
+| Android TV | Jetpack Compose for TV (`androidx.tv`) | Kotlin | UniFFI 0.28 (JNI, `cdylib`) | Media3 ExoPlayer | Hilt |
+| Android phone | Jetpack Compose + Material 3 | Kotlin | UniFFI 0.28 (JNI, `cdylib`) | Media3 ExoPlayer (+HLS, FFmpeg decoder) | Hilt |
+| iOS | SwiftUI | Swift | UniFFI 0.28 (`staticlib`) | AVPlayer | — |
+| HarmonyOS TV | ArkUI / ArkTS | ArkTS | NAPI via `napi-ohos` (`cdylib` `.so`) | AVPlayer + XComponent (SURFACE) | — |
+| HarmonyOS phone | ArkUI / ArkTS | ArkTS | NAPI via `napi-derive` (`cdylib` `.so`) | AVPlayer + XComponent (SURFACE) | — |
+
+> Database is SQLite via `rusqlite` (bundled) on every platform — it lives in the shared core, not per-client.
 
 ## Repository Structure
 
@@ -51,16 +54,48 @@ opentivi/
 │   │           ├── lib.rs      # FFI function implementations
 │   │           └── opentivi.udl # UniFFI interface definition
 │   │
-│   └── ios/                    # iOS app (SwiftUI)
-│       ├── rust/               # UniFFI bridge crate (Rust → Swift)
-│       │   └── src/
-│       │       ├── lib.rs      # FFI function implementations
-│       │       └── opentivi.udl # UniFFI interface definition
-│       └── OpenTivi/           # SwiftUI application
-│           ├── App/            # App entry point
-│           ├── Views/          # SwiftUI screens & components
-│           ├── Player/         # AVPlayer wrapper
-│           └── Generated/      # UniFFI-generated Swift bindings
+│   ├── android-phone/          # Android phone app (Jetpack Compose + Material 3)
+│   │   ├── app/                # Kotlin/Compose application module
+│   │   │   └── src/main/java/com/opentivi/phone/
+│   │   │       ├── ui/         # Compose screens (channels, sources, player, …)
+│   │   │       ├── viewmodel/  # ViewModels (StateFlow)
+│   │   │       └── player/     # Media3 ExoPlayer wrapper (TiviPlayer)
+│   │   └── rust/               # UniFFI bridge crate (Rust → Kotlin JNI)
+│   │       └── src/
+│   │           ├── lib.rs      # FFI function implementations
+│   │           └── opentivi.udl # UniFFI interface definition
+│   │
+│   ├── ios/                    # iOS app (SwiftUI)
+│   │   ├── rust/               # UniFFI bridge crate (Rust → Swift)
+│   │   │   └── src/
+│   │   │       ├── lib.rs      # FFI function implementations
+│   │   │       └── opentivi.udl # UniFFI interface definition
+│   │   └── OpenTivi/           # SwiftUI application
+│   │       ├── App/            # App entry point
+│   │       ├── Views/          # SwiftUI screens & components
+│   │       ├── Player/         # AVPlayer wrapper
+│   │       └── Generated/      # UniFFI-generated Swift bindings
+│   │
+│   ├── harmony-tv/             # HarmonyOS TV app (ArkUI / ArkTS)
+│   │   ├── entry/src/main/ets/
+│   │   │   ├── pages/          # ArkTS pages (Home, Channels, Player, …)
+│   │   │   ├── components/     # ArkUI components (ChannelCard, PlayerOverlay, …)
+│   │   │   ├── viewmodels/     # ArkTS view models
+│   │   │   ├── bridge/         # RustBridge.ets — NAPI binding to libopentivi.so
+│   │   │   └── models/         # Shared TS types
+│   │   └── rust/               # NAPI bridge crate (napi-ohos → ArkTS, cdylib .so)
+│   │       └── lib.rs          # #[napi] function implementations
+│   │
+│   └── harmony-phone/          # HarmonyOS phone app (ArkUI / ArkTS)
+│       ├── entry/src/main/ets/
+│       │   ├── pages/          # ArkTS pages (Index, PlayerPage)
+│       │   ├── views/          # ArkUI views (PlayerView, …)
+│       │   ├── components/     # ArkUI components
+│       │   ├── viewmodels/     # ArkTS view models
+│       │   ├── bridge/         # RustBridge.ets — NAPI binding to libopentivi.so
+│       │   └── models/         # Shared TS types
+│       └── rust/               # NAPI bridge crate (napi-derive → ArkTS, cdylib .so)
+│           └── lib.rs          # #[napi] function implementations
 │
 ├── crates/
 │   └── opentivi-core/          # Shared Rust business logic & infrastructure
@@ -122,9 +157,15 @@ opentivi/
          stream traffic
 ```
 
+The diagram above shows three representative clients. The remaining three reuse the
+same shape against the same `opentivi-core`:
+
+- **Android phone** mirrors Android TV — Compose (Material 3) → ViewModel → UniFFI (JNI) → core, with Media3 ExoPlayer.
+- **HarmonyOS TV / phone** bridge through **NAPI** instead of UniFFI: ArkTS pages/components → ViewModel → `RustBridge.ets` → `libopentivi.so` (`napi-ohos` / `napi-derive`) → core, with video rendered via AVPlayer on an XComponent surface.
+
 All Tauri commands return `Result<T, AppError>`. Errors are serialized as `{ kind, message }` to the frontend.
 
-Android FFI functions use `[Throws=string]` — all errors are serialized to plain strings via UniFFI.
+Android/iOS FFI functions use `[Throws=OpenTiviError]` — errors are surfaced through UniFFI; HarmonyOS NAPI functions return `napi::Result`.
 
 ## Getting Started
 

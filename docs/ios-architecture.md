@@ -9,7 +9,7 @@ OpenTivi iOS 客户端与 Desktop、Android TV 共享同一 Rust 后端（`opent
 | UI | SwiftUI (iOS 16+) |
 | 导航 | TabView + NavigationStack |
 | 状态管理 | @MainActor ViewModel + @Published |
-| 播放器 | AVPlayer + AVKit `VideoPlayer` |
+| 播放器 | VLCKit（VLCKitSPM，`vlckit-spm` 3.6.0；直连，非 AVPlayer） |
 | Rust 桥接 | UniFFI 0.28 → 自动生成 Swift bindings |
 | 共享后端 | `opentivi-core` crate (SQLite + reqwest + warp proxy) |
 | Deployment Target | iOS 16.0 |
@@ -47,7 +47,7 @@ opentivi/
 │           │   ├── SettingsViewModel.swift
 │           │   └── PlayerViewModel.swift
 │           ├── Player/
-│           │   └── StreamPlayer.swift    # AVPlayer wrapper (proxy 路由)
+│           │   └── StreamPlayer.swift    # VLCMediaPlayer wrapper（VLCKitSPM；当前直连上游裸 URL，未走 core 代理）
 │           ├── Views/
 │           │   ├── Channels/            # ChannelsView, ChannelRow, ChannelDetailView
 │           │   ├── Favorites/           # FavoritesView (LazyVGrid)
@@ -117,7 +117,7 @@ static ENGINE: OnceLock<Mutex<EngineState>> = OnceLock::new();
 
 struct EngineState {
     db: rusqlite::Connection,
-    proxy_port: u16,
+    // 注：iOS 当前未持有 proxy_port——见 §4.2 与 §6 的代理现状说明
 }
 ```
 
@@ -126,14 +126,15 @@ struct EngineState {
 ```
 OpenTiviApp.init()
     └─► RustBridge.shared.initialize(dataDir:)
-            └─► init_engine(data_dir)        // Swift → FFI → Rust
+            └─► init_engine(data_dir)        // Swift → FFI → Rust（apps/ios/rust/src/lib.rs:167-221）
                     ├─► set_data_dir()         // 设置 iOS 文档目录
                     ├─► open_connection()       // 打开 SQLite
                     ├─► run_migrations()        // 执行 migration
                     ├─► backfill_normalized_names()
-                    ├─► start_proxy_server()    // 启动 127.0.0.1 warp proxy
-                    └─► 返回 proxy_port
+                    └─► 返回 ()                 // 注：当前未启动 core 代理、不返回 proxy_port
 ```
+
+> **代理现状（与 android-tv 不一致）**：iOS 的 `init_engine` 当前**不调** `start_proxy_server()`、Engine 无 `proxy_port`、未导出 `get_proxy_port`。播放器（VLCKit）直吃上游裸 URL，无法注入 Referer/UA/Cookie。接入 core 代理出口是路线图的待办项（见 `docs/multiplatform-plan.md` §3 P0f / §4 iOS 决策点）。
 
 ### 4.3 FFI 接口
 
@@ -196,7 +197,7 @@ Desktop 使用左侧 200px 侧边栏 → iOS 改为底部 TabBar（iOS 移动端
 | 最近 | `RecentsView` | List + pull-to-refresh |
 | 数据源 | `SourcesView` | List + AddSourceView (sheet) + EditSourceView |
 | 设置 | `SettingsView` | Form |
-| 播放 | `PlayerView` | 全屏 AVPlayer + PlayerOverlay (5s 自动隐藏) |
+| 播放 | `PlayerView` | 全屏 VLCVideoView（VLCMediaPlayer.drawable）+ PlayerOverlay (5s 自动隐藏) |
 | 导入 | `AddSourceView` | Form + 分段 Picker (M3U / Xtream) |
 
 ### 5.3 频道列表
@@ -238,7 +239,7 @@ Desktop 使用左侧 200px 侧边栏 → iOS 改为底部 TabBar（iOS 移动端
 ┌──────────────────────────────────────────┐
 │ [▼ 关闭]                                 │
 │                                          │
-│           AVPlayer (全屏视频)              │
+│         VLCVideoView (全屏视频)            │
 │                                          │
 │                                          │
 │ Channel Name                             │
@@ -270,29 +271,29 @@ Desktop 使用左侧 200px 侧边栏 → iOS 改为底部 TabBar（iOS 移动端
 
 ## 6. 播放器
 
-Desktop 使用 `hls.js` + `mpegts.js` 在 WebView 中播放 → iOS 改用 AVPlayer 原生硬解。
+Desktop 使用 `hls.js` + `mpegts.js` 在 WebView 中播放 → iOS **当前使用 VLCKit 直连**（`VLCKitSPM`，`VLCMediaPlayer`），解码覆盖最全（含 AC3/EAC3/DTS/MKV、TS+MP2 音频）。全工程无 `AVPlayer`。
 
-流量路径与 Desktop / Android TV 一致：
+**当前流量路径——直连，未经 core 代理**：
 
 ```
-AVPlayer ──HTTP──► Rust proxy (127.0.0.1:port) ──HTTP──► 远端流媒体服务器
-                   /stream?url=...
+VLCMediaPlayer ──HTTP──► 远端流媒体服务器（裸 URL）
+（注：未走 127.0.0.1 Rust proxy；无法注入 Referer/UA/Cookie——见 §4.2 代理现状）
 ```
 
 ```swift
-class StreamPlayer: ObservableObject {
-    let player = AVPlayer()
+final class StreamPlayer: NSObject, ObservableObject {
+    private let mediaPlayer: VLCMediaPlayer    // VLCKitSPM
 
     func play(streamUrl: String) {
-        let proxied = "http://127.0.0.1:\(proxyPort)/stream?url=\(encoded)"
-        let item = AVPlayerItem(url: URL(string: proxied)!)
-        player.replaceCurrentItem(with: item)
-        player.play()
+        mediaPlayer.media = VLCMedia(url: URL(string: streamUrl)!)
+        mediaPlayer.play()
     }
 }
 ```
 
-通过 `AVPlayer.observe(\.timeControlStatus)` 监听播放状态变化。
+通过 VLC 的状态回调（buffering / playing）驱动 `@Published` 状态与码率展示。
+
+> **架构决策待拍板**：iOS 播放层"VLC-only(现状) vs 回退 AVPlayer 优先 + 代理 + VLC 兜底"是一个需决策的岔路，含 App Store LGPL/GPL 合规这一最高残余风险。权衡、推荐与路线见 `docs/multiplatform-plan.md` §4 iOS 决策点。
 
 ---
 
@@ -358,11 +359,10 @@ opentivi-core
     ├── services → parsers, models
     ├── repositories → SQLite
     ├── http::client → reqwest
-    └── proxy → warp (127.0.0.1)
-              │
-              ▼
-         远端 IPTV 服务器
+    └── proxy → warp (127.0.0.1)   // core 具备，但 iOS 端当前未启动；播放走下方直连
 ```
+
+> 注：上图是 core 能力全貌。iOS **当前播放不经 warp proxy**——VLCKit 直连远端 IPTV 服务器（见 §6）；接入代理是待办（§4.2 / `multiplatform-plan.md` P0f）。
 
 ---
 
@@ -372,9 +372,9 @@ opentivi-core
 |------|------|------|
 | Rust 复用方式 | UniFFI crate (staticlib) | 类型安全、自动 Swift 绑定、无需手写 C bridge |
 | DTO 共享 | `opentivi-core::dto` | 消除跨层耦合，三端共用 |
-| 播放器 | AVPlayer | iOS 原生硬解 HLS/MPEG-TS、系统级集成、低功耗 |
-| 流代理 | 复用 Rust warp proxy | 架构一致、CORS 处理、playlist URL rewrite |
-| UI 框架 | SwiftUI | Apple 原生、声明式 UI、与 AVKit 深度集成 |
+| 播放器 | VLCKit（现状；待拍板，见 `multiplatform-plan.md` §4） | 解码覆盖最全（AC3/EAC3/DTS/MKV）；代价：LGPL/GPL 合规 + 包体 + 无 PiP/后台原生配套 |
+| 流代理 | **当前未接入**（直连裸 URL） | android-tv 复用 Rust warp proxy；iOS 接入是待办（§4.2 / P0f），缺它无法注入 Referer/UA/Cookie |
+| UI 框架 | SwiftUI | Apple 原生、声明式 UI |
 | 导航 | 底部 TabBar | iOS 移动端最佳实践 |
 | 状态管理 | @MainActor ViewModel + @Published | SwiftUI 标准、线程安全、自动 UI 刷新 |
 | 迷你播放器 | MiniPlayerBar + fullScreenCover | 参考 Apple Music / Podcasts 模式 |

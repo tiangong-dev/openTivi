@@ -481,6 +481,8 @@ mod p0e_tests {
             catchup_source: None,
             catchup_days: None,
             catchup_hours: None,
+            user_agent: None,
+            referer: None,
         }
     }
 

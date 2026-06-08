@@ -75,6 +75,8 @@ pub fn parse_xtream_live_streams(
                 catchup_source: None,
                 catchup_days,
                 catchup_hours,
+                user_agent: None,
+                referer: None,
             })
         })
         .collect();

@@ -73,6 +73,11 @@ const MIGRATIONS: &[(u32, &str, &str)] = &[
         "0014_fts5_search",
         include_str!("../../../migrations/0014_fts5_search.sql"),
     ),
+    (
+        15,
+        "0015_channel_http_headers",
+        include_str!("../../../migrations/0015_channel_http_headers.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
@@ -918,5 +923,98 @@ mod tests {
             ep_hits >= 1,
             "migration 0014 must rebuild-backfill pre-existing epg_programs into epg_programs_fts"
         );
+    }
+
+    // ── P0f-core tests (TDD red): UA/referer columns on channels + sources ──────
+    //
+    // Expected to FAIL until P0f-core migration 0015 is implemented. These are
+    // RUNTIME-red, COMPILE-clean: they only touch DB schema via PRAGMA/SQL string
+    // literals (no not-yet-existing Rust fields), so the test crate still compiles.
+    //
+    // Red before impl: `table_columns` won't contain user_agent/referer (assert
+    // fails), and `_migrations WHERE version = 15` returns 0.
+
+    /// P0f #1: migration 0015 adds nullable `user_agent` / `referer` TEXT columns
+    /// to BOTH `channels` and `sources`, registers version 15 (counted directly,
+    /// not via global MAX), and stays idempotent on a second run.
+    ///
+    /// Catches: forgetting either table, forgetting either column, not registering
+    /// the migration at version 15, or a non-idempotent ALTER that blows up on the
+    /// second run_migrations.
+    #[test]
+    fn p0f_migration_adds_ua_referer_columns_and_registers_version_15() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("first migration run should succeed");
+
+        let channel_cols = table_columns(&conn, "channels");
+        assert!(
+            channel_cols.contains(&"user_agent".to_string()),
+            "channels must have a user_agent column after 0015"
+        );
+        assert!(
+            channel_cols.contains(&"referer".to_string()),
+            "channels must have a referer column after 0015"
+        );
+
+        let source_cols = table_columns(&conn, "sources");
+        assert!(
+            source_cols.contains(&"user_agent".to_string()),
+            "sources must have a user_agent column after 0015"
+        );
+        assert!(
+            source_cols.contains(&"referer".to_string()),
+            "sources must have a referer column after 0015"
+        );
+
+        // Version 15 must be registered specifically (not inferred from MAX).
+        let v15_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _migrations WHERE version = 15",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(v15_count, 1, "migration version 15 must be registered exactly once");
+
+        // Idempotency: second run must not fail (e.g. duplicate-column ALTER).
+        run_migrations(&conn).expect("second migration run should be idempotent");
+        let v15_count_again: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _migrations WHERE version = 15",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(v15_count_again, 1, "re-running must not duplicate version 15");
+    }
+
+    /// P0f #2: the new UA/referer columns are nullable — a fresh channel/source row
+    /// inserted without them reads back NULL (not a NOT NULL violation, not a bogus
+    /// default).
+    ///
+    /// Catches: declaring the columns NOT NULL or with a non-NULL default, which
+    /// would silently break legacy rows / parsers that leave them unset.
+    #[test]
+    fn p0f_ua_referer_columns_are_nullable() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("migrations should run");
+
+        conn.execute(
+            "INSERT INTO sources (kind, name, location, created_at, updated_at) \
+             VALUES ('m3u', 'S', 'http://example.com/s.m3u', datetime('now'), datetime('now'))",
+            [],
+        )
+        .expect("source insert without ua/referer must succeed (columns nullable)");
+        let source_id = conn.last_insert_rowid();
+
+        let (ua, referer): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT user_agent, referer FROM sources WHERE id = ?1",
+                [source_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("source row must be selectable");
+        assert_eq!(ua, None, "unset source.user_agent must read back NULL");
+        assert_eq!(referer, None, "unset source.referer must read back NULL");
     }
 }

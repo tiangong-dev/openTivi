@@ -19,11 +19,32 @@ pub fn parse_m3u(content: &str) -> AppResult<Vec<ParsedChannel>> {
             let attrs = parse_extinf_attrs(line);
             let name = parse_extinf_name(line);
 
-            // Next non-comment, non-empty line should be the URL
+            // Inline EXTINF attributes provide defaults; EXTVLCOPT lines (read
+            // below, before the URL) take priority when present.
+            let mut user_agent = attrs.get("user-agent").cloned();
+            let mut referer = attrs
+                .get("http-referrer")
+                .or_else(|| attrs.get("referrer"))
+                .cloned();
+
+            // Next non-comment, non-empty line should be the URL. Along the way we
+            // pick off `#EXTVLCOPT:` lines (http-user-agent / http-referrer).
             let url = loop {
                 match lines.next() {
                     Some(l) => {
                         let l = l.trim();
+                        if let Some(opt) = l.strip_prefix("#EXTVLCOPT:") {
+                            if let Some((key, value)) = opt.split_once('=') {
+                                match key.trim() {
+                                    "http-user-agent" => {
+                                        user_agent = Some(value.trim().to_string())
+                                    }
+                                    "http-referrer" => referer = Some(value.trim().to_string()),
+                                    _ => {}
+                                }
+                            }
+                            continue;
+                        }
                         if !l.is_empty() && !l.starts_with('#') {
                             break l.to_string();
                         }
@@ -89,6 +110,8 @@ pub fn parse_m3u(content: &str) -> AppResult<Vec<ParsedChannel>> {
                 catchup_source,
                 catchup_days,
                 catchup_hours,
+                user_agent,
+                referer,
             });
         }
     }
@@ -367,5 +390,147 @@ http://example.com/c1\n";
         let (_ctype, _csource, cdays, chours) = parse_and_fetch_catchup(m3u, "c1");
         assert_eq!(cdays.as_deref(), Some("abc"), "invalid days kept verbatim");
         assert_eq!(chours, None, "invalid days → catchup_hours NULL (no coercion)");
+    }
+
+    // ── P0f-core tests (TDD red): UA/referer 解析 + 存储 ──────────────────────
+    //
+    // Expected to FAIL until P0f-core (parse_m3u extracts UA/referer from
+    // #EXTVLCOPT lines + inline EXTINF attrs, ParsedChannel/Channel carry the
+    // fields, upsert_channels persists them, migration 0015 adds the columns) is
+    // implemented.
+    //
+    // These are RUNTIME-red, COMPILE-clean: like the P0d catchup tests above, the
+    // contract is asserted end-to-end through the DB via raw-SQL string-literal
+    // column references (SELECT user_agent, referer ...). We deliberately do NOT
+    // reference ParsedChannel.user_agent / .referer (those fields don't exist yet),
+    // so the test crate still COMPILES; the failure surfaces at RUNTIME:
+    //   • before migration 0015: "no such column: user_agent" (red)
+    //   • before parse/persist wiring: columns are NULL → value asserts fail (red)
+
+    /// Parse `m3u`, upsert into a fresh in-memory DB under a seeded source, and
+    /// return the (user_agent, referer) tuple for the channel matching `channel_key`.
+    ///
+    /// Uses string-literal column references so the test crate compiles before the
+    /// user_agent / referer columns / fields exist.
+    fn parse_and_fetch_ua_referer(
+        m3u: &str,
+        channel_key: &str,
+    ) -> (Option<String>, Option<String>) {
+        use crate::core::models::source::SourceKind;
+        use crate::platform::db::migrations::run_migrations;
+        use crate::platform::db::repositories::{channel_repo, source_repo};
+
+        let conn = Connection::open_in_memory().expect("db should open");
+        run_migrations(&conn).expect("migrations should run");
+
+        let source_id = source_repo::upsert_source(
+            &conn,
+            SourceKind::M3u,
+            "S",
+            "http://example.com/s.m3u",
+            None,
+            None,
+            None,
+        )
+        .expect("source should be created");
+
+        let channels = parse_m3u(m3u).expect("m3u should parse");
+        channel_repo::upsert_channels(&conn, source_id, &channels)
+            .expect("upsert should succeed");
+
+        conn.query_row(
+            "SELECT user_agent, referer FROM channels \
+             WHERE source_id = ?1 AND channel_key = ?2",
+            rusqlite::params![source_id, channel_key],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("channel row must exist")
+    }
+
+    /// P0f M1: independent `#EXTVLCOPT` lines after EXTINF populate UA + referer.
+    /// `http-user-agent=...` → user_agent; `http-referrer=...` → referer (note the
+    /// VLC double-r spelling of "referrer" maps onto our `referer` column).
+    ///
+    /// Catches: ignoring EXTVLCOPT lines entirely, or wiring http-referrer to the
+    /// wrong column.
+    #[test]
+    fn p0f_m3u_extvlcopt_lines_populate_ua_and_referer() {
+        let m3u = "#EXTM3U\n\
+#EXTINF:-1 tvg-id=\"c1\",VLCOPT Ch\n\
+#EXTVLCOPT:http-user-agent=MyAgent/1.0\n\
+#EXTVLCOPT:http-referrer=http://ref.example.com/\n\
+http://example.com/c1\n";
+        let (ua, referer) = parse_and_fetch_ua_referer(m3u, "c1");
+        assert_eq!(
+            ua.as_deref(),
+            Some("MyAgent/1.0"),
+            "#EXTVLCOPT:http-user-agent must populate user_agent"
+        );
+        assert_eq!(
+            referer.as_deref(),
+            Some("http://ref.example.com/"),
+            "#EXTVLCOPT:http-referrer must populate referer"
+        );
+    }
+
+    /// P0f M2: inline EXTINF attributes `user-agent="..."` / `http-referrer="..."`
+    /// populate UA + referer when no EXTVLCOPT line is present.
+    ///
+    /// Catches: only honoring EXTVLCOPT and ignoring the inline-attribute form.
+    #[test]
+    fn p0f_m3u_inline_attrs_populate_ua_and_referer() {
+        let m3u = "#EXTM3U\n\
+#EXTINF:-1 tvg-id=\"c1\" user-agent=\"InlineAgent/2.0\" http-referrer=\"http://inline.example.com/\",Inline Ch\n\
+http://example.com/c1\n";
+        let (ua, referer) = parse_and_fetch_ua_referer(m3u, "c1");
+        assert_eq!(
+            ua.as_deref(),
+            Some("InlineAgent/2.0"),
+            "inline user-agent attr must populate user_agent"
+        );
+        assert_eq!(
+            referer.as_deref(),
+            Some("http://inline.example.com/"),
+            "inline http-referrer attr must populate referer"
+        );
+    }
+
+    /// P0f M3: PRIORITY — when both an EXTVLCOPT line AND an inline attribute are
+    /// present, EXTVLCOPT wins for BOTH user_agent and referer.
+    ///
+    /// Catches: inline attrs overwriting EXTVLCOPT (wrong precedence), or only
+    /// applying precedence to one of the two fields.
+    #[test]
+    fn p0f_m3u_extvlcopt_takes_priority_over_inline() {
+        let m3u = "#EXTM3U\n\
+#EXTINF:-1 tvg-id=\"c1\" user-agent=\"InlineAgent\" http-referrer=\"http://inline/\",Prio Ch\n\
+#EXTVLCOPT:http-user-agent=VlcAgent\n\
+#EXTVLCOPT:http-referrer=http://vlc/\n\
+http://example.com/c1\n";
+        let (ua, referer) = parse_and_fetch_ua_referer(m3u, "c1");
+        assert_eq!(
+            ua.as_deref(),
+            Some("VlcAgent"),
+            "EXTVLCOPT user-agent must take priority over inline"
+        );
+        assert_eq!(
+            referer.as_deref(),
+            Some("http://vlc/"),
+            "EXTVLCOPT referrer must take priority over inline"
+        );
+    }
+
+    /// P0f M4: a channel with no UA/referer (neither EXTVLCOPT nor inline) stores
+    /// both columns as NULL.
+    ///
+    /// Catches: writing bogus non-NULL defaults for channels without UA/referer.
+    #[test]
+    fn p0f_m3u_no_ua_referer_is_null() {
+        let m3u = "#EXTM3U\n\
+#EXTINF:-1 tvg-id=\"c1\",Plain Ch\n\
+http://example.com/c1\n";
+        let (ua, referer) = parse_and_fetch_ua_referer(m3u, "c1");
+        assert_eq!(ua, None, "no UA → user_agent NULL");
+        assert_eq!(referer, None, "no referer → referer NULL");
     }
 }

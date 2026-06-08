@@ -19,6 +19,8 @@ pub struct Channel {
     pub catchup_source: Option<String>,
     pub catchup_days: Option<String>,
     pub catchup_hours: Option<i64>,
+    pub user_agent: Option<String>,
+    pub referer: Option<String>,
 }
 
 /// Intermediate representation from parsers before DB insertion.
@@ -39,4 +41,6 @@ pub struct ParsedChannel {
     pub catchup_source: Option<String>,
     pub catchup_days: Option<String>,
     pub catchup_hours: Option<i64>,
+    pub user_agent: Option<String>,
+    pub referer: Option<String>,
 }

@@ -30,7 +30,7 @@ pub fn upsert_channels(
         let channel_id = if let Some(id) = existing {
             // Revive: clear deleted_time back to NULL (id unchanged).
             tx.execute(
-                "UPDATE channels SET name = ?1, normalized_name = ?2, channel_number = ?3, group_name = ?4, tvg_id = ?5, tvg_name = ?6, logo_url = ?7, stream_url = ?8, container_extension = ?9, is_live = ?10, catchup_type = ?11, catchup_source = ?12, catchup_days = ?13, catchup_hours = ?14, deleted_time = NULL, updated_at = datetime('now') WHERE source_id = ?15 AND channel_key = ?16",
+                "UPDATE channels SET name = ?1, normalized_name = ?2, channel_number = ?3, group_name = ?4, tvg_id = ?5, tvg_name = ?6, logo_url = ?7, stream_url = ?8, container_extension = ?9, is_live = ?10, catchup_type = ?11, catchup_source = ?12, catchup_days = ?13, catchup_hours = ?14, user_agent = ?15, referer = ?16, deleted_time = NULL, updated_at = datetime('now') WHERE source_id = ?17 AND channel_key = ?18",
                 rusqlite::params![
                     ch.name,
                     norm,
@@ -46,6 +46,8 @@ pub fn upsert_channels(
                     ch.catchup_source,
                     ch.catchup_days,
                     ch.catchup_hours,
+                    ch.user_agent,
+                    ch.referer,
                     source_id,
                     ch.channel_key,
                 ],
@@ -54,7 +56,7 @@ pub fn upsert_channels(
             id
         } else {
             tx.execute(
-                "INSERT INTO channels (channel_key, source_id, external_id, name, normalized_name, channel_number, group_name, tvg_id, tvg_name, logo_url, stream_url, container_extension, is_live, catchup_type, catchup_source, catchup_days, catchup_hours, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, datetime('now'), datetime('now'))",
+                "INSERT INTO channels (channel_key, source_id, external_id, name, normalized_name, channel_number, group_name, tvg_id, tvg_name, logo_url, stream_url, container_extension, is_live, catchup_type, catchup_source, catchup_days, catchup_hours, user_agent, referer, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, datetime('now'), datetime('now'))",
                 rusqlite::params![
                     ch.channel_key,
                     source_id,
@@ -73,6 +75,8 @@ pub fn upsert_channels(
                     ch.catchup_source,
                     ch.catchup_days,
                     ch.catchup_hours,
+                    ch.user_agent,
+                    ch.referer,
                 ],
             )?;
             imported += 1;
@@ -274,7 +278,7 @@ pub fn list_groups(conn: &Connection, source_id: Option<i64>) -> AppResult<Vec<S
 
 pub fn get_enabled_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel>> {
     let mut stmt = conn.prepare(
-        "SELECT c.id, c.channel_key, c.source_id, c.external_id, c.name, c.normalized_name, c.channel_number, c.group_name, c.tvg_id, c.tvg_name, c.logo_url, c.stream_url, c.container_extension, c.is_live
+        "SELECT c.id, c.channel_key, c.source_id, c.external_id, c.name, c.normalized_name, c.channel_number, c.group_name, c.tvg_id, c.tvg_name, c.logo_url, c.stream_url, c.container_extension, c.is_live, c.catchup_type, c.catchup_source, c.catchup_days, c.catchup_hours, c.user_agent, c.referer
          FROM channels c
          INNER JOIN sources s ON s.id = c.source_id
          WHERE c.id = ?1 AND s.enabled = 1 AND c.deleted_time IS NULL",
@@ -298,10 +302,12 @@ pub fn get_enabled_by_id(conn: &Connection, id: i64) -> AppResult<Option<Channel
             stream_url: row.get("stream_url")?,
             container_extension: row.get("container_extension")?,
             is_live: row.get::<_, i64>("is_live")? != 0,
-            catchup_type: None,
-            catchup_source: None,
-            catchup_days: None,
-            catchup_hours: None,
+            catchup_type: row.get("catchup_type")?,
+            catchup_source: row.get("catchup_source")?,
+            catchup_days: row.get("catchup_days")?,
+            catchup_hours: row.get("catchup_hours")?,
+            user_agent: row.get("user_agent")?,
+            referer: row.get("referer")?,
         })
     }))
 }
@@ -339,7 +345,9 @@ pub fn list_playback_candidates(conn: &Connection, channel_id: i64) -> AppResult
     let mut stmt = conn.prepare(
         "SELECT c.id, c.channel_key, c.source_id, c.external_id, c.name, c.normalized_name,
                 c.channel_number, c.group_name, c.tvg_id, c.tvg_name, c.logo_url,
-                c.stream_url, c.container_extension, c.is_live
+                c.stream_url, c.container_extension, c.is_live,
+                c.catchup_type, c.catchup_source, c.catchup_days, c.catchup_hours,
+                c.user_agent, c.referer
          FROM channels c
          JOIN sources s ON c.source_id = s.id AND s.enabled = 1
          LEFT JOIN channel_health h ON c.id = h.channel_id
@@ -372,10 +380,12 @@ pub fn list_playback_candidates(conn: &Connection, channel_id: i64) -> AppResult
             stream_url: row.get("stream_url")?,
             container_extension: row.get("container_extension")?,
             is_live: row.get::<_, i64>("is_live")? != 0,
-            catchup_type: None,
-            catchup_source: None,
-            catchup_days: None,
-            catchup_hours: None,
+            catchup_type: row.get("catchup_type")?,
+            catchup_source: row.get("catchup_source")?,
+            catchup_days: row.get("catchup_days")?,
+            catchup_hours: row.get("catchup_hours")?,
+            user_agent: row.get("user_agent")?,
+            referer: row.get("referer")?,
         })
     })?;
 
@@ -434,6 +444,8 @@ mod tests {
             catchup_source: None,
             catchup_days: None,
             catchup_hours: None,
+            user_agent: None,
+            referer: None,
         }
     }
 

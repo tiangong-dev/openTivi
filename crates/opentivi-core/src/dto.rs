@@ -211,6 +211,19 @@ pub struct PlaybackSourceDto {
     pub channel_name: String,
     pub stream_url: String,
     pub logo_url: Option<String>,
+    pub user_agent: Option<String>,
+    pub referer: Option<String>,
+    pub proxy_recommended: bool,
+    pub kind: Option<String>,
+    pub priority: i32,
+    pub catchup_type: Option<String>,
+    pub catchup_source: Option<String>,
+    pub catchup_days: Option<String>,
+    pub catchup_hours: Option<i64>,
+    pub health: Option<String>,
+    pub expires_at: Option<i64>,
+    pub needs_reresolve: bool,
+    pub failure_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

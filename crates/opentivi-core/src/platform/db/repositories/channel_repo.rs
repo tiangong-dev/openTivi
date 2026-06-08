@@ -27,7 +27,7 @@ pub fn upsert_channels(
             )
             .ok();
 
-        if let Some(_id) = existing {
+        let channel_id = if let Some(id) = existing {
             // Revive: clear deleted_time back to NULL (id unchanged).
             tx.execute(
                 "UPDATE channels SET name = ?1, normalized_name = ?2, channel_number = ?3, group_name = ?4, tvg_id = ?5, tvg_name = ?6, logo_url = ?7, stream_url = ?8, container_extension = ?9, is_live = ?10, deleted_time = NULL, updated_at = datetime('now') WHERE source_id = ?11 AND channel_key = ?12",
@@ -47,6 +47,7 @@ pub fn upsert_channels(
                 ],
             )?;
             updated += 1;
+            id
         } else {
             tx.execute(
                 "INSERT INTO channels (channel_key, source_id, external_id, name, normalized_name, channel_number, group_name, tvg_id, tvg_name, logo_url, stream_url, container_extension, is_live, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, datetime('now'), datetime('now'))",
@@ -67,6 +68,37 @@ pub fn upsert_channels(
                 ],
             )?;
             imported += 1;
+            tx.last_insert_rowid()
+        };
+
+        // Rebuild this channel's group links (many-to-many). The raw
+        // `group_name` column is preserved as-is above; here we derive the group
+        // names by splitting it on `;` (trim + drop blank segments). Always
+        // DELETE first so a changed group on re-import takes effect and a revived
+        // channel rebuilds its links.
+        tx.execute(
+            "DELETE FROM channel_group_links WHERE channel_id = ?1",
+            [channel_id],
+        )?;
+        if let Some(raw_group) = ch.group_name.as_deref() {
+            for group_name in raw_group.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+                tx.execute(
+                    "INSERT INTO channel_groups (source_id, name, created_at, updated_at) \
+                     VALUES (?1, ?2, datetime('now'), datetime('now')) \
+                     ON CONFLICT(source_id, name) DO UPDATE SET updated_at = datetime('now')",
+                    rusqlite::params![source_id, group_name],
+                )?;
+                let group_id: i64 = tx.query_row(
+                    "SELECT id FROM channel_groups WHERE source_id = ?1 AND name = ?2",
+                    rusqlite::params![source_id, group_name],
+                    |row| row.get(0),
+                )?;
+                tx.execute(
+                    "INSERT OR IGNORE INTO channel_group_links (channel_id, group_id, created_at) \
+                     VALUES (?1, ?2, datetime('now'))",
+                    rusqlite::params![channel_id, group_id],
+                )?;
+            }
         }
     }
 
@@ -143,7 +175,12 @@ pub fn list_channels(
     }
 
     if let Some(g) = group_name {
-        sql.push_str(&format!(" AND c.group_name = ?{}", idx));
+        sql.push_str(&format!(
+            " AND EXISTS (SELECT 1 FROM channel_group_links l \
+              JOIN channel_groups g ON g.id = l.group_id \
+              WHERE l.channel_id = c.id AND g.source_id = c.source_id AND g.name = ?{})",
+            idx
+        ));
         params.push(g.to_string().into());
         idx += 1;
     }
@@ -187,13 +224,21 @@ pub fn list_channels(
 pub fn list_groups(conn: &Connection, source_id: Option<i64>) -> AppResult<Vec<String>> {
     let (sql, params): (String, Vec<rusqlite::types::Value>) = if let Some(sid) = source_id {
         (
-            "SELECT DISTINCT c.group_name FROM channels c INNER JOIN sources s ON s.id = c.source_id WHERE c.group_name IS NOT NULL AND s.enabled = 1 AND c.deleted_time IS NULL AND c.source_id = ?1 ORDER BY c.group_name".to_string(),
+            "SELECT DISTINCT g.name FROM channel_groups g \
+             JOIN channel_group_links l ON l.group_id = g.id \
+             JOIN channels c ON c.id = l.channel_id AND c.deleted_time IS NULL \
+             JOIN sources s ON s.id = c.source_id AND s.enabled = 1 \
+             WHERE (?1 IS NULL OR g.source_id = ?1) ORDER BY g.name".to_string(),
             vec![sid.into()],
         )
     } else {
         (
-            "SELECT DISTINCT c.group_name FROM channels c INNER JOIN sources s ON s.id = c.source_id WHERE c.group_name IS NOT NULL AND s.enabled = 1 AND c.deleted_time IS NULL ORDER BY c.group_name".to_string(),
-            vec![],
+            "SELECT DISTINCT g.name FROM channel_groups g \
+             JOIN channel_group_links l ON l.group_id = g.id \
+             JOIN channels c ON c.id = l.channel_id AND c.deleted_time IS NULL \
+             JOIN sources s ON s.id = c.source_id AND s.enabled = 1 \
+             WHERE (?1 IS NULL OR g.source_id = ?1) ORDER BY g.name".to_string(),
+            vec![rusqlite::types::Value::Null],
         )
     };
 
@@ -730,5 +775,367 @@ mod tests {
         // get_enabled_by_id
         let got = get_enabled_by_id(&conn, ghost_id).expect("get_enabled_by_id");
         assert!(got.is_none(), "get_enabled_by_id(tombstone) must return None");
+    }
+
+    // ── P0c tests (TDD red): 频道 ↔ 分组 多对多 ───────────────────────────────
+    //
+    // Expected to FAIL until P0c (migration 0012 + group splitting in
+    // upsert_channels + rerouting list_groups/list_channels through the link
+    // tables) is implemented.
+    //
+    // CRITICAL: every new behaviour is asserted through the EXISTING public API
+    // (parse_m3u / upsert_channels / list_groups / list_channels) plus RAW SQL
+    // STRING LITERALS against the new tables (`channel_groups`,
+    // `channel_group_links`). No reference to a not-yet-existing Rust symbol
+    // (e.g. `ParsedChannel.groups`, a new repo fn), so the test crate keeps
+    // COMPILING — the missing tables / unsplit groups surface at RUNTIME (red).
+
+    use crate::core::parsers::m3u::parse_m3u;
+
+    /// Count link rows for a channel, joined to channel_groups, filtered to a
+    /// given source. Pure SQL-literal so it compiles before the tables exist.
+    fn link_group_names(conn: &Connection, channel_id: i64) -> Vec<String> {
+        conn.prepare(
+            "SELECT g.name FROM channel_group_links l \
+             JOIN channel_groups g ON g.id = l.group_id \
+             WHERE l.channel_id = ?1 ORDER BY g.name",
+        )
+        .unwrap()
+        .query_map([channel_id], |row| row.get::<_, String>(0))
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
+    /// Number of link rows for a channel (regardless of group).
+    fn link_count(conn: &Connection, channel_id: i64) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM channel_group_links WHERE channel_id = ?1",
+            [channel_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    /// Build a one-channel M3U with a given group-title literal.
+    fn m3u_one(tvg_id: &str, name: &str, group_title: &str, url: &str) -> String {
+        format!(
+            "#EXTM3U\n#EXTINF:-1 tvg-id=\"{tvg_id}\" group-title=\"{group_title}\",{name}\n{url}\n"
+        )
+    }
+
+    /// P0c #2: a `group-title="A;B;C"` is split on `;` into THREE group links
+    /// (A, B, C) while the original `channels.group_name` column still holds the
+    /// raw whole string `"A;B;C"`.
+    ///
+    /// Catches: not splitting at all (one link / link to the literal "A;B;C"),
+    /// or destroying the original group_name column when splitting.
+    #[test]
+    fn p0c_multi_group_title_splits_into_three_links() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let parsed = parse_m3u(&m3u_one("ch1", "Channel 1", "A;B;C", "http://a/1"))
+            .expect("parse m3u");
+        upsert_channels(&conn, src, &parsed).expect("upsert");
+
+        let (ch_id, _) = channel_row(&conn, src, "ch1").expect("ch1 must exist");
+
+        // Three split links, exactly A/B/C.
+        assert_eq!(
+            link_group_names(&conn, ch_id),
+            vec!["A".to_string(), "B".to_string(), "C".to_string()],
+            "group-title \"A;B;C\" must split into 3 links A/B/C"
+        );
+
+        // Original group_name column keeps the raw whole string (existing field).
+        let raw: Option<String> = conn
+            .query_row(
+                "SELECT group_name FROM channels WHERE id = ?1",
+                [ch_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            raw.as_deref(),
+            Some("A;B;C"),
+            "channels.group_name must keep the original whole string"
+        );
+    }
+
+    /// P0c #2b: blank segments in a `group-title="A;;B"` are filtered, yielding
+    /// only A and B (not an empty-named group).
+    ///
+    /// Catches: a naive split that emits an empty-string group for the `;;`.
+    #[test]
+    fn p0c_blank_group_segments_are_filtered() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let parsed = parse_m3u(&m3u_one("ch1", "Channel 1", "A;;B", "http://a/1"))
+            .expect("parse m3u");
+        upsert_channels(&conn, src, &parsed).expect("upsert");
+        let (ch_id, _) = channel_row(&conn, src, "ch1").expect("ch1 must exist");
+
+        assert_eq!(
+            link_group_names(&conn, ch_id),
+            vec!["A".to_string(), "B".to_string()],
+            "\"A;;B\" must yield only A and B (blank segment filtered)"
+        );
+        assert_eq!(link_count(&conn, ch_id), 2, "exactly 2 links, no empty group");
+    }
+
+    /// P0c #3: a channel belonging to two groups [A, B] resolves to both groups
+    /// in list_groups and has exactly 2 link rows.
+    ///
+    /// Catches: list_groups still reading the raw group_name (would surface the
+    /// literal "A;B"), or the writer recording fewer than 2 links.
+    #[test]
+    fn p0c_channel_in_two_groups_lists_both() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let parsed = parse_m3u(&m3u_one("ch1", "Channel 1", "A;B", "http://a/1"))
+            .expect("parse m3u");
+        upsert_channels(&conn, src, &parsed).expect("upsert");
+        let (ch_id, _) = channel_row(&conn, src, "ch1").expect("ch1 must exist");
+
+        assert_eq!(link_count(&conn, ch_id), 2, "channel must have 2 links");
+
+        let groups = list_groups(&conn, Some(src)).expect("list_groups");
+        assert!(groups.contains(&"A".to_string()), "list_groups must contain A, got {groups:?}");
+        assert!(groups.contains(&"B".to_string()), "list_groups must contain B, got {groups:?}");
+        assert!(
+            !groups.contains(&"A;B".to_string()),
+            "list_groups must NOT surface the raw \"A;B\" string"
+        );
+    }
+
+    /// P0c #4: tombstoned channel's groups do not leak from list_groups (when
+    /// it solely owns the group), but its link rows REMAIN in
+    /// channel_group_links (tombstone keeps links for revival).
+    ///
+    /// Catches: list_groups leaking a group whose only channel is tombstoned
+    /// (no join to alive channels), OR the writer hard-deleting link rows on
+    /// tombstone (which would lose group membership across a refresh blip).
+    #[test]
+    fn p0c_tombstoned_channel_group_does_not_leak_but_links_remain() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        // ch1 solely owns group X.
+        let parsed = parse_m3u(&m3u_one("ch1", "Channel 1", "X", "http://a/1"))
+            .expect("parse m3u");
+        upsert_channels(&conn, src, &parsed).expect("import ch1");
+        let (ch1_id, _) = channel_row(&conn, src, "ch1").expect("ch1 must exist");
+        favorites_repo::add_favorite(&conn, ch1_id).expect("favorite ch1");
+
+        // Empty import → ch1 tombstoned.
+        upsert_channels(&conn, src, &[]).expect("empty import tombstones ch1");
+
+        // X must NOT leak (ch1 is the only owner and it is tombstoned).
+        let groups = list_groups(&conn, Some(src)).expect("list_groups");
+        assert!(
+            !groups.contains(&"X".to_string()),
+            "list_groups must not leak a group whose only channel is tombstoned, got {groups:?}"
+        );
+
+        // But the link row(s) must REMAIN (tombstone preserves links).
+        assert_eq!(
+            link_count(&conn, ch1_id),
+            1,
+            "tombstoned channel must keep its channel_group_links row"
+        );
+    }
+
+    /// P0c #5: re-importing a tombstoned channel (same group X) revives it —
+    /// list_groups contains X again and the channel id is unchanged.
+    ///
+    /// Catches: revival that fails to re-expose the group (e.g. links lost on
+    /// tombstone and not rebuilt), or revival as a new channel id.
+    #[test]
+    fn p0c_revived_channel_restores_group() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let m3u = m3u_one("ch1", "Channel 1", "X", "http://a/1");
+        let parsed = parse_m3u(&m3u).expect("parse m3u");
+        upsert_channels(&conn, src, &parsed).expect("import ch1");
+        let (orig_id, _) = channel_row(&conn, src, "ch1").expect("ch1 must exist");
+
+        // Tombstone, then revive with the same group.
+        upsert_channels(&conn, src, &[]).expect("empty import tombstones");
+        let parsed2 = parse_m3u(&m3u).expect("parse m3u again");
+        upsert_channels(&conn, src, &parsed2).expect("re-import revives ch1");
+
+        let (revived_id, deleted) = channel_row(&conn, src, "ch1").expect("ch1 must exist");
+        assert_eq!(revived_id, orig_id, "revived channel must keep its id");
+        assert!(deleted.is_none(), "revived channel must not be tombstoned");
+
+        // The link to X must be present after revival (asserted via the link table
+        // so this is red until P0c lands, not a false green off the raw column).
+        assert_eq!(
+            link_group_names(&conn, revived_id),
+            vec!["X".to_string()],
+            "revived channel must link to group X again"
+        );
+
+        let groups = list_groups(&conn, Some(src)).expect("list_groups");
+        assert!(
+            groups.contains(&"X".to_string()),
+            "list_groups must contain X again after revival, got {groups:?}"
+        );
+    }
+
+    /// P0c #6: per-source isolation — source A and source B each have a group
+    /// named "News" → channel_groups holds 2 distinct rows (UNIQUE(source_id,
+    /// name)); deleting source A leaves source B's group and links intact.
+    ///
+    /// Catches: a global (non per-source) group table that would collapse the
+    /// two "News" into one row, or a delete-source path that wipes the wrong
+    /// source's group rows / link rows.
+    #[test]
+    fn p0c_groups_are_isolated_per_source() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src_a = seed_source(&conn, "A", "http://example.com/a.m3u");
+        let src_b = seed_source(&conn, "B", "http://example.com/b.m3u");
+
+        let pa = parse_m3u(&m3u_one("a1", "A1", "News", "http://a/1")).unwrap();
+        let pb = parse_m3u(&m3u_one("b1", "B1", "News", "http://b/1")).unwrap();
+        upsert_channels(&conn, src_a, &pa).expect("import A");
+        upsert_channels(&conn, src_b, &pb).expect("import B");
+
+        // Two distinct "News" group rows, one per source.
+        let news_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM channel_groups WHERE name = 'News'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            news_rows, 2,
+            "each source must own its own \"News\" group row (UNIQUE(source_id,name))"
+        );
+
+        let (b1_id, _) = channel_row(&conn, src_b, "b1").expect("b1 must exist");
+
+        // Delete source A entirely.
+        source_repo::delete(&conn, src_a).expect("delete source A");
+
+        // Source B's group still present...
+        let b_news_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM channel_groups WHERE source_id = ?1 AND name = 'News'",
+                [src_b],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(b_news_rows, 1, "deleting source A must not remove source B's group");
+
+        // ...and source B's link survives.
+        assert_eq!(
+            link_count(&conn, b1_id),
+            1,
+            "deleting source A must not remove source B's links"
+        );
+
+        let groups_b = list_groups(&conn, Some(src_b)).expect("list_groups B");
+        assert!(
+            groups_b.contains(&"News".to_string()),
+            "source B must still list its News group after A is deleted, got {groups_b:?}"
+        );
+    }
+
+    /// P0c #7: changing a channel's group on re-import takes effect — first
+    /// import groups=[A], re-import groups=[B] → list_channels filtered by A no
+    /// longer returns it, filtered by B does (requires rebuilding link rows).
+    ///
+    /// Catches: an append-only link writer that keeps the stale [A] link (so the
+    /// channel would wrongly still show under A), or list_channels still
+    /// filtering on the raw group_name column instead of the link tables.
+    #[test]
+    fn p0c_changing_group_on_reimport_takes_effect() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let p_a = parse_m3u(&m3u_one("ch1", "Channel 1", "A", "http://a/1")).unwrap();
+        upsert_channels(&conn, src, &p_a).expect("import group A");
+
+        // Re-import same channel_key with group B.
+        let p_b = parse_m3u(&m3u_one("ch1", "Channel 1", "B", "http://a/1")).unwrap();
+        upsert_channels(&conn, src, &p_b).expect("re-import group B");
+
+        let (ch_id, _) = channel_row(&conn, src, "ch1").expect("ch1 must exist");
+
+        // Links must be REBUILT to exactly [B] (no stale [A] link). Asserted via
+        // the link table so this is red until P0c lands and pins the rebuild — a
+        // raw-group_name-only check would falsely pass today.
+        assert_eq!(
+            link_group_names(&conn, ch_id),
+            vec!["B".to_string()],
+            "re-import must rebuild links to exactly [B], dropping the stale [A] link"
+        );
+
+        // Filtering by A must NOT return it anymore.
+        let by_a = list_channels(&conn, Some(src), Some("A"), None, false, 100, 0)
+            .expect("list_channels by A");
+        assert!(
+            !by_a.iter().any(|c| c.id == ch_id),
+            "after switching to group B, filtering by A must not return the channel"
+        );
+
+        // Filtering by B must return it.
+        let by_b = list_channels(&conn, Some(src), Some("B"), None, false, 100, 0)
+            .expect("list_channels by B");
+        assert!(
+            by_b.iter().any(|c| c.id == ch_id),
+            "after switching to group B, filtering by B must return the channel"
+        );
+    }
+
+    /// P0c #8: list_groups de-duplicates — N channels in one source all sharing
+    /// group "Sports" yield exactly ONE "Sports" entry.
+    ///
+    /// The group comes via the split path (group-title "Sports;Live") so the raw
+    /// group_name column is "Sports;Live" — a list_groups that read the raw
+    /// column would surface "Sports;Live" (and never a bare "Sports"), which the
+    /// `count == 1 for Sports` assertion below would also fail. This pins
+    /// list_groups to the link tables AND to de-duplication.
+    ///
+    /// Catches: list_groups returning duplicate "Sports" rows (missing DISTINCT
+    /// across the join), or surfacing the raw multi-group string.
+    #[test]
+    fn p0c_list_groups_dedupes_shared_group() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let m3u = format!(
+            "#EXTM3U\n\
+#EXTINF:-1 tvg-id=\"c1\" group-title=\"Sports;Live\",C1\nhttp://a/1\n\
+#EXTINF:-1 tvg-id=\"c2\" group-title=\"Sports;Live\",C2\nhttp://a/2\n\
+#EXTINF:-1 tvg-id=\"c3\" group-title=\"Sports\",C3\nhttp://a/3\n"
+        );
+        let parsed = parse_m3u(&m3u).expect("parse m3u");
+        upsert_channels(&conn, src, &parsed).expect("upsert");
+
+        let groups = list_groups(&conn, Some(src)).expect("list_groups");
+        let sports_count = groups.iter().filter(|g| *g == "Sports").count();
+        assert_eq!(
+            sports_count, 1,
+            "list_groups must return \"Sports\" exactly once, got {groups:?}"
+        );
+        assert!(
+            !groups.iter().any(|g| g == "Sports;Live"),
+            "list_groups must not surface the raw \"Sports;Live\" string, got {groups:?}"
+        );
     }
 }

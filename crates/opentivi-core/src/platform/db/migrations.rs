@@ -58,6 +58,11 @@ const MIGRATIONS: &[(u32, &str, &str)] = &[
         "0011_channels_soft_delete",
         include_str!("../../../migrations/0011_channels_soft_delete.sql"),
     ),
+    (
+        12,
+        "0012_channel_groups",
+        include_str!("../../../migrations/0012_channel_groups.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
@@ -285,10 +290,22 @@ mod tests {
             }
         }
 
+        // The P0a migration (0010) must be registered + applied. Assert robustly
+        // against the highest registered migration so adding later migrations
+        // (0011/0012/…) does not regress this test, while still requiring that the
+        // 0010 epoch migration ran.
         let max_version: u32 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(max_version, 11, "highest migration version must be 11");
+        assert_eq!(max_version, MIGRATIONS.last().unwrap().0);
+        let p0a_applied: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _migrations WHERE version = 10",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(p0a_applied, 1, "migration 10 (epoch columns) must be applied");
 
         // Second run must be idempotent (backfill / ALTER must not fail).
         run_migrations(&conn).expect("second migration run should be idempotent");
@@ -426,13 +443,174 @@ mod tests {
             }
         }
 
+        // The P0b migration (0011) must be registered + applied. Assert robustly
+        // against the highest registered migration so adding later migrations
+        // (0012/…) does not regress this test, while still requiring that the 0011
+        // deleted_time migration ran.
         let max_version: u32 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(max_version, 11, "highest migration version must be 11");
+        assert_eq!(max_version, MIGRATIONS.last().unwrap().0);
+        let p0b_applied: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _migrations WHERE version = 11",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            p0b_applied, 1,
+            "migration 11 (deleted_time column) must be applied"
+        );
 
         // Second run must be idempotent (ALTER must not blow up).
         run_migrations(&conn).expect("second migration run should be idempotent");
+    }
+
+    // ── P0c tests (TDD red): 频道 ↔ 分组 多对多 ───────────────────────────────
+    //
+    // Expected to FAIL until P0c (migration 0012) is implemented. Asserts only the
+    // externally observable schema contract through PRAGMA / sqlite_master + a
+    // round-trip insert, never a not-yet-existing Rust symbol, so the test crate
+    // keeps COMPILING; the missing tables surface as RUNTIME errors (red).
+
+    /// Helper: does a table exist?
+    fn table_exists(conn: &Connection, table: &str) -> bool {
+        conn.query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name = ?1",
+            [table],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false)
+    }
+
+    /// P0c #1: migration 0012 creates the many-to-many group tables
+    /// (`channel_groups`, `channel_group_links`) with the documented columns,
+    /// bumps MAX(version) to 12, and stays idempotent on a re-run.
+    ///
+    /// Catches: forgetting to create either table, missing columns, not
+    /// registering the migration (MAX(version) stays 11), or a non-idempotent
+    /// CREATE that blows up on the second run_migrations.
+    #[test]
+    fn p0c_migration_creates_group_tables_and_bumps_version_to_12() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("first migration run should succeed");
+
+        assert!(
+            table_exists(&conn, "channel_groups"),
+            "migration 0012 must create channel_groups table"
+        );
+        assert!(
+            table_exists(&conn, "channel_group_links"),
+            "migration 0012 must create channel_group_links table"
+        );
+
+        let group_cols = table_columns(&conn, "channel_groups");
+        for col in ["id", "source_id", "name", "created_at", "updated_at"] {
+            assert!(
+                group_cols.iter().any(|c| c == col),
+                "channel_groups must have column `{col}`, got: {group_cols:?}"
+            );
+        }
+
+        let link_cols = table_columns(&conn, "channel_group_links");
+        for col in ["channel_id", "group_id", "created_at"] {
+            assert!(
+                link_cols.iter().any(|c| c == col),
+                "channel_group_links must have column `{col}`, got: {link_cols:?}"
+            );
+        }
+
+        let max_version: u32 = conn
+            .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(max_version, 12, "highest migration version must be 12");
+
+        // Second run must be idempotent (CREATE must not blow up).
+        run_migrations(&conn).expect("second migration run should be idempotent");
+    }
+
+    /// P0c #1b: `channel_groups` enforces UNIQUE(source_id, name) and
+    /// `channel_group_links` keys on (channel_id, group_id), so the same group
+    /// name is one row per source and a channel↔group link cannot duplicate.
+    ///
+    /// Catches: missing UNIQUE(source_id,name) (would let the same group split
+    /// into duplicate rows / break per-source isolation), or a missing
+    /// (channel_id,group_id) PRIMARY KEY (would let a re-import pile up duplicate
+    /// link rows).
+    #[test]
+    fn p0c_group_tables_enforce_uniqueness() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("migrations should run");
+
+        // Seed FK parents. The bundled SQLite enforces FK by default
+        // (build.rs: -DSQLITE_DEFAULT_FOREIGN_KEYS=1), so channel_groups.source_id
+        // and channel_group_links.channel_id must reference real rows; otherwise the
+        // UNIQUE/PK assertions below would be masked by a FOREIGN KEY failure.
+        // We pin id=1 (sources) and id=1/id=2's source / channel id=1 used below.
+        conn.execute_batch(
+            "INSERT INTO sources (id, kind, name, location, enabled, created_at, updated_at) \
+                 VALUES (1, 'm3u', 'S1', 'http://example.com/1.m3u', 1, datetime('now'), datetime('now')); \
+             INSERT INTO sources (id, kind, name, location, enabled, created_at, updated_at) \
+                 VALUES (2, 'm3u', 'S2', 'http://example.com/2.m3u', 1, datetime('now'), datetime('now')); \
+             INSERT INTO channels (id, channel_key, source_id, name, stream_url, created_at, updated_at) \
+                 VALUES (1, 'ck1', 1, 'Chan1', 'http://example.com/s1.ts', datetime('now'), datetime('now'));",
+        )
+        .expect("seeding FK parent rows (sources, channels) must succeed");
+
+        // First insert of (source 1, "News") must succeed.
+        conn.execute(
+            "INSERT INTO channel_groups (source_id, name, created_at, updated_at) \
+             VALUES (1, 'News', datetime('now'), datetime('now'))",
+            [],
+        )
+        .expect("first channel_groups insert must succeed");
+
+        // Duplicate (source 1, "News") must be rejected by UNIQUE(source_id,name).
+        let dup = conn.execute(
+            "INSERT INTO channel_groups (source_id, name, created_at, updated_at) \
+             VALUES (1, 'News', datetime('now'), datetime('now'))",
+            [],
+        );
+        assert!(
+            dup.is_err(),
+            "UNIQUE(source_id,name) must reject a duplicate group for the same source"
+        );
+
+        // Same name, different source must be allowed (isolation).
+        conn.execute(
+            "INSERT INTO channel_groups (source_id, name, created_at, updated_at) \
+             VALUES (2, 'News', datetime('now'), datetime('now'))",
+            [],
+        )
+        .expect("same group name on a different source must be allowed");
+
+        let group_id: i64 = conn
+            .query_row(
+                "SELECT id FROM channel_groups WHERE source_id = 1 AND name = 'News'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        // First link insert succeeds.
+        conn.execute(
+            "INSERT INTO channel_group_links (channel_id, group_id, created_at) \
+             VALUES (1, ?1, datetime('now'))",
+            [group_id],
+        )
+        .expect("first link insert must succeed");
+
+        // Duplicate (channel_id, group_id) must be rejected by the PRIMARY KEY.
+        let dup_link = conn.execute(
+            "INSERT INTO channel_group_links (channel_id, group_id, created_at) \
+             VALUES (1, ?1, datetime('now'))",
+            [group_id],
+        );
+        assert!(
+            dup_link.is_err(),
+            "PRIMARY KEY(channel_id,group_id) must reject a duplicate link"
+        );
     }
 
     #[test]

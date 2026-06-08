@@ -28,7 +28,7 @@ use opentivi_core::core::services::backup_service::{
 };
 
 /// Highest registered migration version (per migrations.rs MIGRATIONS table).
-const CURRENT_SCHEMA_VERSION: u32 = 15;
+const CURRENT_SCHEMA_VERSION: u32 = 16;
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 

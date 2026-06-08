@@ -78,6 +78,11 @@ const MIGRATIONS: &[(u32, &str, &str)] = &[
         "0015_channel_http_headers",
         include_str!("../../../migrations/0015_channel_http_headers.sql"),
     ),
+    (
+        16,
+        "0016_epg_reminders",
+        include_str!("../../../migrations/0016_epg_reminders.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {

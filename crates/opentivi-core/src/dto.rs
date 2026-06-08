@@ -152,6 +152,21 @@ pub struct EpgProgramSearchResultDto {
     pub category: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReminderDto {
+    pub id: i64,
+    pub channel_id: i64,
+    pub channel_name: String,
+    pub channel_number: Option<String>,
+    pub program_start_epoch: i64,
+    pub program_stop_epoch: Option<i64>,
+    pub program_title: String,
+    pub program_desc: Option<String>,
+    pub fired_at: Option<String>,
+    pub created_at: String,
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct EpgProgramMiniDto {

@@ -133,7 +133,7 @@ fn to_mini_program(program: &EpgProgramDto) -> EpgProgramMiniDto {
     }
 }
 
-fn parse_program_time(raw: &str) -> Option<DateTime<Utc>> {
+pub(crate) fn parse_program_time(raw: &str) -> Option<DateTime<Utc>> {
     for fmt in ["%Y%m%d%H%M%S %z", "%Y%m%d%H%M%S%z"] {
         if let Ok(dt) = DateTime::parse_from_str(raw.trim(), fmt) {
             return Some(dt.with_timezone(&Utc));
@@ -151,7 +151,7 @@ fn parse_program_time(raw: &str) -> Option<DateTime<Utc>> {
     None
 }
 
-fn local_naive_to_utc(ndt: NaiveDateTime) -> Option<DateTime<Utc>> {
+pub(crate) fn local_naive_to_utc(ndt: NaiveDateTime) -> Option<DateTime<Utc>> {
     match Local.from_local_datetime(&ndt) {
         LocalResult::Single(dt) => Some(dt.with_timezone(&Utc)),
         LocalResult::Ambiguous(dt, _) => Some(dt.with_timezone(&Utc)),

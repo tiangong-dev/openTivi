@@ -15,6 +15,11 @@ impl DbExecutor {
         }
     }
 
+    /// Path of the on-disk SQLite database this executor opens.
+    pub fn db_path(&self) -> &std::path::Path {
+        self.db_path.as_path()
+    }
+
     pub async fn run<T, F>(&self, f: F) -> AppResult<T>
     where
         T: Send + 'static,

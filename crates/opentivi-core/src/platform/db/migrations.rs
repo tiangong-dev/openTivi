@@ -153,6 +153,12 @@ pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
+/// Highest registered migration version (the schema version a fresh migrate
+/// targets). Used by backup import to gate incompatible (newer) packages.
+pub(crate) fn current_schema_version() -> u32 {
+    MIGRATIONS.last().unwrap().0
+}
+
 /// Idempotent backfill of `start_epoch` / `end_epoch` for legacy EPG rows that
 /// were inserted with TEXT-only timestamps. Only rows whose `start_epoch` is
 /// still NULL are touched, so re-running this is a no-op (and never clobbers an

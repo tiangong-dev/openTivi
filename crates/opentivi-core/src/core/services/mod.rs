@@ -1,3 +1,4 @@
+pub mod backup_service;
 pub mod channel_identity;
 pub mod channel_service;
 pub mod epg_matching;

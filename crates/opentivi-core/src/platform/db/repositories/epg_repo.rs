@@ -431,17 +431,207 @@ mod p0a_tests {
     }
 }
 
+#[cfg(test)]
+mod p0e_tests {
+    use super::*;
+    use crate::core::models::channel::ParsedChannel;
+    use crate::core::models::source::SourceKind;
+    use crate::platform::db::migrations;
+    use crate::platform::db::repositories::{channel_repo, source_repo};
+    use rusqlite::Connection;
+
+    // ── P0e tests (TDD red): FTS5 EPG 搜索（trigram，title + description） ──────
+    //
+    // Expected to FAIL until P0e (migration 0014 FTS tables/triggers on
+    // epg_programs + search_programs routing through trigram FTS + ADDING the
+    // missing `c.deleted_time IS NULL` filter to the channels JOIN) is implemented.
+    //
+    // All driven through the EXISTING public API (replace_programs / search_programs
+    // / upsert_channels / source_repo::delete) — no not-yet-existing Rust symbol —
+    // so the test crate keeps COMPILING; the missing FTS / filter surfaces at
+    // RUNTIME (red).
+
+    fn fresh_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("db should open");
+        migrations::run_migrations(&conn).expect("migrations should run");
+        conn
+    }
+
+    fn seed_source(conn: &Connection) -> i64 {
+        source_repo::upsert_source(conn, SourceKind::M3u, "S", "http://example.com/x.m3u", None, None, None)
+            .expect("source should be created")
+    }
+
+    /// A channel whose tvg_id == channel_key == `tvg`, so search_programs' JOIN
+    /// (ep.channel_tvg_id == c.tvg_id) connects programs to this channel.
+    fn channel_with_tvg(tvg: &str, name: &str) -> ParsedChannel {
+        ParsedChannel {
+            channel_key: tvg.to_string(),
+            external_id: None,
+            name: name.to_string(),
+            channel_number: None,
+            group_name: None,
+            tvg_id: Some(tvg.to_string()),
+            tvg_name: None,
+            logo_url: None,
+            stream_url: "http://a/stream".to_string(),
+            container_extension: None,
+            is_live: true,
+            catchup_type: None,
+            catchup_source: None,
+            catchup_days: None,
+            catchup_hours: None,
+        }
+    }
+
+    fn program_full(channel: &str, title: &str, description: Option<&str>) -> ParsedProgram {
+        ParsedProgram {
+            channel_tvg_id: channel.to_string(),
+            start_at: "20240101060000 +0000".to_string(),
+            end_at: "20240101070000 +0000".to_string(),
+            title: title.to_string(),
+            description: description.map(|d| d.to_string()),
+            category: None,
+        }
+    }
+
+    fn search_titles(conn: &Connection, query: &str) -> Vec<String> {
+        search_programs(conn, Some(query), 100)
+            .expect("search_programs should succeed")
+            .into_iter()
+            .map(|p| p.title)
+            .collect()
+    }
+
+    /// E7 (EPG half): replace_programs is a DELETE-then-INSERT; the FTS triggers on
+    /// epg_programs must keep the index in sync. After a re-import that replaces the
+    /// old program with a new title, the OLD title must no longer hit and the NEW
+    /// title must hit.
+    ///
+    /// Catches: missing AFTER DELETE/INSERT triggers on epg_programs (stale FTS:
+    /// old title still searchable and/or new title never indexed).
+    #[test]
+    fn p0e_replace_programs_syncs_epg_fts() {
+        let conn = fresh_db();
+        let src = seed_source(&conn);
+        channel_repo::upsert_channels(&conn, src, &[channel_with_tvg("ch.epg", "Chan")])
+            .expect("seed channel");
+
+        replace_programs(&conn, src, &[program_full("ch.epg", "Oldtitle", None)])
+            .expect("first import");
+        assert!(
+            search_titles(&conn, "Oldtitle")
+                .iter()
+                .any(|t| t == "Oldtitle"),
+            "precondition: old title searchable before re-import"
+        );
+
+        // Re-import (DELETE old + INSERT new).
+        replace_programs(&conn, src, &[program_full("ch.epg", "Newtitle", None)])
+            .expect("re-import");
+
+        let old_hits = search_titles(&conn, "Oldtitle");
+        assert!(
+            !old_hits.iter().any(|t| t == "Oldtitle"),
+            "old title must NOT hit after replace_programs DELETE+INSERT (stale FTS), got: {old_hits:?}"
+        );
+        let new_hits = search_titles(&conn, "Newtitle");
+        assert!(
+            new_hits.iter().any(|t| t == "Newtitle"),
+            "new title must hit after re-import, got: {new_hits:?}"
+        );
+    }
+
+    /// E11: EPG FTS must index DESCRIPTION, not just title. A program titled `Movie`
+    /// with description containing `documentary` must be found by searching
+    /// `documentary` — description search must not degrade.
+    ///
+    /// Catches: an FTS table that indexes only title (description search lost).
+    #[test]
+    fn p0e_epg_description_is_searchable() {
+        let conn = fresh_db();
+        let src = seed_source(&conn);
+        channel_repo::upsert_channels(&conn, src, &[channel_with_tvg("ch.epg", "Chan")])
+            .expect("seed channel");
+
+        replace_programs(
+            &conn,
+            src,
+            &[program_full("ch.epg", "Movie", Some("a fine documentary feature"))],
+        )
+        .expect("import");
+
+        let hits = search_titles(&conn, "documentary");
+        assert!(
+            hits.iter().any(|t| t == "Movie"),
+            "description term must hit (EPG FTS indexes title + description), got: {hits:?}"
+        );
+    }
+
+    /// E12 (EPG half) — THE key regression: a program whose channel has been
+    /// tombstoned must NOT appear in search_programs. P0e must ADD the missing
+    /// `c.deleted_time IS NULL` filter to the channels JOIN in search_programs; the
+    /// current code lacks it, so a tombstoned channel's programs leak into search.
+    ///
+    /// Catches: forgetting the tombstone filter on the search_programs channel JOIN
+    /// (ghost-channel EPG entries surfacing in search results).
+    #[test]
+    fn p0e_search_programs_excludes_tombstoned_channel() {
+        let conn = fresh_db();
+        let src = seed_source(&conn);
+
+        // Two channels so the re-import below tombstones only `ghost`.
+        channel_repo::upsert_channels(
+            &conn,
+            src,
+            &[
+                channel_with_tvg("ghost", "Ghost Channel"),
+                channel_with_tvg("keep", "Keep Channel"),
+            ],
+        )
+        .expect("seed channels");
+
+        // Programs for both channels.
+        replace_programs(
+            &conn,
+            src,
+            &[
+                program_full("ghost", "Ghosttitle", None),
+                program_full("keep", "Keeptitle", None),
+            ],
+        )
+        .expect("import programs");
+
+        assert!(
+            search_titles(&conn, "Ghosttitle")
+                .iter()
+                .any(|t| t == "Ghosttitle"),
+            "precondition: ghost program searchable before tombstone"
+        );
+
+        // Re-import channels WITHOUT `ghost` → it is tombstoned (deleted_time set).
+        // Its program rows still exist (replace_programs untouched), so only the
+        // search_programs `deleted_time IS NULL` filter can hide them.
+        channel_repo::upsert_channels(&conn, src, &[channel_with_tvg("keep", "Keep Channel")])
+            .expect("re-import tombstones ghost");
+
+        let hits = search_titles(&conn, "Ghosttitle");
+        assert!(
+            !hits.iter().any(|t| t == "Ghosttitle"),
+            "search_programs must exclude programs of tombstoned channels (c.deleted_time IS NULL), got: {hits:?}"
+        );
+    }
+}
+
 pub fn search_programs(
     conn: &Connection,
     search: Option<&str>,
     limit: u32,
 ) -> AppResult<Vec<EpgProgramSearchResultDto>> {
-    let pattern = search
-        .map(|value| format!("%{}%", value.trim()))
-        .filter(|value| value != "%%");
-
-    let mut stmt = conn.prepare(
-        "WITH alias_map AS (
+    // The channels JOIN must filter tombstoned channels (c.deleted_time IS NULL),
+    // independent of FTS — otherwise a tombstoned channel's programs leak into
+    // search results.
+    let base = "WITH alias_map AS (
             SELECT source_id, channel_tvg_id, alias_normalized
             FROM epg_channel_aliases
         )
@@ -470,12 +660,41 @@ pub fn search_programs(
         )
         INNER JOIN sources s ON s.id = c.source_id
         WHERE s.enabled = 1
-          AND (?1 IS NULL OR ep.title LIKE ?1 OR COALESCE(ep.description, '') LIKE ?1)
-        ORDER BY ep.start_at
-        LIMIT ?2",
-    )?;
+          AND c.deleted_time IS NULL";
 
-    let rows = stmt.query_map(rusqlite::params![pattern, limit], |row| {
+    let trimmed = search.map(|v| v.trim()).filter(|v| !v.is_empty());
+
+    let (sql, params): (String, Vec<rusqlite::types::Value>) = match trimmed {
+        None => (
+            format!("{base} ORDER BY ep.start_at LIMIT ?1"),
+            vec![(limit as i64).into()],
+        ),
+        Some(term) if term.chars().count() >= 3 => {
+            // ≥3 chars → trigram FTS (substring match). Wrap as an FTS string
+            // literal (double-quote + escape inner quotes) to block FTS syntax.
+            let literal = format!("\"{}\"", term.replace('"', "\"\""));
+            (
+                format!(
+                    "{base} AND ep.id IN (SELECT rowid FROM epg_programs_fts WHERE epg_programs_fts MATCH ?1) ORDER BY ep.start_at LIMIT ?2"
+                ),
+                vec![literal.into(), (limit as i64).into()],
+            )
+        }
+        Some(term) => {
+            // <3 chars → LIKE fallback over title + description.
+            let pattern = format!("%{}%", term);
+            (
+                format!(
+                    "{base} AND (ep.title LIKE ?1 OR COALESCE(ep.description, '') LIKE ?1) ORDER BY ep.start_at LIMIT ?2"
+                ),
+                vec![pattern.into(), (limit as i64).into()],
+            )
+        }
+    };
+
+    let mut stmt = conn.prepare(&sql)?;
+
+    let rows = stmt.query_map(rusqlite::params_from_iter(&params), |row| {
         Ok(EpgProgramSearchResultDto {
             id: row.get("ep_id")?,
             channel_id: row.get("channel_id")?,

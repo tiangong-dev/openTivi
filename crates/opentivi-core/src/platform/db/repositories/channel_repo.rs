@@ -194,8 +194,22 @@ pub fn list_channels(
     }
 
     if let Some(s) = search {
-        sql.push_str(&format!(" AND c.name LIKE ?{}", idx));
-        params.push(format!("%{}%", s).into());
+        let trimmed = s.trim();
+        if trimmed.chars().count() >= 3 {
+            // ≥3 chars → trigram FTS (substring match). Wrap the user term as an
+            // FTS string literal (double-quote it, escape inner quotes) so FTS5
+            // query syntax can't be injected; the tombstone filter on `c` still
+            // applies because we filter back through `c.id`.
+            sql.push_str(&format!(
+                " AND c.id IN (SELECT rowid FROM channels_fts WHERE channels_fts MATCH ?{})",
+                idx
+            ));
+            params.push(format!("\"{}\"", trimmed.replace('"', "\"\"")).into());
+        } else {
+            // <3 chars → LIKE fallback (covers 2-char CJN queries trigram can't serve).
+            sql.push_str(&format!(" AND c.name LIKE ?{}", idx));
+            params.push(format!("%{}%", trimmed).into());
+        }
         idx += 1;
     }
 
@@ -1283,5 +1297,225 @@ http://a/1\n";
         assert_eq!(csource, None);
         assert_eq!(cdays, None);
         assert_eq!(chours, None);
+    }
+
+    // ── P0e tests (TDD red): FTS5 频道搜索（trigram） ─────────────────────────
+    //
+    // Expected to FAIL until P0e (migration 0014 FTS tables/triggers +
+    // list_channels routing 3+ char queries through trigram FTS) is implemented.
+    //
+    // Everything is driven through the EXISTING public API (upsert_channels,
+    // source_repo::delete, list_channels) — no reference to a not-yet-existing Rust
+    // symbol — so the test crate keeps COMPILING; the missing FTS / behaviour
+    // surfaces at RUNTIME (red).
+    //
+    // Decisions pinned: trigger-kept FTS stays in sync on INSERT/UPDATE/DELETE;
+    // queries of 3+ characters go through the trigram FTS (so arbitrary CJK/ASCII
+    // substrings match), queries of <3 characters fall back to LIKE; tombstoned
+    // channels (deleted_time IS NOT NULL) never appear in search results.
+
+    /// Search helper over the public list_channels search entry point.
+    fn search_channel_names(conn: &Connection, src: i64, query: &str) -> Vec<String> {
+        list_channels(conn, Some(src), None, Some(query), false, 100, 0)
+            .expect("list_channels(search) should succeed")
+            .into_iter()
+            .map(|c| c.name)
+            .collect()
+    }
+
+    /// E5: INSERT sync — a freshly upserted channel is immediately findable via the
+    /// search entry point (the INSERT trigger must have fed channels_fts).
+    ///
+    /// Catches: a missing AFTER INSERT trigger that leaves new channels unindexed.
+    #[test]
+    fn p0e_insert_syncs_fts_and_channel_is_searchable() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let ch = sample_channel("ch1", "Discovery Science", "http://a/1");
+        upsert_channels(&conn, src, &[ch]).expect("upsert");
+
+        // 3+ char substring → trigram FTS path.
+        let hits = search_channel_names(&conn, src, "Science");
+        assert!(
+            hits.iter().any(|n| n == "Discovery Science"),
+            "newly inserted channel must be searchable (INSERT trigger synced FTS), got: {hits:?}"
+        );
+    }
+
+    /// E6: UPDATE/rename sync — renaming a channel A→B (via the revive/update path
+    /// of upsert_channels) must update the FTS: searching the OLD name no longer
+    /// hits, the NEW name does.
+    ///
+    /// Catches: an AFTER UPDATE trigger that fails to re-index the new name, leaving
+    /// a stale FTS row (old name still searchable, new name not).
+    #[test]
+    fn p0e_update_rename_syncs_fts() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        // Same channel_key → in-place UPDATE, name changes.
+        let before = sample_channel("ch1", "Alphaname", "http://a/1");
+        upsert_channels(&conn, src, &[before]).expect("first upsert");
+        let after = sample_channel("ch1", "Betaname", "http://a/1");
+        upsert_channels(&conn, src, &[after]).expect("rename upsert");
+
+        let old_hits = search_channel_names(&conn, src, "Alphaname");
+        assert!(
+            !old_hits.iter().any(|n| n == "Betaname"),
+            "old name must NOT match after rename (FTS UPDATE trigger stale), got: {old_hits:?}"
+        );
+        let new_hits = search_channel_names(&conn, src, "Betaname");
+        assert!(
+            new_hits.iter().any(|n| n == "Betaname"),
+            "new name must match after rename, got: {new_hits:?}"
+        );
+    }
+
+    /// E7: DELETE cascade sync — deleting a source cascades (ON DELETE CASCADE) the
+    /// hard-deletion of its channels, and the AFTER DELETE trigger must remove them
+    /// from channels_fts, so the channel name is no longer searchable.
+    ///
+    /// (The bundled SQLite enforces FK by default — see libsqlite3-sys build.rs
+    /// `-DSQLITE_DEFAULT_FOREIGN_KEYS=1` — so source deletion really cascades the
+    /// channel rows in an in-memory connection too.)
+    ///
+    /// Catches: a missing AFTER DELETE trigger that leaks orphaned FTS rows for
+    /// hard-deleted channels.
+    #[test]
+    fn p0e_delete_cascade_syncs_fts() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let ch = sample_channel("ch1", "Vanishing Network", "http://a/1");
+        upsert_channels(&conn, src, &[ch]).expect("upsert");
+        assert!(
+            search_channel_names(&conn, src, "Vanishing")
+                .iter()
+                .any(|n| n == "Vanishing Network"),
+            "precondition: channel searchable before source delete"
+        );
+
+        // Cascade-delete the source → channels hard-deleted → FTS DELETE trigger.
+        source_repo::delete(&conn, src).expect("delete source");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM channels_fts WHERE channels_fts MATCH 'Vanishing'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("channels_fts MATCH should be queryable");
+        assert_eq!(
+            count, 0,
+            "DELETE trigger must purge cascade-deleted channels from channels_fts"
+        );
+    }
+
+    /// E8: Chinese substring via trigram — a 3+ char interior substring of a CJK
+    /// channel name must hit. This is the whole point of choosing the trigram
+    /// tokenizer: a word-boundary tokenizer (unicode61) would NOT match an interior
+    /// CJK substring and this test would fail.
+    ///
+    /// Catches: implementing FTS with unicode61 instead of trigram (interior CJK
+    /// substring search silently broken).
+    #[test]
+    fn p0e_chinese_substring_via_trigram() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let ch = sample_channel("ch1", "央视综合频道", "http://a/1");
+        upsert_channels(&conn, src, &[ch]).expect("upsert");
+
+        // 3-char interior substring (skips the leading 央视). Trigram matches; a
+        // unicode61 token index would not.
+        let hits = search_channel_names(&conn, src, "综合频道");
+        assert!(
+            hits.iter().any(|n| n == "央视综合频道"),
+            "3+ char CJK substring must match via trigram FTS, got: {hits:?}"
+        );
+    }
+
+    /// E9: Chinese two-character query falls back to LIKE — a query shorter than 3
+    /// characters cannot be served by trigram (trigram needs ≥3 chars), so the read
+    /// path must fall back to a LIKE substring scan and still hit. This is the
+    /// double-char (e.g. 综合) safety net.
+    ///
+    /// Catches: routing a <3 char query into trigram FTS (which returns nothing for
+    /// a 2-char CJK term), losing all 2-character Chinese search.
+    #[test]
+    fn p0e_chinese_two_char_falls_back_to_like() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let ch = sample_channel("ch1", "央视综合频道", "http://a/1");
+        upsert_channels(&conn, src, &[ch]).expect("upsert");
+
+        // 2 characters → must use the LIKE fallback (NOT trigram), and still hit.
+        let hits = search_channel_names(&conn, src, "综合");
+        assert!(
+            hits.iter().any(|n| n == "央视综合频道"),
+            "<3 char CJK query must hit via LIKE fallback, got: {hits:?}"
+        );
+    }
+
+    /// E10: English interior substring via trigram — `ctv` is an interior substring
+    /// of `CCTV News` (and not a token under unicode61); trigram must match it.
+    ///
+    /// Catches: a token-based FTS that only matches whole words, breaking partial
+    /// English search.
+    #[test]
+    fn p0e_english_substring_via_trigram() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let ch = sample_channel("ch1", "CCTV News", "http://a/1");
+        upsert_channels(&conn, src, &[ch]).expect("upsert");
+
+        let hits = search_channel_names(&conn, src, "ctv");
+        assert!(
+            hits.iter().any(|n| n == "CCTV News"),
+            "3 char interior English substring must match via trigram, got: {hits:?}"
+        );
+    }
+
+    /// E12 (channel half): tombstoned channels must NOT appear in search results.
+    /// A channel that is tombstoned (deleted_time set, via re-import without it)
+    /// must be excluded from list_channels(search), even though its name still
+    /// matches — the search path must keep the `deleted_time IS NULL` filter.
+    ///
+    /// Catches: an FTS-routed search that joins channels_fts back to channels but
+    /// forgets the tombstone filter, leaking ghost channels into search.
+    #[test]
+    fn p0e_search_excludes_tombstoned_channel() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run_migrations(&conn).expect("migrations should run");
+        let src = seed_source(&conn, "A", "http://example.com/a.m3u");
+
+        let ghost = sample_channel("ghost", "Ghostly Sports", "http://a/ghost");
+        let keep = sample_channel("keep", "Keeper", "http://a/keep");
+        upsert_channels(&conn, src, &[ghost, keep.clone()]).expect("initial import");
+        assert!(
+            search_channel_names(&conn, src, "Ghostly")
+                .iter()
+                .any(|n| n == "Ghostly Sports"),
+            "precondition: ghost searchable before tombstone"
+        );
+
+        // Re-import without `ghost` → it is tombstoned (deleted_time set), not
+        // hard-deleted.
+        upsert_channels(&conn, src, &[keep]).expect("re-import drops ghost");
+
+        let hits = search_channel_names(&conn, src, "Ghostly");
+        assert!(
+            !hits.iter().any(|n| n == "Ghostly Sports"),
+            "search must exclude tombstoned channels (deleted_time IS NULL filter), got: {hits:?}"
+        );
     }
 }

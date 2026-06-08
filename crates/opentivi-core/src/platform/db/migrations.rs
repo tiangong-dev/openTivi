@@ -68,6 +68,11 @@ const MIGRATIONS: &[(u32, &str, &str)] = &[
         "0013_catchup",
         include_str!("../../../migrations/0013_catchup.sql"),
     ),
+    (
+        14,
+        "0014_fts5_search",
+        include_str!("../../../migrations/0014_fts5_search.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
@@ -760,5 +765,158 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).expect("first migration run should succeed");
         run_migrations(&conn).expect("second migration run should be idempotent");
+    }
+
+    // ── P0e tests (TDD red): FTS5 搜索（trigram）迁移 0014 ────────────────────
+    //
+    // Expected to FAIL until P0e (migration 0014) is implemented. They assert only
+    // the externally observable schema contract through sqlite_master / a raw FTS
+    // MATCH query, never a not-yet-existing Rust symbol, so the test crate keeps
+    // COMPILING; the missing FTS tables / un-backfilled content surface at RUNTIME
+    // (red).
+    //
+    // Decisions pinned here: tokenizer = trigram (arbitrary CJK/ASCII substrings),
+    // channels_fts indexes channel `name`, epg_programs_fts indexes title + AND
+    // description, and migration 0014 must rebuild-backfill any pre-existing
+    // content rows.
+
+    /// E1: migration 0014 (FTS5 search) is registered + applied.
+    ///
+    /// Per the P0e contract we assert ONLY that version 14 is registered (NOT a
+    /// global MAX), so adding later migrations does not regress this test.
+    ///
+    /// Catches: forgetting to register the 0014 migration in MIGRATIONS, so the FTS
+    /// tables / triggers are never created on a real upgrade.
+    #[test]
+    fn p0e_migration_14_is_registered() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("migrations should run");
+
+        let applied: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _migrations WHERE version = 14",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(applied, 1, "migration 14 (FTS5 search) must be applied");
+    }
+
+    /// E2: migration 0014 creates the two FTS5 virtual tables `channels_fts`
+    /// (indexing channel name) and `epg_programs_fts` (indexing title +
+    /// description).
+    ///
+    /// Catches: forgetting to create either FTS table, or naming them differently
+    /// than the read path expects.
+    #[test]
+    fn p0e_migration_creates_fts_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("migrations should run");
+
+        assert!(
+            table_exists(&conn, "channels_fts"),
+            "migration 0014 must create the channels_fts virtual table"
+        );
+        assert!(
+            table_exists(&conn, "epg_programs_fts"),
+            "migration 0014 must create the epg_programs_fts virtual table"
+        );
+    }
+
+    /// E3: re-running migrations is idempotent. Because CREATE VIRTUAL TABLE has no
+    /// `IF NOT EXISTS` form in older SQLite usage, the migration must be guarded by
+    /// the version check (run-once), so a second run_migrations must NOT blow up
+    /// trying to re-create the FTS tables / triggers.
+    ///
+    /// Catches: a non-idempotent 0014 that errors ("table already exists") on the
+    /// second run_migrations invocation.
+    #[test]
+    fn p0e_fts_migration_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("first migration run should succeed");
+        run_migrations(&conn).expect("second migration run should be idempotent");
+    }
+
+    /// E4: migration 0014 must REBUILD-backfill pre-existing content rows, so
+    /// channels / epg_programs that already existed before the FTS tables were
+    /// created are searchable afterwards.
+    ///
+    /// We reproduce a "historical DB at schema version 13" by applying migrations
+    /// 0001..0013 by hand (their SQL + a versioned _migrations table), inserting
+    /// content rows directly, and ONLY THEN letting run_migrations apply 0014. A
+    /// migration that creates empty FTS tables without `INSERT INTO ..._fts
+    /// VALUES('rebuild')` would leave these historical rows invisible to search.
+    ///
+    /// Catches: forgetting the rebuild backfill (existing users' channels/EPG would
+    /// silently never appear in search until re-imported).
+    #[test]
+    fn p0e_migration_rebuilds_existing_content_into_fts() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        // Build a "version 13" database WITHOUT running 0014: create the versioned
+        // _migrations table, execute migrations 0001..0013 SQL, and record them as
+        // applied so run_migrations() will only apply 0014.
+        conn.execute_batch(
+            "CREATE TABLE _migrations (
+                version  INTEGER PRIMARY KEY,
+                name     TEXT NOT NULL,
+                applied_at TEXT NOT NULL
+            );",
+        )
+        .unwrap();
+        for &(version, name, sql) in MIGRATIONS {
+            if version >= 14 {
+                continue;
+            }
+            conn.execute_batch(sql)
+                .unwrap_or_else(|e| panic!("seeding migration {name} (v{version}) failed: {e}"));
+            conn.execute(
+                "INSERT INTO _migrations (version, name, applied_at) VALUES (?1, ?2, datetime('now'))",
+                rusqlite::params![version, name],
+            )
+            .unwrap();
+        }
+
+        // Historical content present BEFORE 0014 runs.
+        conn.execute_batch(
+            "INSERT INTO sources (id, kind, name, location, enabled, created_at, updated_at) \
+                 VALUES (1, 'm3u', 'S', 'http://example.com/x.m3u', 1, datetime('now'), datetime('now')); \
+             INSERT INTO channels (id, channel_key, source_id, name, tvg_id, stream_url, created_at, updated_at) \
+                 VALUES (1, 'ck.legacy', 1, 'Legacy History Channel', 'ck.legacy', 'http://a/s.ts', datetime('now'), datetime('now')); \
+             INSERT INTO epg_programs (id, source_id, channel_tvg_id, start_at, end_at, title, description, created_at) \
+                 VALUES (1, 1, 'ck.legacy', '20240101060000 +0000', '20240101070000 +0000', 'Historic Movie', 'an old documentary', datetime('now'));",
+        )
+        .expect("seeding historical content rows must succeed");
+
+        // Now apply 0014 (the only un-applied migration). Its rebuild backfill must
+        // pull the pre-existing rows into the FTS indexes.
+        run_migrations(&conn).expect("applying migration 0014 should succeed");
+
+        // The historical channel must be findable via the FTS index.
+        let ch_hits: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM channels_fts WHERE channels_fts MATCH 'History'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("channels_fts MATCH should be queryable after 0014");
+        assert!(
+            ch_hits >= 1,
+            "migration 0014 must rebuild-backfill pre-existing channels into channels_fts"
+        );
+
+        // The historical program must be findable via the EPG FTS index (title or
+        // description); search the description term to also pin description coverage.
+        let ep_hits: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM epg_programs_fts WHERE epg_programs_fts MATCH 'documentary'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("epg_programs_fts MATCH should be queryable after 0014");
+        assert!(
+            ep_hits >= 1,
+            "migration 0014 must rebuild-backfill pre-existing epg_programs into epg_programs_fts"
+        );
     }
 }

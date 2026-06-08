@@ -399,6 +399,22 @@ fileprivate class UniffiHandleMap<T> {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
+    typealias FfiType = UInt16
+    typealias SwiftType = UInt16
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt16 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
@@ -408,6 +424,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
     }
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterInt32: FfiConverterPrimitive {
+    typealias FfiType = Int32
+    typealias SwiftType = Int32
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Int32 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Int32, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
@@ -1105,16 +1137,42 @@ public struct PlaybackInfo {
     public var channelName: String
     public var streamUrl: String
     public var logoUrl: String?
+    public var userAgent: String?
+    public var referer: String?
+    public var proxyRecommended: Bool
+    public var kind: String?
+    public var priority: Int32
+    public var catchupType: String?
+    public var catchupSource: String?
+    public var catchupDays: String?
+    public var catchupHours: Int64?
+    public var health: String?
+    public var expiresAt: Int64?
+    public var needsReresolve: Bool
+    public var failureReason: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(channelId: Int64, resolvedChannelId: Int64, sourceId: Int64, channelName: String, streamUrl: String, logoUrl: String?) {
+    public init(channelId: Int64, resolvedChannelId: Int64, sourceId: Int64, channelName: String, streamUrl: String, logoUrl: String?, userAgent: String?, referer: String?, proxyRecommended: Bool, kind: String?, priority: Int32, catchupType: String?, catchupSource: String?, catchupDays: String?, catchupHours: Int64?, health: String?, expiresAt: Int64?, needsReresolve: Bool, failureReason: String?) {
         self.channelId = channelId
         self.resolvedChannelId = resolvedChannelId
         self.sourceId = sourceId
         self.channelName = channelName
         self.streamUrl = streamUrl
         self.logoUrl = logoUrl
+        self.userAgent = userAgent
+        self.referer = referer
+        self.proxyRecommended = proxyRecommended
+        self.kind = kind
+        self.priority = priority
+        self.catchupType = catchupType
+        self.catchupSource = catchupSource
+        self.catchupDays = catchupDays
+        self.catchupHours = catchupHours
+        self.health = health
+        self.expiresAt = expiresAt
+        self.needsReresolve = needsReresolve
+        self.failureReason = failureReason
     }
 }
 
@@ -1140,6 +1198,45 @@ extension PlaybackInfo: Equatable, Hashable {
         if lhs.logoUrl != rhs.logoUrl {
             return false
         }
+        if lhs.userAgent != rhs.userAgent {
+            return false
+        }
+        if lhs.referer != rhs.referer {
+            return false
+        }
+        if lhs.proxyRecommended != rhs.proxyRecommended {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.priority != rhs.priority {
+            return false
+        }
+        if lhs.catchupType != rhs.catchupType {
+            return false
+        }
+        if lhs.catchupSource != rhs.catchupSource {
+            return false
+        }
+        if lhs.catchupDays != rhs.catchupDays {
+            return false
+        }
+        if lhs.catchupHours != rhs.catchupHours {
+            return false
+        }
+        if lhs.health != rhs.health {
+            return false
+        }
+        if lhs.expiresAt != rhs.expiresAt {
+            return false
+        }
+        if lhs.needsReresolve != rhs.needsReresolve {
+            return false
+        }
+        if lhs.failureReason != rhs.failureReason {
+            return false
+        }
         return true
     }
 
@@ -1150,6 +1247,19 @@ extension PlaybackInfo: Equatable, Hashable {
         hasher.combine(channelName)
         hasher.combine(streamUrl)
         hasher.combine(logoUrl)
+        hasher.combine(userAgent)
+        hasher.combine(referer)
+        hasher.combine(proxyRecommended)
+        hasher.combine(kind)
+        hasher.combine(priority)
+        hasher.combine(catchupType)
+        hasher.combine(catchupSource)
+        hasher.combine(catchupDays)
+        hasher.combine(catchupHours)
+        hasher.combine(health)
+        hasher.combine(expiresAt)
+        hasher.combine(needsReresolve)
+        hasher.combine(failureReason)
     }
 }
 
@@ -1166,7 +1276,20 @@ public struct FfiConverterTypePlaybackInfo: FfiConverterRustBuffer {
                 sourceId: FfiConverterInt64.read(from: &buf), 
                 channelName: FfiConverterString.read(from: &buf), 
                 streamUrl: FfiConverterString.read(from: &buf), 
-                logoUrl: FfiConverterOptionString.read(from: &buf)
+                logoUrl: FfiConverterOptionString.read(from: &buf), 
+                userAgent: FfiConverterOptionString.read(from: &buf), 
+                referer: FfiConverterOptionString.read(from: &buf), 
+                proxyRecommended: FfiConverterBool.read(from: &buf), 
+                kind: FfiConverterOptionString.read(from: &buf), 
+                priority: FfiConverterInt32.read(from: &buf), 
+                catchupType: FfiConverterOptionString.read(from: &buf), 
+                catchupSource: FfiConverterOptionString.read(from: &buf), 
+                catchupDays: FfiConverterOptionString.read(from: &buf), 
+                catchupHours: FfiConverterOptionInt64.read(from: &buf), 
+                health: FfiConverterOptionString.read(from: &buf), 
+                expiresAt: FfiConverterOptionInt64.read(from: &buf), 
+                needsReresolve: FfiConverterBool.read(from: &buf), 
+                failureReason: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -1177,6 +1300,19 @@ public struct FfiConverterTypePlaybackInfo: FfiConverterRustBuffer {
         FfiConverterString.write(value.channelName, into: &buf)
         FfiConverterString.write(value.streamUrl, into: &buf)
         FfiConverterOptionString.write(value.logoUrl, into: &buf)
+        FfiConverterOptionString.write(value.userAgent, into: &buf)
+        FfiConverterOptionString.write(value.referer, into: &buf)
+        FfiConverterBool.write(value.proxyRecommended, into: &buf)
+        FfiConverterOptionString.write(value.kind, into: &buf)
+        FfiConverterInt32.write(value.priority, into: &buf)
+        FfiConverterOptionString.write(value.catchupType, into: &buf)
+        FfiConverterOptionString.write(value.catchupSource, into: &buf)
+        FfiConverterOptionString.write(value.catchupDays, into: &buf)
+        FfiConverterOptionInt64.write(value.catchupHours, into: &buf)
+        FfiConverterOptionString.write(value.health, into: &buf)
+        FfiConverterOptionInt64.write(value.expiresAt, into: &buf)
+        FfiConverterBool.write(value.needsReresolve, into: &buf)
+        FfiConverterOptionString.write(value.failureReason, into: &buf)
     }
 }
 
@@ -2123,6 +2259,12 @@ public func getChannelsEpgSnapshots(channelIds: [Int64], windowStartTs: Int64?, 
     )
 })
 }
+public func getProxyPort()throws  -> UInt16 {
+    return try  FfiConverterUInt16.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
+    uniffi_opentivi_ios_fn_func_get_proxy_port($0
+    )
+})
+}
 public func importM3u(name: String, location: String, autoRefreshMinutes: UInt32?)throws  -> ImportResult {
     return try  FfiConverterTypeImportResult.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
     uniffi_opentivi_ios_fn_func_import_m3u(
@@ -2150,11 +2292,12 @@ public func importXtream(name: String, serverUrl: String, username: String, pass
     )
 })
 }
-public func initEngine(dataDir: String)throws  {try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
+public func initEngine(dataDir: String)throws  -> UInt16 {
+    return try  FfiConverterUInt16.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
     uniffi_opentivi_ios_fn_func_init_engine(
         FfiConverterString.lower(dataDir),$0
     )
-}
+})
 }
 public func listChannels(sourceId: Int64?, groupName: String?, search: String?, favoritesOnly: Bool?, limit: UInt32, offset: UInt32)throws  -> [ChannelInfo] {
     return try  FfiConverterSequenceTypeChannelInfo.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
@@ -2286,6 +2429,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_opentivi_ios_checksum_func_get_channels_epg_snapshots() != 55619) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_opentivi_ios_checksum_func_get_proxy_port() != 35504) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_opentivi_ios_checksum_func_import_m3u() != 54962) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2295,7 +2441,7 @@ private var initializationResult: InitializationResult = {
     if (uniffi_opentivi_ios_checksum_func_import_xtream() != 46472) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_opentivi_ios_checksum_func_init_engine() != 34199) {
+    if (uniffi_opentivi_ios_checksum_func_init_engine() != 58495) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_opentivi_ios_checksum_func_list_channels() != 42695) {

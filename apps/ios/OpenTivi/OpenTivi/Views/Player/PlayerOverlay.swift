@@ -330,7 +330,7 @@ struct PlayerDiagnosticsPanel: View {
             HStack {
                 Spacer()
                 VStack(alignment: .leading, spacing: 6) {
-                    diagRow(locale.t("player.playbackEngine"), "VLC")
+                    diagRow(locale.t("player.playbackEngine"), playerVM.activeBackendKind == .avplayer ? "AVPlayer" : "VLC")
                     diagRow(locale.t("player.streamKind"), playerVM.vlcState)
                     diagRow(locale.t("player.networkSpeed"), formatSpeed(playerVM.observedBitrateBps))
                     if playerVM.indicatedBitrateBps > 0 {

@@ -26,6 +26,9 @@ final class PlayerViewModel: ObservableObject {
     @Published var showChannelList = false
     @Published var vlcState: String = "idle"
 
+    /// Drives the video surface swap in `PlayerView` (VLC vs AVPlayer layer).
+    @Published var activeBackendKind: PlayerBackendKind = .vlc
+
     lazy var streamPlayer: StreamPlayer = {
         let player = StreamPlayer()
         player.onBufferingStarted = { [weak self] in
@@ -50,14 +53,85 @@ final class PlayerViewModel: ObservableObject {
         currentCandidateIndex = 0
         playbackCandidates = []
         resetStallTracking()
-        streamPlayer.play(streamUrl: channel.streamUrl)
-        startBitrateObservation()
         Task {
             try? await RustBridge.shared.markRecentWatched(channelId: channel.id)
             try? await RustBridge.shared.setSetting(key: "player.lastChannelId", value: "\(channel.id)")
+            await resolveAndStart(channelId: channel.id, fallbackUrl: channel.streamUrl)
             await loadEpg(channelId: channel.id)
             await loadPlaybackCandidates(channelId: channel.id)
         }
+    }
+
+    /// Resolve full playback metadata (headers / kind) for `channelId`, then start.
+    /// Falls back to a bare URL when resolution fails so playback still attempts.
+    private func resolveAndStart(channelId: Int64, fallbackUrl: String) async {
+        do {
+            let info = try await RustBridge.shared.resolvePlayback(channelId: channelId)
+            startPlayback(info)
+        } catch {
+            startPlayback(rawInfo(url: fallbackUrl))
+        }
+    }
+
+    /// Unified playback entry. Decides backend + headers and starts the player.
+    private func startPlayback(_ info: PlaybackInfo) {
+        guard let url = URL(string: info.streamUrl) else {
+            playbackError = "Invalid stream URL"
+            return
+        }
+        let backend = decide(info)
+        let headers = buildHeaders(info)
+        activeBackendKind = backend
+        // Phase 1: inject headers via AVURLAsset / VLC options, no local proxy.
+        // proxyRecommended is logged only and reserved for a later proxy phase.
+        if info.proxyRecommended {
+            NSLog("[Player] proxyRecommended=true for \(info.channelName) (phase 1: header injection, proxy unused)")
+        }
+        streamPlayer.play(url: url, headers: headers, backend: backend)
+        startBitrateObservation()
+    }
+
+    /// Backend routing: mpegts/ts -> VLC; hls/native/empty -> AVPlayer.
+    private func decide(_ info: PlaybackInfo) -> PlayerBackendKind {
+        switch (info.kind ?? "").lowercased() {
+        case "mpegts", "ts":
+            return .vlc
+        default:
+            return .avplayer
+        }
+    }
+
+    /// Map resolved metadata to HTTP request headers.
+    private func buildHeaders(_ info: PlaybackInfo) -> [String: String] {
+        var headers: [String: String] = [:]
+        if let ua = info.userAgent, !ua.isEmpty { headers["User-Agent"] = ua }
+        if let ref = info.referer, !ref.isEmpty { headers["Referer"] = ref }
+        return headers
+    }
+
+    /// Minimal `PlaybackInfo` from a bare URL (resolution-failure fallback).
+    private func rawInfo(url: String) -> PlaybackInfo {
+        PlaybackInfo(
+            channelId: currentChannel?.id ?? 0,
+            resolvedChannelId: currentChannel?.id ?? 0,
+            sourceId: 0,
+            channelName: currentChannel?.name ?? "",
+            streamUrl: url,
+            logoUrl: nil,
+            userAgent: nil,
+            referer: nil,
+            proxyRecommended: false,
+            kind: nil,
+            priority: 0,
+            catchupType: nil,
+            catchupSource: nil,
+            catchupDays: nil,
+            catchupHours: nil,
+            health: nil,
+            expiresAt: nil,
+            needsReresolve: false,
+            failureReason: nil
+        )
     }
 
     func stop() {
@@ -87,12 +161,10 @@ final class PlayerViewModel: ObservableObject {
         if !playbackCandidates.isEmpty {
             currentCandidateIndex = (currentCandidateIndex + 1) % playbackCandidates.count
             currentCandidateIdx = currentCandidateIndex
-            let candidate = playbackCandidates[currentCandidateIndex]
-            streamPlayer.play(streamUrl: candidate.streamUrl)
+            startPlayback(playbackCandidates[currentCandidateIndex])
         } else {
-            streamPlayer.play(streamUrl: channel.streamUrl)
+            startPlayback(rawInfo(url: channel.streamUrl))
         }
-        startBitrateObservation()
     }
 
     /// Manual source switch: cycle to the next candidate
@@ -100,12 +172,10 @@ final class PlayerViewModel: ObservableObject {
         guard playbackCandidates.count > 1 else { return }
         currentCandidateIndex = (currentCandidateIndex + 1) % playbackCandidates.count
         currentCandidateIdx = currentCandidateIndex
-        let candidate = playbackCandidates[currentCandidateIndex]
         retryCount = 0
         playbackError = nil
         resetStallTracking()
-        streamPlayer.play(streamUrl: candidate.streamUrl)
-        startBitrateObservation()
+        startPlayback(playbackCandidates[currentCandidateIndex])
     }
 
     private func loadPlaybackCandidates(channelId: Int64) async {
@@ -131,9 +201,14 @@ final class PlayerViewModel: ObservableObject {
             }
             for await _ in stream {
                 guard !Task.isCancelled else { break }
+                self.streamPlayer.sampleState()
                 self.observedBitrateBps = self.streamPlayer.observedBitrateBps
                 self.indicatedBitrateBps = self.streamPlayer.indicatedBitrateBps
                 self.vlcState = self.streamPlayer.stateDescription
+                // Keep the view's surface in sync if a backend fallback occurred.
+                if self.activeBackendKind != self.streamPlayer.activeBackendKind {
+                    self.activeBackendKind = self.streamPlayer.activeBackendKind
+                }
             }
         }
     }
@@ -225,9 +300,8 @@ final class PlayerViewModel: ObservableObject {
 
         currentCandidateIndex = (currentCandidateIndex + 1) % playbackCandidates.count
         currentCandidateIdx = currentCandidateIndex
-        let candidate = playbackCandidates[currentCandidateIndex]
         retryCount += 1
-        streamPlayer.play(streamUrl: candidate.streamUrl)
+        startPlayback(playbackCandidates[currentCandidateIndex])
     }
 
     /// Called when VLC returns to playing state — clear stall tracking.

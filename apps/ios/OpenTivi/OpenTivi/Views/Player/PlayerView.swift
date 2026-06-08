@@ -143,9 +143,16 @@ struct PlayerView: View {
         ZStack {
             Color.black
 
-            VLCVideoView(player: playerVM.streamPlayer)
-                .frame(width: pageWidth, height: pageHeight)
-                .allowsHitTesting(false)
+            Group {
+                switch playerVM.activeBackendKind {
+                case .avplayer:
+                    AVPlayerLayerView(player: playerVM.streamPlayer)
+                case .vlc:
+                    VLCVideoView(player: playerVM.streamPlayer)
+                }
+            }
+            .frame(width: pageWidth, height: pageHeight)
+            .allowsHitTesting(false)
 
             Color.clear
                 .contentShape(Rectangle())

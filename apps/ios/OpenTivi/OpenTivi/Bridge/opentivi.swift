@@ -447,6 +447,22 @@ fileprivate struct FfiConverterInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
     typealias FfiType = Int64
     typealias SwiftType = Int64
@@ -523,6 +539,170 @@ fileprivate struct FfiConverterString: FfiConverter {
         writeInt(&buf, len)
         writeBytes(&buf, value.utf8)
     }
+}
+
+
+public struct BackupFileInfo {
+    public var name: String
+    public var size: UInt64
+    public var sha256: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, size: UInt64, sha256: String) {
+        self.name = name
+        self.size = size
+        self.sha256 = sha256
+    }
+}
+
+
+
+extension BackupFileInfo: Equatable, Hashable {
+    public static func ==(lhs: BackupFileInfo, rhs: BackupFileInfo) -> Bool {
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.size != rhs.size {
+            return false
+        }
+        if lhs.sha256 != rhs.sha256 {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(size)
+        hasher.combine(sha256)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackupFileInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackupFileInfo {
+        return
+            try BackupFileInfo(
+                name: FfiConverterString.read(from: &buf), 
+                size: FfiConverterUInt64.read(from: &buf), 
+                sha256: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BackupFileInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterUInt64.write(value.size, into: &buf)
+        FfiConverterString.write(value.sha256, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackupFileInfo_lift(_ buf: RustBuffer) throws -> BackupFileInfo {
+    return try FfiConverterTypeBackupFileInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackupFileInfo_lower(_ value: BackupFileInfo) -> RustBuffer {
+    return FfiConverterTypeBackupFileInfo.lower(value)
+}
+
+
+public struct BackupManifestInfo {
+    public var formatVersion: UInt32
+    public var schemaVersion: UInt32
+    public var appVersion: String?
+    public var createdAt: String
+    public var files: [BackupFileInfo]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(formatVersion: UInt32, schemaVersion: UInt32, appVersion: String?, createdAt: String, files: [BackupFileInfo]) {
+        self.formatVersion = formatVersion
+        self.schemaVersion = schemaVersion
+        self.appVersion = appVersion
+        self.createdAt = createdAt
+        self.files = files
+    }
+}
+
+
+
+extension BackupManifestInfo: Equatable, Hashable {
+    public static func ==(lhs: BackupManifestInfo, rhs: BackupManifestInfo) -> Bool {
+        if lhs.formatVersion != rhs.formatVersion {
+            return false
+        }
+        if lhs.schemaVersion != rhs.schemaVersion {
+            return false
+        }
+        if lhs.appVersion != rhs.appVersion {
+            return false
+        }
+        if lhs.createdAt != rhs.createdAt {
+            return false
+        }
+        if lhs.files != rhs.files {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(formatVersion)
+        hasher.combine(schemaVersion)
+        hasher.combine(appVersion)
+        hasher.combine(createdAt)
+        hasher.combine(files)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackupManifestInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackupManifestInfo {
+        return
+            try BackupManifestInfo(
+                formatVersion: FfiConverterUInt32.read(from: &buf), 
+                schemaVersion: FfiConverterUInt32.read(from: &buf), 
+                appVersion: FfiConverterOptionString.read(from: &buf), 
+                createdAt: FfiConverterString.read(from: &buf), 
+                files: FfiConverterSequenceTypeBackupFileInfo.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BackupManifestInfo, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.formatVersion, into: &buf)
+        FfiConverterUInt32.write(value.schemaVersion, into: &buf)
+        FfiConverterOptionString.write(value.appVersion, into: &buf)
+        FfiConverterString.write(value.createdAt, into: &buf)
+        FfiConverterSequenceTypeBackupFileInfo.write(value.files, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackupManifestInfo_lift(_ buf: RustBuffer) throws -> BackupManifestInfo {
+    return try FfiConverterTypeBackupManifestInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackupManifestInfo_lower(_ value: BackupManifestInfo) -> RustBuffer {
+    return FfiConverterTypeBackupManifestInfo.lower(value)
 }
 
 
@@ -1470,6 +1650,136 @@ public func FfiConverterTypeRecentChannelInfo_lower(_ value: RecentChannelInfo) 
 }
 
 
+public struct ReminderInfo {
+    public var id: Int64
+    public var channelId: Int64
+    public var channelName: String
+    public var channelNumber: String?
+    public var programStartEpoch: Int64
+    public var programStopEpoch: Int64?
+    public var programTitle: String
+    public var programDesc: String?
+    public var firedAt: String?
+    public var createdAt: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: Int64, channelId: Int64, channelName: String, channelNumber: String?, programStartEpoch: Int64, programStopEpoch: Int64?, programTitle: String, programDesc: String?, firedAt: String?, createdAt: String) {
+        self.id = id
+        self.channelId = channelId
+        self.channelName = channelName
+        self.channelNumber = channelNumber
+        self.programStartEpoch = programStartEpoch
+        self.programStopEpoch = programStopEpoch
+        self.programTitle = programTitle
+        self.programDesc = programDesc
+        self.firedAt = firedAt
+        self.createdAt = createdAt
+    }
+}
+
+
+
+extension ReminderInfo: Equatable, Hashable {
+    public static func ==(lhs: ReminderInfo, rhs: ReminderInfo) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.channelId != rhs.channelId {
+            return false
+        }
+        if lhs.channelName != rhs.channelName {
+            return false
+        }
+        if lhs.channelNumber != rhs.channelNumber {
+            return false
+        }
+        if lhs.programStartEpoch != rhs.programStartEpoch {
+            return false
+        }
+        if lhs.programStopEpoch != rhs.programStopEpoch {
+            return false
+        }
+        if lhs.programTitle != rhs.programTitle {
+            return false
+        }
+        if lhs.programDesc != rhs.programDesc {
+            return false
+        }
+        if lhs.firedAt != rhs.firedAt {
+            return false
+        }
+        if lhs.createdAt != rhs.createdAt {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(channelId)
+        hasher.combine(channelName)
+        hasher.combine(channelNumber)
+        hasher.combine(programStartEpoch)
+        hasher.combine(programStopEpoch)
+        hasher.combine(programTitle)
+        hasher.combine(programDesc)
+        hasher.combine(firedAt)
+        hasher.combine(createdAt)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReminderInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReminderInfo {
+        return
+            try ReminderInfo(
+                id: FfiConverterInt64.read(from: &buf), 
+                channelId: FfiConverterInt64.read(from: &buf), 
+                channelName: FfiConverterString.read(from: &buf), 
+                channelNumber: FfiConverterOptionString.read(from: &buf), 
+                programStartEpoch: FfiConverterInt64.read(from: &buf), 
+                programStopEpoch: FfiConverterOptionInt64.read(from: &buf), 
+                programTitle: FfiConverterString.read(from: &buf), 
+                programDesc: FfiConverterOptionString.read(from: &buf), 
+                firedAt: FfiConverterOptionString.read(from: &buf), 
+                createdAt: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReminderInfo, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.id, into: &buf)
+        FfiConverterInt64.write(value.channelId, into: &buf)
+        FfiConverterString.write(value.channelName, into: &buf)
+        FfiConverterOptionString.write(value.channelNumber, into: &buf)
+        FfiConverterInt64.write(value.programStartEpoch, into: &buf)
+        FfiConverterOptionInt64.write(value.programStopEpoch, into: &buf)
+        FfiConverterString.write(value.programTitle, into: &buf)
+        FfiConverterOptionString.write(value.programDesc, into: &buf)
+        FfiConverterOptionString.write(value.firedAt, into: &buf)
+        FfiConverterString.write(value.createdAt, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReminderInfo_lift(_ buf: RustBuffer) throws -> ReminderInfo {
+    return try FfiConverterTypeReminderInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReminderInfo_lower(_ value: ReminderInfo) -> RustBuffer {
+    return FfiConverterTypeReminderInfo.lower(value)
+}
+
+
 public struct SettingInfo {
     public var key: String
     public var value: String
@@ -2001,6 +2311,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeBackupFileInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [BackupFileInfo]
+
+    public static func write(_ value: [BackupFileInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeBackupFileInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [BackupFileInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [BackupFileInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeBackupFileInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeChannelEpgSnapshot: FfiConverterRustBuffer {
     typealias SwiftType = [ChannelEpgSnapshot]
 
@@ -2176,6 +2511,31 @@ fileprivate struct FfiConverterSequenceTypeRecentChannelInfo: FfiConverterRustBu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeReminderInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [ReminderInfo]
+
+    public static func write(_ value: [ReminderInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeReminderInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ReminderInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ReminderInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeReminderInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeSettingInfo: FfiConverterRustBuffer {
     typealias SwiftType = [SettingInfo]
 
@@ -2222,11 +2582,37 @@ fileprivate struct FfiConverterSequenceTypeSourceInfo: FfiConverterRustBuffer {
         return seq
     }
 }
+public func addReminder(channelId: Int64, programStartEpoch: Int64, programStopEpoch: Int64?, programTitle: String, programDesc: String?)throws  -> Int64 {
+    return try  FfiConverterInt64.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
+    uniffi_opentivi_ios_fn_func_add_reminder(
+        FfiConverterInt64.lower(channelId),
+        FfiConverterInt64.lower(programStartEpoch),
+        FfiConverterOptionInt64.lower(programStopEpoch),
+        FfiConverterString.lower(programTitle),
+        FfiConverterOptionString.lower(programDesc),$0
+    )
+})
+}
 public func deleteSource(sourceId: Int64)throws  {try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
     uniffi_opentivi_ios_fn_func_delete_source(
         FfiConverterInt64.lower(sourceId),$0
     )
 }
+}
+public func dueReminders(nowEpoch: Int64, windowSecs: Int64)throws  -> [ReminderInfo] {
+    return try  FfiConverterSequenceTypeReminderInfo.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
+    uniffi_opentivi_ios_fn_func_due_reminders(
+        FfiConverterInt64.lower(nowEpoch),
+        FfiConverterInt64.lower(windowSecs),$0
+    )
+})
+}
+public func exportBackup(outPath: String)throws  -> BackupManifestInfo {
+    return try  FfiConverterTypeBackupManifestInfo.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
+    uniffi_opentivi_ios_fn_func_export_backup(
+        FfiConverterString.lower(outPath),$0
+    )
+})
 }
 public func getAllSettings()throws  -> [SettingInfo] {
     return try  FfiConverterSequenceTypeSettingInfo.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
@@ -2262,6 +2648,13 @@ public func getChannelsEpgSnapshots(channelIds: [Int64], windowStartTs: Int64?, 
 public func getProxyPort()throws  -> UInt16 {
     return try  FfiConverterUInt16.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
     uniffi_opentivi_ios_fn_func_get_proxy_port($0
+    )
+})
+}
+public func importBackup(inPath: String)throws  -> BackupManifestInfo {
+    return try  FfiConverterTypeBackupManifestInfo.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
+    uniffi_opentivi_ios_fn_func_import_backup(
+        FfiConverterString.lower(inPath),$0
     )
 })
 }
@@ -2337,6 +2730,12 @@ public func listRecents()throws  -> [RecentChannelInfo] {
     )
 })
 }
+public func listReminders()throws  -> [ReminderInfo] {
+    return try  FfiConverterSequenceTypeReminderInfo.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
+    uniffi_opentivi_ios_fn_func_list_reminders($0
+    )
+})
+}
 public func listSources()throws  -> [SourceInfo] {
     return try  FfiConverterSequenceTypeSourceInfo.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
     uniffi_opentivi_ios_fn_func_list_sources($0
@@ -2349,12 +2748,24 @@ public func markRecentWatched(channelId: Int64)throws  {try rustCallWithError(Ff
     )
 }
 }
+public func markReminderFired(id: Int64)throws  {try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
+    uniffi_opentivi_ios_fn_func_mark_reminder_fired(
+        FfiConverterInt64.lower(id),$0
+    )
+}
+}
 public func refreshSource(sourceId: Int64)throws  -> ImportResult {
     return try  FfiConverterTypeImportResult.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
     uniffi_opentivi_ios_fn_func_refresh_source(
         FfiConverterInt64.lower(sourceId),$0
     )
 })
+}
+public func removeReminder(id: Int64)throws  {try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
+    uniffi_opentivi_ios_fn_func_remove_reminder(
+        FfiConverterInt64.lower(id),$0
+    )
+}
 }
 public func resolvePlayback(channelId: Int64)throws  -> PlaybackInfo {
     return try  FfiConverterTypePlaybackInfo.lift(try rustCallWithError(FfiConverterTypeOpenTiviError.lift) {
@@ -2414,7 +2825,16 @@ private var initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_opentivi_ios_checksum_func_add_reminder() != 44443) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_opentivi_ios_checksum_func_delete_source() != 25015) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_opentivi_ios_checksum_func_due_reminders() != 18855) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_opentivi_ios_checksum_func_export_backup() != 53863) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_opentivi_ios_checksum_func_get_all_settings() != 58717) {
@@ -2430,6 +2850,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_opentivi_ios_checksum_func_get_proxy_port() != 35504) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_opentivi_ios_checksum_func_import_backup() != 19641) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_opentivi_ios_checksum_func_import_m3u() != 54962) {
@@ -2459,13 +2882,22 @@ private var initializationResult: InitializationResult = {
     if (uniffi_opentivi_ios_checksum_func_list_recents() != 57092) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_opentivi_ios_checksum_func_list_reminders() != 2863) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_opentivi_ios_checksum_func_list_sources() != 59376) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_opentivi_ios_checksum_func_mark_recent_watched() != 51283) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_opentivi_ios_checksum_func_mark_reminder_fired() != 32005) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_opentivi_ios_checksum_func_refresh_source() != 38397) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_opentivi_ios_checksum_func_remove_reminder() != 51952) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_opentivi_ios_checksum_func_resolve_playback() != 54731) {

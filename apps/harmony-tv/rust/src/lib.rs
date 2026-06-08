@@ -143,6 +143,36 @@ pub struct PlaybackInfo {
     pub failure_reason: Option<String>,
 }
 
+#[napi(object)]
+pub struct ReminderInfo {
+    pub id: i64,
+    pub channel_id: i64,
+    pub channel_name: String,
+    pub channel_number: Option<String>,
+    pub program_start_epoch: i64,
+    pub program_stop_epoch: Option<i64>,
+    pub program_title: String,
+    pub program_desc: Option<String>,
+    pub fired_at: Option<String>,
+    pub created_at: String,
+}
+
+#[napi(object)]
+pub struct BackupFileInfo {
+    pub name: String,
+    pub size: i64,
+    pub sha256: String,
+}
+
+#[napi(object)]
+pub struct BackupManifestInfo {
+    pub format_version: u32,
+    pub schema_version: u32,
+    pub app_version: Option<String>,
+    pub created_at: String,
+    pub files: Vec<BackupFileInfo>,
+}
+
 // ── Initialization ──────────────────────────────────────────────────────
 
 #[napi]
@@ -482,6 +512,115 @@ pub fn set_setting(key: String, value: String) -> napi::Result<()> {
     })
 }
 
+// ── Backup ──────────────────────────────────────────────────────────────
+
+#[napi]
+pub fn export_backup(out_path: String) -> napi::Result<BackupManifestInfo> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::backup_service::export_backup(
+                &engine.ctx,
+                std::path::Path::new(&out_path),
+            ))
+            .map(BackupManifestInfo::from)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    })
+}
+
+#[napi]
+pub fn import_backup(in_path: String) -> napi::Result<BackupManifestInfo> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::backup_service::import_backup(
+                &engine.ctx,
+                std::path::Path::new(&in_path),
+            ))
+            .map(BackupManifestInfo::from)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    })
+}
+
+// ── Reminders ───────────────────────────────────────────────────────────
+
+#[napi]
+pub fn add_reminder(
+    channel_id: i64,
+    program_start_epoch: i64,
+    program_stop_epoch: Option<i64>,
+    program_title: String,
+    program_desc: Option<String>,
+) -> napi::Result<i64> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::reminders_service::add_reminder(
+                &engine.ctx,
+                channel_id,
+                program_start_epoch,
+                program_stop_epoch,
+                program_title,
+                program_desc,
+            ))
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    })
+}
+
+#[napi]
+pub fn remove_reminder(id: i64) -> napi::Result<()> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::reminders_service::remove_reminder(
+                &engine.ctx,
+                id,
+            ))
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    })
+}
+
+#[napi]
+pub fn list_reminders() -> napi::Result<Vec<ReminderInfo>> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::reminders_service::list_reminders(
+                &engine.ctx,
+            ))
+            .map(|reminders| reminders.into_iter().map(ReminderInfo::from).collect())
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    })
+}
+
+#[napi]
+pub fn due_reminders(now_epoch: i64, window_secs: i64) -> napi::Result<Vec<ReminderInfo>> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::reminders_service::due_reminders(
+                &engine.ctx,
+                now_epoch,
+                window_secs,
+            ))
+            .map(|reminders| reminders.into_iter().map(ReminderInfo::from).collect())
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    })
+}
+
+#[napi]
+pub fn mark_reminder_fired(id: i64) -> napi::Result<()> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::reminders_service::mark_reminder_fired(
+                &engine.ctx,
+                id,
+            ))
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    })
+}
+
 // ── Proxy ───────────────────────────────────────────────────────────────
 
 #[napi]
@@ -620,6 +759,45 @@ impl From<opentivi_core::dto::PlaybackSourceDto> for PlaybackInfo {
             expires_at: p.expires_at,
             needs_reresolve: p.needs_reresolve,
             failure_reason: p.failure_reason,
+        }
+    }
+}
+
+impl From<opentivi_core::dto::ReminderDto> for ReminderInfo {
+    fn from(r: opentivi_core::dto::ReminderDto) -> Self {
+        Self {
+            id: r.id,
+            channel_id: r.channel_id,
+            channel_name: r.channel_name,
+            channel_number: r.channel_number,
+            program_start_epoch: r.program_start_epoch,
+            program_stop_epoch: r.program_stop_epoch,
+            program_title: r.program_title,
+            program_desc: r.program_desc,
+            fired_at: r.fired_at,
+            created_at: r.created_at,
+        }
+    }
+}
+
+impl From<opentivi_core::core::services::backup_service::BackupFileEntry> for BackupFileInfo {
+    fn from(f: opentivi_core::core::services::backup_service::BackupFileEntry) -> Self {
+        Self {
+            name: f.name,
+            size: f.size as i64,
+            sha256: f.sha256,
+        }
+    }
+}
+
+impl From<opentivi_core::core::services::backup_service::BackupManifest> for BackupManifestInfo {
+    fn from(m: opentivi_core::core::services::backup_service::BackupManifest) -> Self {
+        Self {
+            format_version: m.format_version,
+            schema_version: m.schema_version,
+            app_version: m.app_version,
+            created_at: m.created_at,
+            files: m.files.into_iter().map(BackupFileInfo::from).collect(),
         }
     }
 }

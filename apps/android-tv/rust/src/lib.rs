@@ -152,6 +152,33 @@ pub struct EpgSearchResult {
     pub category: Option<String>,
 }
 
+pub struct ReminderInfo {
+    pub id: i64,
+    pub channel_id: i64,
+    pub channel_name: String,
+    pub channel_number: Option<String>,
+    pub program_start_epoch: i64,
+    pub program_stop_epoch: Option<i64>,
+    pub program_title: String,
+    pub program_desc: Option<String>,
+    pub fired_at: Option<String>,
+    pub created_at: String,
+}
+
+pub struct BackupFileInfo {
+    pub name: String,
+    pub size: u64,
+    pub sha256: String,
+}
+
+pub struct BackupManifestInfo {
+    pub format_version: u32,
+    pub schema_version: u32,
+    pub app_version: Option<String>,
+    pub created_at: String,
+    pub files: Vec<BackupFileInfo>,
+}
+
 // ── Initialization ──────────────────────────────────────────────────────
 
 pub fn init_engine(data_dir: String) -> Result<u16, OpenTiviError> {
@@ -537,6 +564,108 @@ pub fn set_setting(key: String, value: String) -> Result<(), OpenTiviError> {
     })
 }
 
+// ── Backup ──────────────────────────────────────────────────────────────
+
+pub fn export_backup(out_path: String) -> Result<BackupManifestInfo, OpenTiviError> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::backup_service::export_backup(
+                &engine.ctx,
+                std::path::Path::new(&out_path),
+            ))
+            .map(BackupManifestInfo::from)
+            .map_err(|e| runtime_error(e.to_string()))
+    })
+}
+
+pub fn import_backup(in_path: String) -> Result<BackupManifestInfo, OpenTiviError> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::backup_service::import_backup(
+                &engine.ctx,
+                std::path::Path::new(&in_path),
+            ))
+            .map(BackupManifestInfo::from)
+            .map_err(|e| runtime_error(e.to_string()))
+    })
+}
+
+// ── Reminders ───────────────────────────────────────────────────────────
+
+pub fn add_reminder(
+    channel_id: i64,
+    program_start_epoch: i64,
+    program_stop_epoch: Option<i64>,
+    program_title: String,
+    program_desc: Option<String>,
+) -> Result<i64, OpenTiviError> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::reminders_service::add_reminder(
+                &engine.ctx,
+                channel_id,
+                program_start_epoch,
+                program_stop_epoch,
+                program_title,
+                program_desc,
+            ))
+            .map_err(|e| runtime_error(e.to_string()))
+    })
+}
+
+pub fn remove_reminder(id: i64) -> Result<(), OpenTiviError> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::reminders_service::remove_reminder(
+                &engine.ctx,
+                id,
+            ))
+            .map_err(|e| runtime_error(e.to_string()))
+    })
+}
+
+pub fn list_reminders() -> Result<Vec<ReminderInfo>, OpenTiviError> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::reminders_service::list_reminders(
+                &engine.ctx,
+            ))
+            .map(|reminders| reminders.into_iter().map(ReminderInfo::from).collect())
+            .map_err(|e| runtime_error(e.to_string()))
+    })
+}
+
+pub fn due_reminders(now_epoch: i64, window_secs: i64) -> Result<Vec<ReminderInfo>, OpenTiviError> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::reminders_service::due_reminders(
+                &engine.ctx,
+                now_epoch,
+                window_secs,
+            ))
+            .map(|reminders| reminders.into_iter().map(ReminderInfo::from).collect())
+            .map_err(|e| runtime_error(e.to_string()))
+    })
+}
+
+pub fn mark_reminder_fired(id: i64) -> Result<(), OpenTiviError> {
+    with_engine(|engine| {
+        engine
+            .runtime
+            .block_on(opentivi_core::core::services::reminders_service::mark_reminder_fired(
+                &engine.ctx,
+                id,
+            ))
+            .map_err(|e| runtime_error(e.to_string()))
+    })
+}
+
 // ── Proxy ───────────────────────────────────────────────────────────────
 
 pub fn get_proxy_port() -> Result<u16, OpenTiviError> {
@@ -706,6 +835,45 @@ impl From<opentivi_core::dto::EpgProgramSearchResultDto> for EpgSearchResult {
             title: r.title,
             description: r.description,
             category: r.category,
+        }
+    }
+}
+
+impl From<opentivi_core::dto::ReminderDto> for ReminderInfo {
+    fn from(r: opentivi_core::dto::ReminderDto) -> Self {
+        Self {
+            id: r.id,
+            channel_id: r.channel_id,
+            channel_name: r.channel_name,
+            channel_number: r.channel_number,
+            program_start_epoch: r.program_start_epoch,
+            program_stop_epoch: r.program_stop_epoch,
+            program_title: r.program_title,
+            program_desc: r.program_desc,
+            fired_at: r.fired_at,
+            created_at: r.created_at,
+        }
+    }
+}
+
+impl From<opentivi_core::core::services::backup_service::BackupFileEntry> for BackupFileInfo {
+    fn from(f: opentivi_core::core::services::backup_service::BackupFileEntry) -> Self {
+        Self {
+            name: f.name,
+            size: f.size,
+            sha256: f.sha256,
+        }
+    }
+}
+
+impl From<opentivi_core::core::services::backup_service::BackupManifest> for BackupManifestInfo {
+    fn from(m: opentivi_core::core::services::backup_service::BackupManifest) -> Self {
+        Self {
+            format_version: m.format_version,
+            schema_version: m.schema_version,
+            app_version: m.app_version,
+            created_at: m.created_at,
+            files: m.files.into_iter().map(BackupFileInfo::from).collect(),
         }
     }
 }

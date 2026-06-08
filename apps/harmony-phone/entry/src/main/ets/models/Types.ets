@@ -120,3 +120,30 @@ export interface EpgSearchResult {
   description?: string;
   category?: string;
 }
+
+export interface ReminderInfo {
+  id: number;
+  channelId: number;
+  channelName: string;
+  channelNumber?: string;
+  programStartEpoch: number;
+  programStopEpoch?: number;
+  programTitle: string;
+  programDesc?: string;
+  firedAt?: string;
+  createdAt: string;
+}
+
+export interface BackupFileInfo {
+  name: string;
+  size: number;
+  sha256: string;
+}
+
+export interface BackupManifestInfo {
+  formatVersion: number;
+  schemaVersion: number;
+  appVersion?: string;
+  createdAt: string;
+  files: BackupFileInfo[];
+}

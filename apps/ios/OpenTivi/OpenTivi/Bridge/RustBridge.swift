@@ -8,6 +8,8 @@ final class RustBridge: ObservableObject {
     static let shared = RustBridge()
     private static let logger = Logger(subsystem: "com.opentivi.ios", category: "Startup")
     @Published private(set) var isInitialized = false
+    /// Local streaming proxy port returned by the Rust core after init (0 until initialized).
+    @Published private(set) var proxyPort: UInt16 = 0
 
     private init() {}
 
@@ -27,7 +29,7 @@ final class RustBridge: ObservableObject {
     func initialize(dataDir: String) {
         guard !isInitialized else { return }
         do {
-            try OpenTivi.initEngine(dataDir: dataDir)
+            proxyPort = try OpenTivi.initEngine(dataDir: dataDir)
             isInitialized = true
         } catch {
             print("Failed to initialize Rust engine: \(error)")
@@ -53,12 +55,13 @@ final class RustBridge: ObservableObject {
         let dataDir = appSupportDir.path
         do {
             logInit("Dispatching OpenTivi.initEngine(dataDir:) to background task", since: start)
-            try await Task.detached(priority: .userInitiated) {
+            let port = try await Task.detached(priority: .userInitiated) {
                 try OpenTivi.initEngine(dataDir: dataDir)
             }.value
 
+            proxyPort = port
             isInitialized = true
-            logInit("OpenTivi.initEngine completed", since: start)
+            logInit("OpenTivi.initEngine completed, proxyPort=\(port)", since: start)
         } catch {
             logInit("OpenTivi.initEngine failed: \(error.localizedDescription)", since: start)
         }

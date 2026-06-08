@@ -13,6 +13,7 @@ static ENGINE: OnceLock<Engine> = OnceLock::new();
 struct Engine {
     runtime: tokio::runtime::Runtime,
     ctx: CoreContext,
+    proxy_port: u16,
 }
 
 fn runtime_error(message: impl Into<String>) -> OpenTiviError {
@@ -165,7 +166,7 @@ pub struct EpgSearchResult {
 // ── Initialization ──────────────────────────────────────────────────────
 
 #[uniffi::export]
-pub fn init_engine(data_dir: String) -> Result<(), OpenTiviError> {
+pub fn init_engine(data_dir: String) -> Result<u16, OpenTiviError> {
     let start = Instant::now();
     eprintln!("[OpenTivi][init_engine] start data_dir={}", data_dir);
     opentivi_core::platform::fs::paths::set_data_dir(&data_dir);
@@ -211,13 +212,25 @@ pub fn init_engine(data_dir: String) -> Result<(), OpenTiviError> {
     let db = DbExecutor::new(db_path);
     let ctx = CoreContext::new(db);
 
-    let engine = Engine { runtime, ctx };
+    let proxy_start = Instant::now();
+    let proxy_port = runtime.block_on(opentivi_core::platform::proxy::start_proxy_server());
+    log_timing(
+        "init_engine",
+        proxy_start,
+        format!("proxy server started on port {}", proxy_port),
+    );
+
+    let engine = Engine {
+        runtime,
+        ctx,
+        proxy_port,
+    };
     ENGINE
         .set(engine)
         .map_err(|_| runtime_error("Already initialized"))?;
     log_timing("init_engine", start, "engine stored in OnceLock");
 
-    Ok(())
+    Ok(proxy_port)
 }
 
 // ── Sources ─────────────────────────────────────────────────────────────
@@ -625,6 +638,13 @@ pub fn set_setting(key: String, value: String) -> Result<(), OpenTiviError> {
             .map(|_| ())
             .map_err(|e| runtime_error(e.to_string()))
     })
+}
+
+// ── Proxy ───────────────────────────────────────────────────────────────
+
+#[uniffi::export]
+pub fn get_proxy_port() -> Result<u16, OpenTiviError> {
+    with_engine(|engine| Ok(engine.proxy_port))
 }
 
 // ── DTO → UniFFI record conversions ─────────────────────────────────────

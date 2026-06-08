@@ -3,7 +3,7 @@ namespace opentivi {
     // ── Initialization ──────────────────────────────────────────────────
 
     [Throws=OpenTiviError]
-    void init_engine(string data_dir);
+    u16 init_engine(string data_dir);
 
     // ── Sources ─────────────────────────────────────────────────────────
 
@@ -101,6 +101,10 @@ namespace opentivi {
     [Throws=OpenTiviError]
     void set_setting(string key, string value);
 
+    // ── Proxy ───────────────────────────────────────────────────────────
+
+    [Throws=OpenTiviError]
+    u16 get_proxy_port();
 };
 
 [Error]

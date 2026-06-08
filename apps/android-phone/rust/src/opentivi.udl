@@ -206,6 +206,19 @@ dictionary PlaybackInfo {
     string channel_name;
     string stream_url;
     string? logo_url;
+    string? user_agent;
+    string? referer;
+    boolean proxy_recommended;
+    string? kind;
+    i32 priority;
+    string? catchup_type;
+    string? catchup_source;
+    string? catchup_days;
+    i64? catchup_hours;
+    string? health;
+    i64? expires_at;
+    boolean needs_reresolve;
+    string? failure_reason;
 };
 
 dictionary EpgSearchResult {

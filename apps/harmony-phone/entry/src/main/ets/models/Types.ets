@@ -92,6 +92,19 @@ export interface PlaybackInfo {
   channelName: string;
   streamUrl: string;
   logoUrl?: string;
+  userAgent?: string;
+  referer?: string;
+  proxyRecommended?: boolean;
+  kind?: string;
+  priority?: number;
+  catchupType?: string;
+  catchupSource?: string;
+  catchupDays?: string;
+  catchupHours?: number;
+  health?: string;
+  expiresAt?: number;
+  needsReresolve?: boolean;
+  failureReason?: string;
 }
 
 export interface EpgSearchResult {

@@ -123,6 +123,19 @@ pub struct PlaybackInfo {
     pub channel_name: String,
     pub stream_url: String,
     pub logo_url: Option<String>,
+    pub user_agent: Option<String>,
+    pub referer: Option<String>,
+    pub proxy_recommended: bool,
+    pub kind: Option<String>,
+    pub priority: i32,
+    pub catchup_type: Option<String>,
+    pub catchup_source: Option<String>,
+    pub catchup_days: Option<String>,
+    pub catchup_hours: Option<i64>,
+    pub health: Option<String>,
+    pub expires_at: Option<i64>,
+    pub needs_reresolve: bool,
+    pub failure_reason: Option<String>,
 }
 
 pub struct EpgSearchResult {
@@ -662,6 +675,19 @@ impl From<opentivi_core::dto::PlaybackSourceDto> for PlaybackInfo {
             channel_name: p.channel_name,
             stream_url: p.stream_url,
             logo_url: p.logo_url,
+            user_agent: p.user_agent,
+            referer: p.referer,
+            proxy_recommended: p.proxy_recommended,
+            kind: p.kind,
+            priority: p.priority,
+            catchup_type: p.catchup_type,
+            catchup_source: p.catchup_source,
+            catchup_days: p.catchup_days,
+            catchup_hours: p.catchup_hours,
+            health: p.health,
+            expires_at: p.expires_at,
+            needs_reresolve: p.needs_reresolve,
+            failure_reason: p.failure_reason,
         }
     }
 }

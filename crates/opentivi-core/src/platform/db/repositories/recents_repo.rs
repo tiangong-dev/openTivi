@@ -10,7 +10,7 @@ pub fn list_recents(conn: &Connection, limit: u32) -> AppResult<Vec<RecentChanne
          INNER JOIN recents r ON c.id = r.channel_id
          INNER JOIN sources s ON s.id = c.source_id
          LEFT JOIN favorites f ON c.id = f.channel_id
-         WHERE s.enabled = 1
+         WHERE s.enabled = 1 AND c.deleted_time IS NULL
          ORDER BY r.last_watched_at DESC
          LIMIT ?1",
     )?;

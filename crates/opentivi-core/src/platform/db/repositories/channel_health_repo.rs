@@ -33,9 +33,10 @@ pub fn list_due_channels(
         "SELECT c.id, c.stream_url
          FROM channels c
          LEFT JOIN channel_health h ON c.id = h.channel_id
-         WHERE h.channel_id IS NULL
+         WHERE c.deleted_time IS NULL
+           AND (h.channel_id IS NULL
             OR h.last_checked_at IS NULL
-            OR h.last_checked_at < datetime('now', '-' || ?1 || ' minutes')
+            OR h.last_checked_at < datetime('now', '-' || ?1 || ' minutes'))
          ORDER BY
            CASE WHEN h.channel_id IS NULL THEN 0 ELSE 1 END,
            h.last_checked_at ASC NULLS FIRST

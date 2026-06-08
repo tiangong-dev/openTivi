@@ -9,7 +9,7 @@ pub fn list_favorites(conn: &Connection) -> AppResult<Vec<ChannelListItemDto>> {
          FROM channels c
          INNER JOIN favorites f ON c.id = f.channel_id
          INNER JOIN sources s ON s.id = c.source_id
-         WHERE s.enabled = 1
+         WHERE s.enabled = 1 AND c.deleted_time IS NULL
          ORDER BY c.name",
     )?;
 

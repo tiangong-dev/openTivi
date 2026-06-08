@@ -53,6 +53,11 @@ const MIGRATIONS: &[(u32, &str, &str)] = &[
         "0010_epg_epoch",
         include_str!("../../../migrations/0010_epg_epoch.sql"),
     ),
+    (
+        11,
+        "0011_channels_soft_delete",
+        include_str!("../../../migrations/0011_channels_soft_delete.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
@@ -283,7 +288,7 @@ mod tests {
         let max_version: u32 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(max_version, 10, "highest migration version must be 10");
+        assert_eq!(max_version, 11, "highest migration version must be 11");
 
         // Second run must be idempotent (backfill / ALTER must not fail).
         run_migrations(&conn).expect("second migration run should be idempotent");
@@ -376,6 +381,58 @@ mod tests {
             Some(1000),
             "re-entrant backfill must NOT overwrite an already-filled end_epoch"
         );
+    }
+
+    // ── P0b tests (TDD red): 软删除 + 稳定频道身份 ───────────────────────────
+    //
+    // Expected to FAIL until P0b (migration 0011) is implemented. Asserts only the
+    // externally observable schema contract (no assumption about the migration file
+    // name).
+
+    /// P0b #1: migration 0011 adds a nullable `deleted_time` TEXT column on
+    /// `channels`, bumps MAX(version) to 11, and stays idempotent on a re-run.
+    ///
+    /// Catches: forgetting to add the column (read path can't tombstone-filter),
+    /// adding it NOT NULL (existing rows would fail/blow up), or not registering
+    /// the migration so MAX(version) stays 10, or a non-idempotent ALTER that
+    /// fails on the second run_migrations.
+    #[test]
+    fn p0b_migration_adds_deleted_time_column_and_bumps_version_to_11() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).expect("first migration run should succeed");
+
+        let cols = table_columns(&conn, "channels");
+        assert!(
+            cols.iter().any(|c| c == "deleted_time"),
+            "channels must have deleted_time column, got: {cols:?}"
+        );
+
+        // Column must be nullable (NULL = alive / timestamp = tombstone).
+        let not_null: Vec<(String, i64)> = conn
+            .prepare("PRAGMA table_info(channels)")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(1)?, row.get::<_, i64>(3)?))
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        for (name, notnull) in &not_null {
+            if name == "deleted_time" {
+                assert_eq!(
+                    *notnull, 0,
+                    "deleted_time must be nullable (notnull flag must be 0)"
+                );
+            }
+        }
+
+        let max_version: u32 = conn
+            .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(max_version, 11, "highest migration version must be 11");
+
+        // Second run must be idempotent (ALTER must not blow up).
+        run_migrations(&conn).expect("second migration run should be idempotent");
     }
 
     #[test]
